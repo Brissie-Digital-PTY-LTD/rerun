@@ -1,0 +1,109 @@
+import { Hono } from 'hono'
+import { RERUN_CONNECTION_ID, boxDefaultModelSchema, createConnectionSchema, updateConnectionKeysSchema, updateConnectionSchema } from '@rerun/contracts'
+import { connectionExists, isConnected, toSummary } from '../../connections/loader.js'
+import { findConnection, getConnection, listConnections } from '../../connections/registry.js'
+import { assertConnectionDeletable, createConnection, deleteConnection, patchConnection, updateConnectionKeys } from '../../connections/store.js'
+import { connectionUsage, releaseConnection } from '../../connections/release.js'
+import { clearBoxDefault, readBoxDefault, writeBoxDefault } from '../../connections/default.js'
+import { servesModel } from '../../connections/resolve.js'
+import { defaultModelOf } from '../../agents/availability.js'
+import { refreshStaleCodexPlanLimits } from '../../connections/codex-plan-limits.js'
+import type { LoadedConnection } from '../../connections/types.js'
+import { sendNotification } from '../../runtime/notify.js'
+
+export const connectionRoutes = new Hono()
+
+// Tells the hub the box now runs on the workspace's own AI, which ticks its getting-started step.
+// Fire and forget: an unreachable hub never fails the write that just succeeded.
+function announceConnected(connection: LoadedConnection): void {
+    if (connection.id === RERUN_CONNECTION_ID || !isConnected(connection)) return
+    void sendNotification({ event: 'box.connection.connected', kind: 'info', agentId: null, message: connection.config.provider })
+}
+
+connectionRoutes.get('/', async c => {
+    const connections = await listConnections()
+    refreshStaleCodexPlanLimits(connections)
+    return c.json({ connections: connections.map(toSummary), default: await readBoxDefault() })
+})
+
+// Registered before `/:id`: Hono matches same-method routes in registration order, so `/default`
+// would otherwise be read as a connection id.
+connectionRoutes.put('/default', async c => {
+    const { connectionId, model } = boxDefaultModelSchema.parse(await c.req.json())
+    const connection = await findConnection(connectionId)
+    if (!connection) return c.json({ error: 'connection not found' }, 404)
+    if (!servesModel(connection, model)) return c.json({ error: `This connection does not offer ${model}` }, 400)
+    return c.json(await writeBoxDefault({ connectionId, model }))
+})
+
+connectionRoutes.delete('/default', async c => {
+    await clearBoxDefault()
+    return c.json({ default: null })
+})
+
+connectionRoutes.post('/', async c => {
+    const body = createConnectionSchema.parse(await c.req.json())
+    const connection = await createConnection(body)
+    await adoptBoxDefault(connection)
+    announceConnected(connection)
+    return c.json(toSummary(connection), 201)
+})
+
+connectionRoutes.patch('/:id', async c => {
+    const id = c.req.param('id')
+    if (!connectionExists(id)) return c.json({ error: 'connection not found' }, 404)
+    const patch = updateConnectionSchema.parse(await c.req.json())
+    const connection = await patchConnection(id, patch)
+    // Switching off the model the box default names would leave every agent that picked nothing
+    // dropping to Rerun with nothing on screen saying so. This is the one write that can see it.
+    const boxDefault = await readBoxDefault()
+    if (boxDefault?.connectionId === id && !servesModel(connection, boxDefault.model)) await writeBoxDefault({ connectionId: id, model: defaultModelOf(connection) })
+    return c.json(toSummary(connection))
+})
+
+connectionRoutes.patch('/:id/keys', async c => {
+    const id = c.req.param('id')
+    if (!connectionExists(id)) return c.json({ error: 'connection not found' }, 404)
+    const body = updateConnectionKeysSchema.parse(await c.req.json())
+    const keys = await updateConnectionKeys(id, body)
+    const connection = await getConnection(id)
+    await adoptBoxDefault(connection)
+    announceConnected(connection)
+    return c.json({ keys })
+})
+
+// What a delete would move back onto the box default, so the UI can name it before it happens.
+connectionRoutes.get('/:id/usage', async c => {
+    const id = c.req.param('id')
+    if (!connectionExists(id)) return c.json({ error: 'connection not found' }, 404)
+    return c.json(await connectionUsage(id))
+})
+
+connectionRoutes.delete('/:id', async c => {
+    const id = c.req.param('id')
+    if (!connectionExists(id)) return c.json({ error: 'connection not found' }, 404)
+    // Before the release, not after: detaching every agent and then refusing the delete would leave
+    // the box worse off than a plain refusal.
+    assertConnectionDeletable(id)
+    const released = await releaseConnection(id)
+    await deleteConnection(id)
+    return c.json({ deleted: id, released })
+})
+
+// Plugging the first credential into a box is the whole setup, and on its own it changes nothing:
+// with no default written, the resolution ladder keeps every agent on the keyless Rerun connection
+// until someone finds the star in the connection detail. So the first one adopts the default.
+//
+// Only while nothing else is plugged in — moving the default onto a connection added next to a
+// working one would move the bill without anyone asking.
+async function adoptBoxDefault(connection: LoadedConnection): Promise<void> {
+    if (connection.id === RERUN_CONNECTION_ID || !isConnected(connection)) return
+    if (await readBoxDefault()) return
+    const others = (await listConnections()).filter(c => c.id !== connection.id && c.id !== RERUN_CONNECTION_ID)
+    if (others.some(isConnected)) return
+    const model = defaultModelOf(connection)
+    // `defaultModelOf` falls back to the provider default on a connection offering nothing, and a
+    // pair no list serves would star a row the UI never shows.
+    if (!servesModel(connection, model)) return
+    await writeBoxDefault({ connectionId: connection.id, model })
+}

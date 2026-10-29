@@ -1,0 +1,104 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 45ed4bd9287395a0a4e35f2f4a1f66da88341516..54f5804b9d98413b29d4eaceb7005d50931bc8b7 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -2349,6 +2349,7 @@ function mapTool(item) {
+   return void 0;
+ }
+ function createNotificationHandlers(context) {
++  let usageBeforeTurn;
+   const handleReasoningDelta = (isSummary) => (params) => {
+     if (!context.isSameTurn(params) || typeof params.delta !== "string") return;
+     const itemId = typeof params.itemId === "string" ? params.itemId : providerUtils.generateId();
+@@ -2444,17 +2445,34 @@ function createNotificationHandlers(context) {
+       const event = params;
+       const last = event.tokenUsage?.last;
+       if (!last) return;
++      const total = event.tokenUsage?.total;
++      // rerun patch: a turn makes one model call per tool round and `last` is only the latest one.
++      // The thread total, less what the thread held before the turn, counts the whole turn.
++      if (total && !usageBeforeTurn) {
++        usageBeforeTurn = {
++          inputTokens: total.inputTokens - last.inputTokens,
++          cachedInputTokens: total.cachedInputTokens - last.cachedInputTokens,
++          outputTokens: total.outputTokens - last.outputTokens,
++          reasoningOutputTokens: total.reasoningOutputTokens - last.reasoningOutputTokens
++        };
++      }
++      const turn = total ? {
++        inputTokens: total.inputTokens - usageBeforeTurn.inputTokens,
++        cachedInputTokens: total.cachedInputTokens - usageBeforeTurn.cachedInputTokens,
++        outputTokens: total.outputTokens - usageBeforeTurn.outputTokens,
++        reasoningOutputTokens: total.reasoningOutputTokens - usageBeforeTurn.reasoningOutputTokens
++      } : last;
+       context.onUsage({
+         inputTokens: {
+-          total: last.inputTokens,
+-          noCache: Math.max(0, last.inputTokens - last.cachedInputTokens),
+-          cacheRead: last.cachedInputTokens,
++          total: turn.inputTokens,
++          noCache: Math.max(0, turn.inputTokens - turn.cachedInputTokens),
++          cacheRead: turn.cachedInputTokens,
+           cacheWrite: 0
+         },
+         outputTokens: {
+-          total: last.outputTokens,
++          total: turn.outputTokens,
+           text: void 0,
+-          reasoning: last.reasoningOutputTokens
++          reasoning: turn.reasoningOutputTokens
+         },
+         raw: last ?? void 0
+       });
+diff --git a/dist/index.js b/dist/index.js
+index 0e2c370883354cd782ab878f645170a87081c8a2..40c08fbdd99f404cfb6e2eb853d75ef40ea15125 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2341,6 +2341,7 @@ function mapTool(item) {
+   return void 0;
+ }
+ function createNotificationHandlers(context) {
++  let usageBeforeTurn;
+   const handleReasoningDelta = (isSummary) => (params) => {
+     if (!context.isSameTurn(params) || typeof params.delta !== "string") return;
+     const itemId = typeof params.itemId === "string" ? params.itemId : generateId();
+@@ -2436,17 +2437,34 @@ function createNotificationHandlers(context) {
+       const event = params;
+       const last = event.tokenUsage?.last;
+       if (!last) return;
++      const total = event.tokenUsage?.total;
++      // rerun patch: a turn makes one model call per tool round and `last` is only the latest one.
++      // The thread total, less what the thread held before the turn, counts the whole turn.
++      if (total && !usageBeforeTurn) {
++        usageBeforeTurn = {
++          inputTokens: total.inputTokens - last.inputTokens,
++          cachedInputTokens: total.cachedInputTokens - last.cachedInputTokens,
++          outputTokens: total.outputTokens - last.outputTokens,
++          reasoningOutputTokens: total.reasoningOutputTokens - last.reasoningOutputTokens
++        };
++      }
++      const turn = total ? {
++        inputTokens: total.inputTokens - usageBeforeTurn.inputTokens,
++        cachedInputTokens: total.cachedInputTokens - usageBeforeTurn.cachedInputTokens,
++        outputTokens: total.outputTokens - usageBeforeTurn.outputTokens,
++        reasoningOutputTokens: total.reasoningOutputTokens - usageBeforeTurn.reasoningOutputTokens
++      } : last;
+       context.onUsage({
+         inputTokens: {
+-          total: last.inputTokens,
+-          noCache: Math.max(0, last.inputTokens - last.cachedInputTokens),
+-          cacheRead: last.cachedInputTokens,
++          total: turn.inputTokens,
++          noCache: Math.max(0, turn.inputTokens - turn.cachedInputTokens),
++          cacheRead: turn.cachedInputTokens,
+           cacheWrite: 0
+         },
+         outputTokens: {
+-          total: last.outputTokens,
++          total: turn.outputTokens,
+           text: void 0,
+-          reasoning: last.reasoningOutputTokens
++          reasoning: turn.reasoningOutputTokens
+         },
+         raw: last ?? void 0
+       });

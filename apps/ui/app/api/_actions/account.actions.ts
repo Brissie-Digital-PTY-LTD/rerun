@@ -1,0 +1,185 @@
+'use server'
+
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min'
+import type { User } from '@supabase/supabase-js'
+
+import { AuthorizationError } from '@/app/api/_auth/ownership'
+import { accountDeletionBlockers, anonymizeAccount } from '@/app/api/_services/account-deletion.service'
+import { syncStripeCustomerEmail } from '@/cloud/billing.server'
+import { phoneOwnerId } from '@/cloud/phone.server'
+import { DELETE_ACCOUNT_CONFIRMATION, type AccountDeletionBlocker } from '@/lib/auth/account-deletion'
+import { OAUTH_PROVIDERS, type OAuthProvider } from '@/lib/auth/oauth-providers'
+import { isPlaceholderEmail, realEmail } from '@/lib/auth/placeholder-email'
+import { PROFILE_NAME_MAX } from '@/lib/auth/user-profile'
+import { normalizeEmail } from '@/lib/email'
+import { uploadPublicImage } from '@/lib/images/upload'
+import { createServiceRoleClient } from '@/supabase/serviceRole'
+import { getServerSession } from '@/supabase/session/getServerSession'
+import { selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'
+import type { ActionResult } from './space.actions'
+
+const USER_AVATARS_BUCKET = 'user-avatars'
+const AVATAR_MAX_SIZE = 512
+const AVATAR_MAX_BYTES = 8 * 1024 * 1024
+
+async function requireAccount(): Promise<User> {
+    const { session, isAnonymous } = await getServerSession()
+    if (!session || isAnonymous) throw new AuthorizationError('Sign in to edit your account.')
+    return session
+}
+
+const failed = (err: unknown, fallback: string): { ok: false; error: string } => ({ ok: false, error: err instanceof Error ? err.message : fallback })
+
+// Supabase merges the keys it is handed into the stored metadata, so only what changes is sent.
+async function writeChosenProfile(account: User, chosen: { full_name?: string; avatar_url?: string }, userMetadata?: Record<string, unknown>) {
+    const { error } = await createServiceRoleClient().auth.admin.updateUserById(account.id, {
+        app_metadata: chosen,
+        ...(userMetadata ? { user_metadata: userMetadata } : {}),
+    })
+    if (error) throw new Error(error.message)
+}
+
+export async function updateMyNameAction(params: { name: string }): Promise<ActionResult> {
+    try {
+        const account = await requireAccount()
+        const name = params.name.trim().replace(/\s+/g, ' ')
+        if (!name) return { ok: false, error: 'Name is required' }
+        if (name.length > PROFILE_NAME_MAX) return { ok: false, error: `Keep it under ${PROFILE_NAME_MAX} characters` }
+
+        // The greeting of an email and the foreman read the first name from `user_metadata`.
+        await writeChosenProfile(account, { full_name: name }, { full_name: name, first_name: name.split(' ')[0] })
+        return { ok: true }
+    } catch (err) {
+        return failed(err, 'Could not save your name.')
+    }
+}
+
+// The URL is written here and nowhere else: it ends up in an <img> on a teammate's screen, so
+// nothing the browser sends may reach it verbatim.
+export async function uploadMyAvatarAction(formData: FormData): Promise<ActionResult> {
+    try {
+        const account = await requireAccount()
+        const file = formData.get('file')
+        if (!(file instanceof File)) return { ok: false, error: 'No file provided.' }
+        if (!file.type.startsWith('image/')) return { ok: false, error: 'Please choose an image file.' }
+        if (file.size > AVATAR_MAX_BYTES) return { ok: false, error: 'Image is too large (max 8MB).' }
+
+        const url = await uploadPublicImage(createServiceRoleClient(), await file.arrayBuffer(), USER_AVATARS_BUCKET, account.id, { maxSize: AVATAR_MAX_SIZE })
+        await writeChosenProfile(account, { avatar_url: url })
+        return { ok: true }
+    } catch (err) {
+        return failed(err, 'Could not upload your photo.')
+    }
+}
+
+export async function removeMyAvatarAction(): Promise<ActionResult> {
+    try {
+        await writeChosenProfile(await requireAccount(), { avatar_url: '' })
+        return { ok: true }
+    } catch (err) {
+        return failed(err, 'Could not remove your photo.')
+    }
+}
+
+export type ConnectedIdentity = { email: string | null; canDisconnect: boolean }
+
+export type SignInMethods = {
+    email: string | null
+    oauth: Record<OAuthProvider, ConnectedIdentity | null>
+    // `signsInHere` is false when an older account verified the same number: it is the one the
+    // number opens.
+    phone: { number: string; signsInHere: boolean } | null
+}
+
+export async function getSignInMethodsAction(): Promise<ActionResult<{ methods: SignInMethods }>> {
+    try {
+        const account = await requireAccount()
+        const admin = createServiceRoleClient()
+
+        const identities = account.identities ?? []
+        const connected = (provider: OAuthProvider): ConnectedIdentity | null => {
+            const identity = identities.find(candidate => candidate.provider === provider)
+            if (!identity) return null
+            const email = identity.identity_data?.email
+            // Supabase refuses to remove the last identity of an account.
+            return { email: typeof email === 'string' ? email : null, canDisconnect: identities.length > 1 }
+        }
+
+        const { data: row } = await selectMaybeSingle(admin, 'user_phones', ['phone', 'verified_at'] as const, { user_id: account.id })
+        const verifiedPhone = row?.verified_at ? row.phone : null
+        const owner = verifiedPhone ? await phoneOwnerId(admin, verifiedPhone) : null
+
+        return {
+            ok: true,
+            methods: {
+                email: realEmail(account.email),
+                oauth: Object.fromEntries(OAUTH_PROVIDERS.map(provider => [provider, connected(provider)])) as SignInMethods['oauth'],
+                phone: verifiedPhone ? { number: parsePhoneNumberFromString(verifiedPhone)?.formatInternational() ?? verifiedPhone, signsInHere: owner?.userId === account.id } : null,
+            },
+        }
+    } catch (err) {
+        return failed(err, 'Could not load your sign-in methods.')
+    }
+}
+
+// `a.mail.example.com` is refused by a block on any of its parents, as at signup.
+function domainAndParents(email: string): string[] {
+    const labels = (email.split('@')[1] ?? '').split('.')
+    return labels.map((_, index) => labels.slice(index).join('.')).filter(Boolean)
+}
+
+// What signing up checks on an address, asked again before the account moves to a new one: the
+// `before_user_created` hook only runs when an account is born.
+export async function prepareEmailChangeAction(params: { email: string }): Promise<ActionResult> {
+    try {
+        const account = await requireAccount()
+        const email = normalizeEmail(params.email)
+        if (isPlaceholderEmail(email)) return { ok: false, error: 'Enter a valid email address.' }
+        if (email === account.email?.toLowerCase()) return { ok: false, error: 'This is already the email of your account.' }
+
+        const admin = createServiceRoleClient()
+        const { data: blocked } = await selectMany(admin, 'blocked_email_domains', ['domain'] as const, { domain: domainAndParents(email) }, undefined, 1)
+        if (blocked?.length) return { ok: false, error: 'This email domain is not accepted. Use another address.' }
+
+        const { data: taken, error } = await admin.rpc('check_email_exists', { email })
+        if (error) throw new Error(error.message)
+        if (taken) return { ok: false, error: 'This email already signs into another Rerun account.' }
+        return { ok: true }
+    } catch (err) {
+        return failed(err, 'Could not check this email.')
+    }
+}
+
+// Called once the new address is confirmed. Best effort: the account has already moved.
+export async function syncAccountEmailAction(): Promise<void> {
+    try {
+        const account = await requireAccount()
+        const email = realEmail(account.email)
+        if (email) await syncStripeCustomerEmail(account.id, email)
+    } catch (err) {
+        console.error('[account] email sync failed', err instanceof Error ? err.message : err)
+    }
+}
+
+export async function getAccountDeletionStatusAction(): Promise<ActionResult<{ blockers: AccountDeletionBlocker[] }>> {
+    try {
+        const account = await requireAccount()
+        return { ok: true, blockers: await accountDeletionBlockers(createServiceRoleClient(), account.id) }
+    } catch (err) {
+        return failed(err, 'Could not check your account.')
+    }
+}
+
+export async function deleteMyAccountAction(params: { confirmation: string }): Promise<ActionResult> {
+    try {
+        const account = await requireAccount()
+        if (params.confirmation.trim() !== DELETE_ACCOUNT_CONFIRMATION) return { ok: false, error: `Type ${DELETE_ACCOUNT_CONFIRMATION} to confirm.` }
+
+        const result = await anonymizeAccount(createServiceRoleClient(), account.id)
+        if (!result.ok) return { ok: false, error: `Cancel the subscription of ${result.blockers.map(blocker => blocker.name).join(', ')} first.` }
+        return { ok: true }
+    } catch (err) {
+        console.error('[account] deletion failed', err instanceof Error ? err.message : err)
+        return failed(err, 'Could not delete your account.')
+    }
+}

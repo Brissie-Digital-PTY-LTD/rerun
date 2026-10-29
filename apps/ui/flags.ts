@@ -1,0 +1,39 @@
+import { isAdminEmail } from '@/lib/auth/admin-emails'
+import { COMPUTER_RELEASED, REWIND_RELEASED } from '@/lib/features'
+import { createClient } from '@/supabase/server'
+import { dedupe, flag } from 'flags/next'
+
+type Entities = { user?: { email: string } }
+
+export const identify = dedupe(async (): Promise<Entities> => {
+    const supabase = await createClient()
+    const { data } = await supabase.auth.getUser()
+    const email = data.user?.email
+    return { user: email ? { email: email.toLowerCase() } : undefined }
+})
+
+// Une feature pas encore lancée n'existe que pour les admins et les domaines email en accès anticipé.
+// Le jour du lancement, la constante de lib/features passe à `true` et le flag s'ouvre à tout le monde
+// sans toucher aux points d'appel.
+export const releasedOrEarlyAccess =
+    (released: boolean, earlyAccessDomains: readonly string[] = []) =>
+    ({ entities }: { entities?: Entities }) => {
+        const email = entities?.user?.email
+        if (released || isAdminEmail(email)) return true
+        const domain = email?.split('@')[1]
+        return !!domain && earlyAccessDomains.includes(domain)
+    }
+
+export const rewindFlag = flag<boolean, Entities>({
+    key: 'rewind',
+    defaultValue: false,
+    identify,
+    decide: releasedOrEarlyAccess(REWIND_RELEASED),
+})
+
+export const computerFlag = flag<boolean, Entities>({
+    key: 'computer',
+    defaultValue: false,
+    identify,
+    decide: releasedOrEarlyAccess(COMPUTER_RELEASED),
+})

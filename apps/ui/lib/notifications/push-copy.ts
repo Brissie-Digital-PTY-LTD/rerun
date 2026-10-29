@@ -1,0 +1,61 @@
+import { friendlyError } from '@/lib/chat-error'
+import type { NotificationKind } from '@/lib/engine/types'
+import type { StoredNotification } from '@/lib/notifications/inbound'
+
+export type PushCopy = { title: string; subtitle: string; body?: string; silent: boolean }
+
+const STATES: Record<NotificationKind, string> = {
+    done: 'Done',
+    error: 'Failed',
+    question: 'Question',
+    approval: 'Needs approval',
+    connector: 'Needs an app',
+    info: 'Update',
+}
+
+const BODY_LIMIT = 180
+
+// The engine writes `Schedule "<name>" failed: <error>` and keeps only the slug in the metadata, so
+// the name people gave their task is read back from the sentence.
+const SCHEDULED_RUN = /^(?:Schedule|Trigger) "(.+?)" (?:failed|completed|stopped)/
+const RUN_PREFIX = /^(?:(?:Schedule|Trigger) ".+?" failed|Message failed): /
+
+const isScheduledEvent = (event: StoredNotification['event']) => event === 'agent.schedule.completed' || event === 'agent.trigger.completed'
+
+function sourceNameOf(notification: StoredNotification): string | null {
+    if (!isScheduledEvent(notification.event)) return null
+    const named = SCHEDULED_RUN.exec(notification.message)?.[1]
+    if (named) return named
+    const slug = notification.metadata?.scheduleSlug ?? notification.metadata?.triggerSlug
+    return typeof slug === 'string' && slug ? slug : null
+}
+
+function errorOf(notification: StoredNotification): string {
+    const error = notification.metadata?.error
+    return typeof error === 'string' && error ? error : notification.message.replace(RUN_PREFIX, '')
+}
+
+function bodyOf(notification: StoredNotification): string | undefined {
+    if (notification.kind === 'error') return friendlyError(errorOf(notification))
+    // A finished schedule only says "completed", which the subtitle already does.
+    if (notification.kind === 'done' && isScheduledEvent(notification.event)) return undefined
+    return notification.message
+}
+
+function oneLine(text: string | undefined): string | undefined {
+    const line = text?.replace(/\s+/g, ' ').trim()
+    if (!line) return undefined
+    return line.length > BODY_LIMIT ? `${line.slice(0, BODY_LIMIT - 1).trimEnd()}…` : line
+}
+
+// Every push reads the same way on a lock screen: who, then where and what, then the detail.
+export function pushCopyOf({ agentName, notification }: { agentName: string; notification: StoredNotification }): PushCopy {
+    const sourceName = sourceNameOf(notification)
+    const state = STATES[notification.kind]
+    return {
+        title: agentName,
+        subtitle: sourceName ? `${sourceName} · ${state}` : state,
+        body: oneLine(bodyOf(notification)),
+        silent: notification.kind === 'done',
+    }
+}

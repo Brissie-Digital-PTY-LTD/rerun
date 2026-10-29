@@ -1,0 +1,148 @@
+'use client'
+
+import { createApiKeyAction, listApiKeysAction, revokeApiKeyAction, type ApiKeyView } from '@/app/api/_actions/api-keys.actions'
+import { ApiKeyList } from '@/components/dialogs/ApiKeyList'
+import { CreatedApiKey } from '@/components/dialogs/CreatedApiKey'
+import { McpSnippets } from '@/components/dialogs/McpSnippets'
+import { RevokeApiKeyDialog } from '@/components/dialogs/RevokeApiKeyDialog'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DocsLink } from '@/components/ui/docs-link'
+import { Input } from '@/components/ui/input'
+import { SkeletonList } from '@/components/ui/skeleton'
+import { Loader2Icon } from '@/lib/icons'
+import { track } from '@rerun/analytics/client'
+import { ScrollFade } from '@rerun/ui/primitives'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
+
+function SectionTitle({ children, action }: { children: string; action?: ReactNode }) {
+    return (
+        <div className="flex items-center justify-between gap-3 px-1">
+            <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{children}</h3>
+            {action}
+        </div>
+    )
+}
+
+export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+    const [keys, setKeys] = useState<ApiKeyView[]>([])
+    const [mcpUrl, setMcpUrl] = useState('')
+    const [loading, setLoading] = useState(true)
+    const [draft, setDraft] = useState('')
+    const [creating, setCreating] = useState(false)
+    const [busy, setBusy] = useState(false)
+    const [createdKey, setCreatedKey] = useState<string | null>(null)
+    const [revoking, setRevoking] = useState<ApiKeyView | null>(null)
+
+    const refresh = useCallback(async () => {
+        const result = await listApiKeysAction()
+        if (!result.ok) {
+            toast.error(result.error)
+            setLoading(false)
+            return
+        }
+        setKeys(result.keys)
+        setMcpUrl(result.mcpUrl)
+        setLoading(false)
+    }, [])
+
+    useEffect(() => {
+        if (!open) return
+        refresh()
+    }, [open, refresh])
+
+    // The one key shown in clear goes away with the dialog: leaving it on screen for the next
+    // opening would mean holding a live secret in memory for no reason.
+    const handleOpenChange = (next: boolean) => {
+        if (!next) setCreatedKey(null)
+        onOpenChange(next)
+    }
+
+    const create = async () => {
+        const name = draft.trim()
+        if (!name || creating) return
+        setCreating(true)
+        const result = await createApiKeyAction(name)
+        setCreating(false)
+        if (!result.ok) {
+            toast.error(result.error)
+            return
+        }
+        track('api_key_created', {})
+        setCreatedKey(result.key)
+        setDraft('')
+        refresh()
+    }
+
+    // Revoking breaks whatever runs on that key, so it goes through a confirmation rather than
+    // straight off the row.
+    const revoke = async () => {
+        const key = revoking
+        if (!key || busy) return
+        setBusy(true)
+        const result = await revokeApiKeyAction(key.id)
+        setBusy(false)
+        if (!result.ok) return toast.error(result.error)
+        toast.success(`${key.name} revoked`)
+        setRevoking(null)
+        refresh()
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+            {/* The desktop dialog has no height of its own, and the snippets plus the key list run
+                past a short viewport. The bounds are sm: only: the mobile sheet already caps itself
+                against the cookie bar inset, and overriding that would push it off screen. */}
+            <DialogContent className="flex flex-col sm:max-h-[85dvh] sm:max-w-lg sm:overflow-hidden">
+                <DialogHeader>
+                    <DialogTitle>API keys</DialogTitle>
+                    <p className="text-sm text-muted-foreground">Connect Claude Code or any MCP client to this workspace.</p>
+                </DialogHeader>
+
+                <ScrollFade className="-mx-1 min-h-0 flex-1 px-1 py-1">
+                    <div className="space-y-4">
+                        {loading ? (
+                            <SkeletonList rows={3} />
+                        ) : (
+                            <>
+                                <section className="min-w-0 space-y-2">
+                                    <SectionTitle>Connect a client</SectionTitle>
+                                    {/* The fresh key takes the snippets' place rather than sitting under the fold:
+                                        it is the one thing on screen that cannot be recovered by reopening the dialog. */}
+                                    {createdKey ? <CreatedApiKey value={createdKey} mcpUrl={mcpUrl} onDismiss={() => setCreatedKey(null)} /> : <McpSnippets mcpUrl={mcpUrl} />}
+                                </section>
+
+                                <section className="min-w-0 space-y-2">
+                                    <SectionTitle action={<DocsLink path="/api/authentication">API keys</DocsLink>}>Keys</SectionTitle>
+                                    <ApiKeyList keys={keys} busy={busy} onRevoke={setRevoking} />
+
+                                    <Input
+                                        label="New key name"
+                                        placeholder="Claude Code, MacBook"
+                                        value={draft}
+                                        onChange={e => setDraft(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault()
+                                                create()
+                                            }
+                                        }}
+                                    />
+                                    <div className="flex justify-end">
+                                        <Button onClick={create} disabled={!draft.trim() || creating}>
+                                            {creating && <Loader2Icon className="animate-spin" />}
+                                            Create key
+                                        </Button>
+                                    </div>
+                                </section>
+                            </>
+                        )}
+                    </div>
+                </ScrollFade>
+
+                <RevokeApiKeyDialog apiKey={revoking} pending={busy} onOpenChange={next => !next && setRevoking(null)} onConfirm={revoke} />
+            </DialogContent>
+        </Dialog>
+    )
+}

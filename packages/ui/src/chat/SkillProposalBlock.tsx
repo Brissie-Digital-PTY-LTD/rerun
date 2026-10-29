@@ -1,0 +1,165 @@
+'use client'
+
+import { motion } from 'motion/react'
+import { useState } from 'react'
+
+import { Badge, Button, Icon, IconBadge, Stripes } from '../primitives'
+import { cn } from '../cn'
+import { BrainIcon, CheckIcon, ChevronDownIcon, XIcon } from '../icons'
+
+export type SkillProposalMode = 'create' | 'edit'
+export type SkillProposalState = 'proposed' | 'accepted' | 'applied' | 'failed' | 'dismissed'
+
+export type SkillProposalBlockProps = {
+    mode: SkillProposalMode
+    title: string
+    summary: string
+    state: SkillProposalState
+    count?: number
+    // The rules exactly as the agent worded them: what accepting writes into the skill.
+    instructions?: string[]
+    error?: string | null
+    pending?: boolean
+    // Pinned above the composer rather than sitting in the transcript: the row gains a card of its
+    // own, in the calm register of AlertBlock rather than the beam of a question that blocks.
+    pinned?: boolean
+    onAccept?: () => void
+    onDismiss?: () => void
+    onOpenSkill?: () => void
+    className?: string
+}
+
+type Copy = { headline: string; detail: string; accept?: string; dismiss?: string }
+
+function copyFor({ title, summary, state, instructions, error }: SkillProposalBlockProps): Copy {
+    const firstRule = instructions?.[0] || summary
+    if (state === 'accepted') return { headline: 'Remembering', detail: firstRule }
+    if (state === 'applied') return { headline: 'Remembered', detail: title }
+    if (state === 'failed') return { headline: 'Couldn’t remember this', detail: error || title, accept: 'Retry', dismiss: 'Dismiss' }
+    if (state === 'dismissed') return { headline: 'Not remembered', detail: title }
+    return { headline: 'Remember this?', detail: firstRule, accept: 'Remember', dismiss: 'No' }
+}
+
+/**
+ * The row an agent leaves behind when it spots a rule worth keeping. It never pauses the run and
+ * never asks a question: accepting starts the writing on its own, and the same row reports it.
+ */
+export function SkillProposalBlock(props: SkillProposalBlockProps) {
+    const { state, pending, pinned, onAccept, onDismiss, onOpenSkill, className } = props
+    const { headline, detail, accept, dismiss } = copyFor(props)
+    const open = state === 'proposed' || state === 'failed'
+    const done = state === 'applied'
+
+    if (pinned && open) return <PinnedDecision {...props} headline={headline} detail={detail} accept={accept} dismiss={dismiss} />
+
+    return (
+        <div className={cn(pinned ? 'relative overflow-hidden rounded-lg border border-border bg-card p-3' : cn('rounded-xl px-1.5 py-1.5', open && 'bg-muted/30'), className)}>
+            {pinned && <Stripes fade="bottom" />}
+            <div className="relative flex items-center gap-3 text-sm">
+                <Icon size="sm" icon={BrainIcon} />
+                <div className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{headline}</span>
+                    <span className={cn('block truncate text-xs', state === 'failed' ? 'text-destructive' : 'text-muted-foreground')}>{detail}</span>
+                </div>
+                {state === 'accepted' && <IconBadge tone="brand" animated />}
+                {state === 'dismissed' && <IconBadge tone="neutral" icon={XIcon} glow={false} />}
+                {done && (
+                    <>
+                        <IconBadge tone="green" icon={CheckIcon} glow={false} />
+                        {onOpenSkill && (
+                            <Button size="xs" variant="ghost" onClick={onOpenSkill}>
+                                View
+                            </Button>
+                        )}
+                    </>
+                )}
+                {open && (
+                    <div className="flex shrink-0 items-center gap-1">
+                        {onDismiss && dismiss && (
+                            <Button size="xs" variant="ghost" disabled={pending} onClick={onDismiss}>
+                                {dismiss}
+                            </Button>
+                        )}
+                        {onAccept && accept && (
+                            <Button size="xs" loading={pending} onClick={onAccept}>
+                                {accept}
+                            </Button>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
+// One line of text-xs with room for the +N badge, in px: motion cannot tween between `auto` and a rem length.
+const COLLAPSED_DETAIL_HEIGHT = 18
+
+/**
+ * The pinned card while it waits on a decision: the compact row of every other state, plus a
+ * chevron. Unfolding turns its second line, in place, into the rules exactly as the agent worded them.
+ */
+function PinnedDecision({ state, instructions = [], pending, onAccept, onDismiss, className, headline, detail, accept, dismiss }: SkillProposalBlockProps & Copy) {
+    const [expanded, setExpanded] = useState(false)
+    // The full wording stays mounted until the card has folded back, so the closing has something to animate.
+    const [unfolded, setUnfolded] = useState(false)
+    const failed = state === 'failed'
+    const toggle = () => {
+        if (!expanded) setUnfolded(true)
+        setExpanded(!expanded)
+    }
+
+    return (
+        <div className={cn('relative overflow-hidden rounded-lg border border-border bg-card p-3', className)}>
+            <Stripes fade="bottom" />
+            <div className={cn('relative flex gap-3 text-sm', unfolded ? 'items-start' : 'items-center')}>
+                <Icon size="sm" icon={BrainIcon} />
+                <button type="button" aria-expanded={expanded} aria-label={expanded ? 'Hide details' : 'Show details'} onClick={toggle} className="group min-w-0 flex-1 cursor-pointer text-left">
+                    <span className={cn('flex gap-1', unfolded ? 'items-start' : 'items-center')}>
+                        <span className={cn('font-medium', unfolded ? 'break-words' : 'truncate')}>{headline}</span>
+                        <ChevronDownIcon className={cn('size-3.5 shrink-0 text-muted-foreground transition group-hover:text-foreground', unfolded && 'mt-1', expanded && 'rotate-180')} />
+                    </span>
+                    <motion.span
+                        initial={false}
+                        animate={{ height: expanded ? 'auto' : COLLAPSED_DETAIL_HEIGHT }}
+                        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                        onAnimationComplete={() => !expanded && setUnfolded(false)}
+                        className="block overflow-hidden text-xs text-muted-foreground"
+                    >
+                        {unfolded ? (
+                            <span className="block space-y-1.5 break-words">
+                                {(failed || instructions.length === 0) && <span className={cn('block', failed && 'text-destructive')}>{detail}</span>}
+                                {instructions.map((instruction, index) => (
+                                    <span key={index} className="block">
+                                        {instruction}
+                                    </span>
+                                ))}
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1.5">
+                                <span className={cn('min-w-0 truncate', failed && 'text-destructive')}>{detail}</span>
+                                {!failed && instructions.length > 1 && (
+                                    <Badge size="xs" tone="neutral" glow={false} className="shrink-0">
+                                        +{instructions.length - 1}
+                                    </Badge>
+                                )}
+                            </span>
+                        )}
+                    </motion.span>
+                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                    {onDismiss && dismiss && (
+                        <Button size="xs" variant="ghost" disabled={pending} onClick={onDismiss}>
+                            {dismiss}
+                        </Button>
+                    )}
+                    {onAccept && accept && (
+                        <Button size="xs" loading={pending} onClick={onAccept}>
+                            {accept}
+                        </Button>
+                    )}
+                </div>
+            </div>
+        </div>
+    )
+}

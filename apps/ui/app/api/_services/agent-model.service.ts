@@ -1,0 +1,45 @@
+import 'server-only'
+import type { WorkspaceContext } from '@/app/api/_auth/ownership'
+import { resolveAgentTarget } from '@/app/api/_services/chat.service'
+import { assertModelEntitled } from '@/app/api/_services/engine-plan.service'
+import { ApiError } from '@/lib/api-error'
+import { isPremiumModelEntitled } from '@/cloud/billing'
+import { getAgent as engineGetAgent, listConnections, patchAgent as enginePatchAgent } from '@/lib/engine/client'
+import { connectionGroups } from '@/lib/engine/model-groups'
+import type { AgentModels, ModelChoice, SetAgentModelInput } from '@rerun/contracts'
+
+const choiceOf = (connectionId: string | null | undefined, model: string | null | undefined): ModelChoice | null => (connectionId && model ? { connectionId, model } : null)
+
+// The app's model picker for one coworker: the same groups as the web picker, with what the coworker
+// pinned and what it runs today.
+export async function readAgentModels(ctx: WorkspaceContext, agentId: string): Promise<AgentModels> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, ctx.workspace.id)
+    const [detail, list] = await Promise.all([engineGetAgent(conn, engineAgentId), listConnections(conn)])
+    const groups = connectionGroups(list.connections, isPremiumModelEntitled(ctx.workspace))
+    return {
+        groups: groups.map(group => ({
+            connectionId: group.connectionId,
+            label: group.label,
+            provider: group.provider,
+            defaultModel: group.defaultModel,
+            models: group.models.map(model => ({ id: model.id, label: model.label, description: model.description, locked: model.locked })),
+        })),
+        pinned: choiceOf(detail.config.connectionId, detail.config.model),
+        resolved: choiceOf(detail.resolvedConnectionId, detail.resolvedModel),
+        boxDefault: list.default ?? (groups[0] ? { connectionId: groups[0].connectionId, model: groups[0].defaultModel } : null),
+    }
+}
+
+// Same patch as the web picker: a pin names its connection's provider, and following the box clears
+// all three fields so no stale connection keeps showing in its usage.
+export async function setAgentModel(ctx: WorkspaceContext, agentId: string, choice: SetAgentModelInput): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, ctx.workspace.id)
+    if (choice.model === null) {
+        await enginePatchAgent(conn, engineAgentId, { connectionId: null, provider: null, model: null })
+        return
+    }
+    await assertModelEntitled(choice.model, ctx.workspace.id)
+    const connection = (await listConnections(conn)).connections.find(entry => entry.id === choice.connectionId && entry.connected)
+    if (!connection) throw new ApiError(400, 'This connection is not available on the machine')
+    await enginePatchAgent(conn, engineAgentId, { connectionId: connection.id, provider: connection.provider, model: choice.model })
+}

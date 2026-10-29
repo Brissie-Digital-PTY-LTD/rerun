@@ -1,0 +1,38 @@
+import { z } from 'zod'
+
+// `capabilities` stays optional with an empty default: Boxes self-update on their own schedule, so
+// the UI keeps talking to engines that predate any given feature and has to detect them, not assume.
+export const healthSchema = z.object({
+    status: z.string(),
+    activeAgents: z.number(),
+    capabilities: z.array(z.string()).default([]),
+    // The data-dir migration ladder: where the folder is, and where this build takes it.
+    dataVersion: z.number().optional(),
+    dataVersionTarget: z.number().optional(),
+})
+export type Health = z.infer<typeof healthSchema>
+
+export const engineDoctorCheckSchema = z.object({ name: z.string(), ok: z.boolean(), detail: z.string().optional() })
+export type EngineDoctorCheck = z.infer<typeof engineDoctorCheckSchema>
+
+// What `GET /doctor` finds on disk, without fixing anything. `agentIds` is the engine's agent index,
+// for the hub to hold against the agents it has on record.
+export const engineDoctorSchema = z.object({
+    ok: z.boolean(),
+    dataVersion: z.number(),
+    dataVersionTarget: z.number(),
+    agentIds: z.array(z.string()),
+    checks: z.array(engineDoctorCheckSchema),
+})
+export type EngineDoctor = z.infer<typeof engineDoctorSchema>
+
+export const ENGINE_CAPABILITY_FILES_STREAM = 'files.stream'
+
+// The foreman's own workspace takes the files of a chat message, and its runs can be read back.
+export const ENGINE_CAPABILITY_FOREMAN_FILES = 'foreman.files'
+
+// The box has a window manager and a VNC server, so its screen can be watched and driven.
+export const ENGINE_CAPABILITY_DESKTOP = 'desktop'
+
+// A schedule's PATCH takes a new `name` and writes it into the schedule's own file, its slug unchanged.
+export const ENGINE_CAPABILITY_SCHEDULE_RENAME = 'schedules.rename'

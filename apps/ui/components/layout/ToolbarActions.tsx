@@ -1,0 +1,118 @@
+'use client'
+
+import { BillingDialog } from '@/cloud/billing.client'
+import { NotificationPermissionDialog } from '@/components/dialogs/NotificationPermissionDialog'
+import { NotificationsDialog } from '@/components/dialogs/NotificationsDialog'
+import { ShortcutsDialog } from '@/components/dialogs/ShortcutsDialog'
+import { SubscriptionOfferDialog } from '@/components/dialogs/SubscriptionOfferDialog'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { useInstallPrompt } from '@/components/pwa/useInstallPrompt'
+import { useRewindEnabled } from '@/components/layout/FeatureFlagsProvider'
+import { selectHasEntries, selectUnreadCount, useChangelogStore } from '@/stores/changelog.store'
+import { useForemanStore } from '@/stores/foreman.store'
+import { selectHasUnseenLatest, useRewindStore } from '@/cloud/rewind.client'
+import { useShortcutsStore } from '@/stores/shortcuts.store'
+import { Badge } from '@rerun/ui/primitives'
+import { BookOpenIcon, DownloadIcon, HandshakeIcon, KeyboardIcon, ListTodoIcon, MegaphoneIcon, RewindIcon, UsersIcon } from '@/lib/icons'
+import { docsUrl, landingUrl } from '@/lib/site'
+
+export function WeeklyRewindMenuItem() {
+    const rewindEnabled = useRewindEnabled()
+    const hasStoredRewind = useRewindStore(s => s.weeks.length > 0)
+    const rewindUnseen = useRewindStore(selectHasUnseenLatest)
+    const openLatestRewind = useRewindStore(s => s.openLatest)
+
+    if (!rewindEnabled || !hasStoredRewind) return null
+
+    return (
+        <DropdownMenuItem onSelect={openLatestRewind} className="gap-2 text-muted-foreground whitespace-nowrap">
+            <RewindIcon className="size-4" />
+            Weekly Rewind
+            {rewindUnseen && <span className="ml-auto size-2 animate-pulse rounded-full bg-brand" />}
+        </DropdownMenuItem>
+    )
+}
+
+export function WhatsNewMenuItem() {
+    const hasChangelog = useChangelogStore(selectHasEntries)
+    const changelogUnread = useChangelogStore(selectUnreadCount)
+    const openChangelog = useChangelogStore(s => s.openAll)
+
+    if (!hasChangelog) return null
+
+    return (
+        <DropdownMenuItem onSelect={openChangelog} className="gap-2 text-muted-foreground whitespace-nowrap">
+            <MegaphoneIcon className="size-4" />
+            What&apos;s new
+            {changelogUnread > 0 && (
+                <Badge size="xs" tone="brand" glow={false} className="ml-auto">
+                    {changelogUnread}
+                </Badge>
+            )}
+        </DropdownMenuItem>
+    )
+}
+
+export function HelpMenuItems({ onOpenGettingStarted }: { onOpenGettingStarted: () => void }) {
+    const openShortcuts = useShortcutsStore(s => s.openShortcuts)
+    const { canInstall, promptInstall } = useInstallPrompt()
+    const gettingStartedAvailable = useForemanStore(s => s.gettingStartedAvailable)
+
+    return (
+        <>
+            {gettingStartedAvailable && (
+                <DropdownMenuItem
+                    onSelect={() => {
+                        onOpenGettingStarted()
+                        useForemanStore.getState().openGettingStarted()
+                    }}
+                    className="gap-2 text-muted-foreground"
+                >
+                    <ListTodoIcon className="size-4" />
+                    Getting started
+                </DropdownMenuItem>
+            )}
+            <DropdownMenuItem asChild className="gap-2 text-muted-foreground">
+                <a href={docsUrl()} target="_blank" rel="noopener noreferrer">
+                    <BookOpenIcon className="size-4" />
+                    Docs
+                </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="gap-2 text-muted-foreground">
+                <a href="https://discord.gg/cJUUgdTg5p" target="_blank" rel="noopener noreferrer">
+                    <UsersIcon className="size-4" />
+                    Community
+                </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openShortcuts()} className="gap-2 text-muted-foreground">
+                <KeyboardIcon className="size-4" />
+                Shortcuts
+            </DropdownMenuItem>
+            {canInstall && (
+                <DropdownMenuItem onSelect={promptInstall} className="gap-2 text-muted-foreground">
+                    <DownloadIcon className="size-4" />
+                    Install app
+                </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild className="gap-2 text-muted-foreground">
+                <a href={landingUrl('/community/experts')} target="_blank" rel="noopener noreferrer">
+                    <HandshakeIcon className="size-4" />
+                    Hire an expert
+                </a>
+            </DropdownMenuItem>
+        </>
+    )
+}
+
+export function ToolbarDialogs() {
+    return (
+        <>
+            <BillingDialog />
+            <NotificationsDialog />
+            <NotificationPermissionDialog />
+            <SubscriptionOfferDialog />
+            <ShortcutsDialog />
+        </>
+    )
+}

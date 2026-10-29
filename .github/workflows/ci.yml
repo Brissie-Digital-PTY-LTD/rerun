@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @rerun/contracts build
+      - run: pnpm -r --if-present ts-check
+      - run: pnpm --filter rerun lint
+      - run: pnpm --filter rerun test
+      - run: pnpm --filter rerun-engine test
+
+  migrations:
+    name: Migrations and seed on a fresh database
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.113.0
+      - run: supabase db start
+      - run: supabase db reset --local
+
+  images:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Engine
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/engine/Dockerfile
+          push: false
+          cache-from: type=gha,scope=engine
+          cache-to: type=gha,mode=max,scope=engine
+      - name: App
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/ui/Dockerfile
+          push: false
+          build-args: |
+            NEXT_PUBLIC_APP_URL=http://localhost:3000
+            NEXT_PUBLIC_SUPABASE_URL=http://localhost:54421
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app

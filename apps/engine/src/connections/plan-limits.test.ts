@@ -1,0 +1,68 @@
+import { describe, expect, it } from 'vitest'
+import { forgetPlanLimits, planLimitWindowsFromClaude, planLimitWindowsFromCodex, readPlanLimits, recordPlanLimits } from './plan-limits.js'
+
+describe('planLimitWindowsFromClaude', () => {
+    it('reads the session, weekly and per-model windows', () => {
+        const windows = planLimitWindowsFromClaude({
+            rate_limits: {
+                five_hour: { utilization: 42, resets_at: '2026-10-05T15:00:00Z' },
+                seven_day: { utilization: 71, resets_at: '2026-10-09T08:00:00Z' },
+                seven_day_opus: { utilization: 12, resets_at: null },
+                seven_day_sonnet: null,
+            },
+        })
+        expect(windows).toEqual([
+            { kind: 'session', label: null, usedPercent: 42, resetsAt: '2026-10-05T15:00:00Z' },
+            { kind: 'weekly', label: null, usedPercent: 71, resetsAt: '2026-10-09T08:00:00Z' },
+            { kind: 'model', label: 'Opus', usedPercent: 12, resetsAt: null },
+        ])
+    })
+
+    it('prefers model_scoped over the fixed per-model fields naming the same buckets', () => {
+        const windows = planLimitWindowsFromClaude({
+            rate_limits: {
+                seven_day_opus: { utilization: 12, resets_at: null },
+                model_scoped: [{ display_name: 'Fable', utilization: 30, resets_at: '2026-10-09T08:00:00Z' }],
+            },
+        })
+        expect(windows).toEqual([{ kind: 'model', label: 'Fable', usedPercent: 30, resetsAt: '2026-10-09T08:00:00Z' }])
+    })
+
+    it('reads nothing off a session where plan limits do not apply', () => {
+        expect(planLimitWindowsFromClaude({ rate_limits: null })).toEqual([])
+        expect(planLimitWindowsFromClaude(undefined)).toEqual([])
+        expect(planLimitWindowsFromClaude({ rate_limits: { five_hour: { utilization: null, resets_at: null } } })).toEqual([])
+    })
+})
+
+describe('planLimitWindowsFromCodex', () => {
+    it('names a window after its duration, whichever slot reports it', () => {
+        const weeklyOnly = planLimitWindowsFromCodex({ rateLimits: { primary: { usedPercent: 20, windowDurationMins: 10080, resetsAt: 1791580463 }, secondary: null } })
+        expect(weeklyOnly).toEqual([{ kind: 'weekly', label: null, usedPercent: 20, resetsAt: '2026-10-09T21:14:23.000Z' }])
+
+        const both = planLimitWindowsFromCodex({
+            rateLimits: { primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: null }, secondary: { usedPercent: 60, windowDurationMins: 10080, resetsAt: null } },
+        })
+        expect(both.map(w => w.kind)).toEqual(['session', 'weekly'])
+    })
+
+    it('falls back on the slot when the duration is missing', () => {
+        const windows = planLimitWindowsFromCodex({ rateLimits: { primary: { usedPercent: 5 }, secondary: { usedPercent: 60 } } })
+        expect(windows.map(w => w.kind)).toEqual(['session', 'weekly'])
+    })
+
+    it('reads nothing off a failed read', () => {
+        expect(planLimitWindowsFromCodex(null)).toEqual([])
+        expect(planLimitWindowsFromCodex({ rateLimits: null })).toEqual([])
+    })
+})
+
+describe('plan limits store', () => {
+    it('keeps the last reading when a later one comes back empty', () => {
+        recordPlanLimits('c1', [{ kind: 'session', label: null, usedPercent: 10, resetsAt: null }])
+        recordPlanLimits('c1', [])
+        expect(readPlanLimits('c1')?.windows).toHaveLength(1)
+        forgetPlanLimits('c1')
+        expect(readPlanLimits('c1')).toBeNull()
+    })
+})

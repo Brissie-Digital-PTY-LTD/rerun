@@ -1,0 +1,297 @@
+'use client'
+
+import { LayoutTile } from '@/components/data/LayoutTile'
+import { SplitDialogContent } from '@/components/dialogs/SplitDialogContent'
+import { ViewSettingsPreview } from '@/components/dialogs/ViewSettingsPreview'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Field } from '@/components/ui/field'
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { Segmented } from '@/components/ui/segmented'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { DataSource } from '@/lib/data/source'
+import { columnsInUse, formValuesToInput, NONE, previewCard, toneColumn, viewFormSchema, viewToFormValues, type ViewFormValues } from '@/lib/data/view-form'
+import { LAYOUT_META } from '@/lib/data/views'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { CARD_FIELD_ROLES, CARD_FORMATS, CARD_GALLERY_SHAPES, CARD_LAYOUTS, CARD_TONES, type CardLayout, type TableView } from '@rerun/contracts'
+import { ScrollFade } from '@rerun/ui/primitives'
+import { useEffect, useState } from 'react'
+import { useForm, type Control, type FieldPath } from 'react-hook-form'
+
+const ROLE_LABELS: Record<(typeof CARD_FIELD_ROLES)[number], string> = { title: 'Title', subtitle: 'Subtitle', image: 'Image', badge: 'Badge', value: 'Value', date: 'Date' }
+const FORMAT_OPTIONS = [...CARD_FORMATS, 'currency:USD', 'currency:EUR', 'currency:GBP']
+const MAX_TONED_VALUES = 12
+
+type ViewSettingsDialogProps = {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    source: DataSource
+    table: string
+    columns: string[]
+    /** The rows already on screen, drawn in the preview. */
+    sample: { rows: Record<string, unknown>[]; total: number }
+    /** Absent when adding a view. */
+    view?: TableView
+    /** The layout picked before the dialog opened, when adding a view. */
+    initialLayout?: CardLayout
+    onSaved: (view: TableView) => void
+}
+
+export function ViewSettingsDialog({ open, onOpenChange, source, table, columns, sample, view, initialLayout, onSaved }: ViewSettingsDialogProps) {
+    const form = useForm<ViewFormValues>({ resolver: zodResolver(viewFormSchema), defaultValues: viewToFormValues(view, columns) })
+
+    useEffect(() => {
+        if (!open) return
+        const defaults = viewToFormValues(view, columns)
+        form.reset(!view && initialLayout ? { ...defaults, layout: initialLayout } : defaults)
+    }, [open, view, initialLayout, columns, form])
+
+    const values = form.watch()
+    const layout = values.layout
+    const toned = toneColumn(values)
+    const toneValues = useToneValues(source, table, open ? toned : undefined)
+    const input = formValuesToInput(values, view)
+    const card = previewCard(input, { table, scope: source.scope, columns, rows: sample.rows, total: sample.total })
+
+    const onSubmit = form.handleSubmit(async submitted => {
+        const result = await source.saveView(table, formValuesToInput(submitted, view), view?.id)
+        if (!result.success) {
+            form.setError('root', { message: result.error })
+            return
+        }
+        onSaved(result.view)
+        onOpenChange(false)
+    })
+
+    const roles = layout === 'list' ? CARD_FIELD_ROLES : CARD_FIELD_ROLES.filter(role => role !== 'date')
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <SplitDialogContent aside={<ViewSettingsPreview card={card} fileUrl={source.fileUrl} />}>
+                <Form {...form}>
+                    <form onSubmit={onSubmit} className="flex min-h-0 flex-col p-6">
+                        <DialogHeader className="mb-4">
+                            <DialogTitle>{view ? 'Edit view' : 'New view'}</DialogTitle>
+                            <p className="text-sm text-muted-foreground">
+                                A view of <span className="font-mono">{table}</span>. Everyone who opens this table sees it, and the coworker can draw it in chat.
+                            </p>
+                        </DialogHeader>
+
+                        <ScrollFade className="-mx-1 -mt-1 min-h-0 flex-1 px-1 pb-6 pt-1">
+                            <div className="space-y-5">
+                                <FormField
+                                    control={form.control}
+                                    name="name"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormControl>
+                                                <Input label="Name" required placeholder="e.g. Pipeline" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <Field label="Layout">
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {CARD_LAYOUTS.map(option => (
+                                            <LayoutTile
+                                                key={option}
+                                                layout={option}
+                                                active={layout === option}
+                                                onClick={() => form.setValue('layout', option, { shouldValidate: form.formState.isSubmitted })}
+                                            />
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground/70">{LAYOUT_META[layout].description}</p>
+                                </Field>
+
+                                {layout === 'table' ? (
+                                    <Field label="Columns" helperText="Unchecked columns stay in the table, only hidden from this view.">
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border p-3">
+                                            {columns.map(column => (
+                                                <label key={column} className="flex min-w-0 items-center gap-2 text-sm">
+                                                    <Checkbox
+                                                        size="sm"
+                                                        checked={values.columns.includes(column)}
+                                                        onCheckedChange={checked =>
+                                                            form.setValue(
+                                                                'columns',
+                                                                columns.filter(c => (c === column ? !!checked : values.columns.includes(c))),
+                                                            )
+                                                        }
+                                                    />
+                                                    <span className="truncate font-mono text-xs">{column}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </Field>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {layout === 'board' && <ColumnSelect control={form.control} name="groupBy" label="Group by" columns={columns} required />}
+                                        {roles.map(role => (
+                                            <ColumnSelect key={role} control={form.control} name={`fields.${role}`} label={ROLE_LABELS[role]} columns={columns} required={role === 'title'} />
+                                        ))}
+                                    </div>
+                                )}
+
+                                {layout === 'gallery' && (
+                                    <Field label="Picture shape">
+                                        <Segmented
+                                            options={CARD_GALLERY_SHAPES.map(shape => ({ value: shape, label: shape[0].toUpperCase() + shape.slice(1) }))}
+                                            value={values.shape}
+                                            onChange={shape => form.setValue('shape', shape)}
+                                        />
+                                    </Field>
+                                )}
+
+                                <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+                                    <ColumnSelect control={form.control} name="sortColumn" label="Sort by" columns={columns} noneLabel="Insertion order" />
+                                    {values.sortColumn !== NONE && (
+                                        <Segmented
+                                            className="w-40"
+                                            options={[
+                                                { value: 'asc', label: 'Ascending' },
+                                                { value: 'desc', label: 'Descending' },
+                                            ]}
+                                            value={values.sortDir}
+                                            onChange={dir => form.setValue('sortDir', dir)}
+                                        />
+                                    )}
+                                </div>
+
+                                {columnsInUse(values).length > 0 && (
+                                    <Field label="Formats" helperText="How each value reads: a price, a date, a rating, a status.">
+                                        <div className="space-y-2 rounded-lg border p-3">
+                                            {columnsInUse(values).map(column => {
+                                                const current = values.formats[column] ?? NONE
+                                                const options = FORMAT_OPTIONS.includes(current) || current === NONE ? FORMAT_OPTIONS : [...FORMAT_OPTIONS, current]
+                                                return (
+                                                    <div key={column} className="grid grid-cols-[1fr_10rem] items-center gap-3">
+                                                        <span className="truncate font-mono text-xs">{column}</span>
+                                                        <Select value={current} onValueChange={format => form.setValue('formats', { ...values.formats, [column]: format })}>
+                                                            <SelectTrigger size="sm" className="w-full" aria-label={`Format of ${column}`}>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value={NONE}>Plain</SelectItem>
+                                                                {options.map(format => (
+                                                                    <SelectItem key={format} value={format}>
+                                                                        {format}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </Field>
+                                )}
+
+                                {toned && toneValues.length > 0 && (
+                                    <Field label="Colors" helperText={layout === 'board' ? 'The columns listed here come first, in this order.' : undefined}>
+                                        <div className="space-y-2 rounded-lg border p-3">
+                                            {toneValues.slice(0, MAX_TONED_VALUES).map(value => (
+                                                <div key={value} className="grid grid-cols-[1fr_10rem] items-center gap-3">
+                                                    <span className="truncate text-xs">{value || 'Empty'}</span>
+                                                    <Select value={values.tones[value] ?? NONE} onValueChange={tone => form.setValue('tones', { ...values.tones, [value]: tone })}>
+                                                        <SelectTrigger size="sm" className="w-full" aria-label={`Color of ${value || 'empty values'}`}>
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value={NONE}>Automatic</SelectItem>
+                                                            {CARD_TONES.map(tone => (
+                                                                <SelectItem key={tone} value={tone}>
+                                                                    {tone}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </Field>
+                                )}
+
+                                {form.formState.errors.root && <p className="text-sm text-destructive">{form.formState.errors.root.message}</p>}
+                            </div>
+                        </ScrollFade>
+
+                        <DialogFooter className="mt-auto -mx-6 -mb-6 border-t bg-muted/50 px-6 py-4">
+                            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={form.formState.isSubmitting}>
+                                {view ? 'Save' : 'Create view'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </Form>
+            </SplitDialogContent>
+        </Dialog>
+    )
+}
+
+type ColumnSelectProps = {
+    control: Control<ViewFormValues>
+    name: FieldPath<ViewFormValues>
+    label: string
+    columns: string[]
+    required?: boolean
+    noneLabel?: string
+}
+
+function ColumnSelect({ control, name, label, columns, required, noneLabel = 'None' }: ColumnSelectProps) {
+    return (
+        <FormField
+            control={control}
+            name={name}
+            render={({ field }) => (
+                <FormItem>
+                    <Field label={label} optional={!required}>
+                        <Select value={field.value as string} onValueChange={field.onChange}>
+                            <FormControl>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                {!required && <SelectItem value={NONE}>{noneLabel}</SelectItem>}
+                                {required && field.value === NONE && <SelectItem value={NONE}>Pick a column</SelectItem>}
+                                {columns.map(column => (
+                                    <SelectItem key={column} value={column}>
+                                        <span className="font-mono text-xs">{column}</span>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </Field>
+                    <FormMessage />
+                </FormItem>
+            )}
+        />
+    )
+}
+
+// The distinct values of the column that gets colors, read over the whole table rather than the
+// rows on screen, so a status not on this page can still be given its color.
+function useToneValues(source: DataSource, table: string, column: string | undefined): string[] {
+    const [values, setValues] = useState<{ column: string; values: string[] } | null>(null)
+
+    useEffect(() => {
+        if (!column) return
+        let cancelled = false
+        source.readGroups(table, { groupBy: column }).then(result => {
+            if (cancelled || !result.success) return
+            setValues({ column, values: result.groups.map(group => (group.value === null ? '' : String(group.value))) })
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [source, table, column])
+
+    return column && values?.column === column ? values.values : []
+}

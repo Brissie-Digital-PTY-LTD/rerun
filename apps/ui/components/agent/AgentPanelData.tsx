@@ -1,0 +1,63 @@
+'use client'
+
+import { deleteAgentTableRowsAction, dropAgentTableAction, listAgentTablesAction, purgeAgentTableAction, readAgentTableRowsAction } from '@/app/api/_actions/agent.actions'
+import { DataBrowser } from '@/components/data/DataBrowser'
+import { PanelDialogContent } from '@/components/dialogs/PanelDialogContent'
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { viewActions, type DataFocus, type DataSource } from '@/lib/data/source'
+import { agentFileRawUrl } from '@/lib/files/raw-url'
+import { useMemo, useState } from 'react'
+import { withTabWorkspace } from '@/lib/workspace/tab-workspace'
+
+type AgentPanelDataProps = {
+    agentId: string
+    initial?: DataFocus | null
+    onInitialConsumed?: () => void
+}
+
+export function AgentPanelData({ agentId, initial, onInitialConsumed }: AgentPanelDataProps) {
+    const [expanded, setExpanded] = useState<DataFocus | null>(null)
+    const source = useMemo<DataSource>(
+        () => ({
+            scope: 'agent',
+            storageKey: `agent:${agentId}`,
+            listTables: () => listAgentTablesAction(agentId),
+            readRows: (table, params) => readAgentTableRowsAction(agentId, table, params),
+            deleteRows: (table, rowids) => deleteAgentTableRowsAction(agentId, table, rowids),
+            dropTable: table => dropAgentTableAction(agentId, table),
+            purgeTable: table => purgeAgentTableAction(agentId, table),
+            exportUrl: (table, params) => {
+                const qs = new URLSearchParams({ agentId, table, format: params.format })
+                if (params.sort) qs.set('sort', params.sort)
+                if (params.dir) qs.set('dir', params.dir)
+                if (params.q) qs.set('q', params.q)
+                if (params.where?.length) qs.set('where', JSON.stringify(params.where))
+                return withTabWorkspace(`/api/data/export?${qs.toString()}`)
+            },
+            ...viewActions({ kind: 'agent', agentId }),
+            fileUrl: path => agentFileRawUrl(agentId, path),
+            unreachableMessage: 'Could not reach the engine for this coworker.',
+            emptyTitle: 'No tables yet',
+            emptyDescription:
+                'Your coworker has its own private database. When it needs to store structured data (contacts, results, tracking lists), it creates tables here that you can browse anytime.',
+        }),
+        [agentId],
+    )
+
+    return (
+        <>
+            <DataBrowser source={source} initial={initial} onInitialConsumed={onInitialConsumed} onExpand={setExpanded} />
+            {/* The panel is too narrow for a board or a gallery: the same table and view open here
+                at full size, as a second browser that reads the same database. */}
+            <Dialog open={expanded !== null} onOpenChange={open => !open && setExpanded(null)}>
+                <PanelDialogContent className="sm:h-[92dvh] sm:max-w-[min(100rem,95vw)]">
+                    <DialogHeader className="border-b px-4 py-3">
+                        <DialogTitle>Coworker database</DialogTitle>
+                        <DialogDescription className="sr-only">The private database of this coworker, at full size.</DialogDescription>
+                    </DialogHeader>
+                    {expanded && <DataBrowser source={source} initial={expanded} />}
+                </PanelDialogContent>
+            </Dialog>
+        </>
+    )
+}

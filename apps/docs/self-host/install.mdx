@@ -1,0 +1,187 @@
+---
+title: "Install Rerun"
+sidebarTitle: "Install"
+description: "From an empty machine to your first coworker, with docker compose."
+---
+
+This page takes about ten minutes, plus the time Docker needs to build the two images the first time.
+
+## Before you start
+
+- **Docker** with Docker Compose. Give Docker at least 6 GB of memory: the app build needs it.
+- **Node.js 22**, for `npx supabase` and the setup check.
+- **Git**.
+- **An OpenRouter key** from [openrouter.ai/keys](https://openrouter.ai/keys). It runs the Foreman and the default models of every coworker.
+
+## 1. Get the code
+
+```bash
+git clone https://github.com/rerun-build/rerun.git && cd rerun
+cp .env.example .env
+```
+
+Every command below runs from this folder.
+
+## 2. Set up Supabase
+
+Pick one. The first is simpler to keep running, the second keeps everything on one machine.
+
+<Tabs>
+  <Tab title="A project on supabase.com (recommended)">
+    1. Create a free project on [supabase.com](https://supabase.com). Note the database password you choose.
+    2. In **Project settings > API keys**, copy the project URL, the publishable key (anon key on older projects) and the secret key (service_role on older projects).
+    3. Apply the schema and the seed from your clone. `link` asks for the database password:
+
+    ```bash
+    npx supabase link --project-ref <your-project-ref>
+    npx supabase db push --include-seed
+    ```
+
+    The project ref is the part before `.supabase.co` in the project URL.
+
+    4. In **Authentication > Sign In / Providers**, turn on **Allow anonymous sign-ins** and keep **Confirm email** on. A visitor lands on the board as an anonymous user, and signing up turns that user into an account.
+    5. In **Authentication > Email Templates**, paste the template below into **Magic Link**, **Confirm signup** and **Change Email Address**. Rerun signs people in with a 6-digit code, and Supabase's default templates only carry a link.
+    6. In **Authentication > URL Configuration**, set the **Site URL** to the address people open, the same as `NEXT_PUBLIC_APP_URL` below.
+
+    ```html Email template
+    <!doctype html>
+    <html>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; padding: 24px">
+        <p>Your Rerun code:</p>
+        <p style="font-size: 28px; font-weight: 600; letter-spacing: 6px">{{ .Token }}</p>
+        <p>It works for 15 minutes. Or open this link on the same device: <a href="{{ .ConfirmationURL }}">sign in to Rerun</a>.</p>
+        <p style="color: #666; font-size: 13px">If you did not ask for it, ignore this email.</p>
+      </body>
+    </html>
+    ```
+
+    The same file lives in your clone at `supabase/templates/magic_link.html`. The template says 15 minutes: set **Email OTP Expiration** to `900` seconds in the email provider settings to match, and keep **Email OTP Length** at 6.
+
+    <Warning>
+      Supabase sends these emails with its own mailer, which is only meant for trying things out: it sends a handful of emails an hour, and only to the members of your Supabase organization. Before inviting a team, set up your own SMTP server in **Authentication > Emails > SMTP Settings**.
+    </Warning>
+
+    Fill `.env` with what you copied:
+
+    ```bash .env
+    NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key>
+    SUPABASE_SECRET_KEY=<secret key>
+    ```
+  </Tab>
+  <Tab title="Everything on this machine">
+    Start Supabase in Docker, from the root of your clone:
+
+    ```bash
+    npx supabase start
+    ```
+
+    It takes ports 54420 to 54429, applies every migration and loads the seed. Sign-in, the code templates and anonymous sign-ins are already configured.
+
+    | What | Where |
+    | --- | --- |
+    | API | http://localhost:54421 |
+    | Studio, to browse the data | http://localhost:54423 |
+    | Mailpit, where sign-in codes land | http://localhost:54424 |
+
+    Copy the keys from `npx supabase status` into `.env`:
+
+    ```bash .env
+    NEXT_PUBLIC_SUPABASE_URL=http://localhost:54421
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<Publishable key>
+    SUPABASE_SECRET_KEY=<Secret key>
+    ```
+
+    No email leaves this machine: every code is in Mailpit. That is fine for you alone, and not for a team.
+  </Tab>
+</Tabs>
+
+## 3. Fill the rest of `.env`
+
+Two more lines:
+
+```bash .env
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+OPENROUTER_API_KEY=sk-or-...
+```
+
+`NEXT_PUBLIC_APP_URL` is the address people type in their browser, without a trailing slash. Keep `http://localhost:3000` to try Rerun on this machine. For a team, use the address they will reach it at, for example `https://rerun.example.com`. Every other variable is optional: see [Configuration](/self-host/configuration).
+
+## 4. Run the check
+
+```bash
+node scripts/self-host-check.mjs
+```
+
+It generates the three secrets left empty (`RERUN_ENGINE_API_KEY`, `FOREMAN_HUB_TOKEN_SECRET`, `BOARD_IMAGE_SECRET`), checks the required values, and prints the exact command to start. It stops with a plain message on anything only you can fill, and warns when `OPENROUTER_API_KEY` is empty.
+
+## 5. Start Rerun
+
+<Tabs>
+  <Tab title="Supabase on supabase.com">
+    ```bash
+    docker compose up -d --build
+    ```
+  </Tab>
+  <Tab title="Supabase on this machine">
+    ```bash
+    docker compose --profile local-supabase up -d --build
+    ```
+
+    The profile adds a small relay, so the app container reaches Supabase at `http://localhost:54421`, the same address as your browser.
+  </Tab>
+</Tabs>
+
+The first build takes several minutes. Later starts take seconds.
+
+## 6. Check it runs
+
+```bash
+docker compose ps                                              # app and engine are "running"
+curl -s http://localhost:3000/api/version                      # the app answers
+docker compose exec engine curl -s http://localhost:3000/health # the engine answers
+docker compose exec engine node dist/cli/bin.js doctor         # the engine data-dir is healthy
+```
+
+When something is off, read the logs first:
+
+```bash
+docker compose logs -f app engine
+```
+
+## 7. Sign in
+
+Open [http://localhost:3000](http://localhost:3000), or your `NEXT_PUBLIC_APP_URL`. You land on the board with a sign-in dialog on top.
+
+Enter your email. A 6-digit code arrives, in your inbox or in Mailpit, and you type it in. There is no phone sign-in, and no Google or Apple button unless you [configure them](/self-host/configuration#sign-in).
+
+Put your own email in `ADMIN_EMAILS` to see the admin switches in the app. See [Administration](/self-host/administration).
+
+## 8. Meet your first coworker
+
+The Foreman, Rerun's guide, greets you and asks what you need done. Answer in plain words: it plans a team and builds it. You can also create a coworker yourself and describe its job in the chat.
+
+The first coworker you place on the board needs a machine to run on. Your first workspace takes the engine that docker compose started, with nothing to configure. The second workspace, and every one after it, needs a [server of its own](/self-host/servers).
+
+From here, the coworker works exactly as on Rerun Cloud: see the [Quickstart](/quickstart) from step 4.
+
+## Updating
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+The engine migrates its data-dir on start. When a release adds database migrations, apply them too: `npx supabase db push` for a project on supabase.com, or `npx supabase migration up` for the local stack.
+
+<Note>
+  The values starting with `NEXT_PUBLIC_` are baked into the app when it is built. After changing one, rebuild with `docker compose up -d --build`. Other values only need `docker compose up -d`.
+</Note>
+
+## Next steps
+
+<CardGroup cols={3}>
+  <Card title="Connect your AI" icon="cpu" href="/self-host/models" horizontal />
+  <Card title="Add a server" icon="server" href="/self-host/servers" horizontal />
+  <Card title="Troubleshooting" icon="life-buoy" href="/self-host/troubleshooting" horizontal />
+</CardGroup>
