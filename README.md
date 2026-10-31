@@ -75,7 +75,7 @@ Rerun Cloud is this same Rerun, hosted, plus what only a hosted service can offe
 |---|---|---|
 | Coworkers, chat, memory, skills, schedules | ✅ | ✅ |
 | Services catalog, MCP, Composio | ✅ | ✅ |
-| Templates | Coming soon | ✅ |
+| Template library | Your own templates | ✅ |
 | A computer for each workspace | You host it, one command attaches it | Ready in 30 seconds |
 | AI models | Your keys or subscriptions | Included credit, or your keys |
 | LinkedIn Pro, WhatsApp Pro | | ✅ |
