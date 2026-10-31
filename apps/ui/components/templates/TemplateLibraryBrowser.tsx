@@ -7,6 +7,7 @@ import { type ComponentProps, type ReactNode, useMemo, useRef, useState } from '
 import { ConnectorLogo } from '@/components/templates/TemplateConnectorLogos'
 import { TemplateCreatorAvatar } from '@/components/templates/TemplateCreatorAvatar'
 import { TemplateLibraryDiscover, TemplateLibraryDiscoverSkeleton } from '@/components/templates/TemplateLibraryDiscover'
+import { TemplateLibraryEmpty } from '@/components/templates/TemplateLibraryEmpty'
 import { TemplateLibraryGrid } from '@/components/templates/TemplateLibraryGrid'
 import { TemplateLibraryRail, type LibraryRailCounts } from '@/components/templates/TemplateLibraryRail'
 import { TemplateLibrarySearch } from '@/components/templates/TemplateLibrarySearch'
@@ -140,6 +141,8 @@ export function TemplateLibraryBrowser({
                                     ))}
                                 </div>
                             )
+                        ) : onDiscover && catalogue.length === 0 ? (
+                            <TemplateLibraryEmpty filtered={false} onScratch={onScratch} />
                         ) : onDiscover ? (
                             <TemplateLibraryDiscover templates={catalogue} directory={directory ?? []} signals={signals} now={now} selectedSlug={selectedSlug} isAdmin={isAdmin} onSelectTemplate={onSelectTemplate} onView={navigate} />
                         ) : (
@@ -151,6 +154,7 @@ export function TemplateLibraryBrowser({
                                 empty={listed.length === 0}
                                 filtered={searching || connectorSlugs.length > 0 || statuses.length > 0}
                                 revealKey={`${JSON.stringify(view)}|${connectorSlugs.join(',')}|${statuses.join(',')}`}
+                                onScratch={onScratch}
                             />
                         )}
                     </div>
@@ -165,7 +169,7 @@ function headingFor({ view, query, count, creatorName, appName }: { view: Librar
     if (query.trim()) return { title: `Results for “${query.trim()}”`, subtitle: total }
     switch (view.kind) {
         case 'discover':
-            return { title: 'Discover', subtitle: 'Ready-made coworkers, built by people who run them.' }
+            return { title: 'Discover', subtitle: count === 0 ? 'The templates you create land here.' : 'Ready-made coworkers, built by people who run them.' }
         case 'foryou':
             return { title: 'For you', subtitle: 'Matched to your industry and the apps you use first.' }
         case 'all':

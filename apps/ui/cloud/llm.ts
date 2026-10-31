@@ -37,7 +37,9 @@ export async function rerunChatCompletions(req: Request): Promise<Response> {
         signal: body.stream === true ? req.signal : undefined,
     })
     if (!upstream.ok) console.error('[llm] upstream refused', { status: upstream.status, model, body: (await upstream.clone().text().catch(() => '')).slice(0, 2000) })
-    return upstream
+    // fetch has already decompressed the body: passing its headers on would announce a gzip body
+    // that no longer is one, and every call that does not stream would fail to parse it.
+    return new Response(upstream.body, { status: upstream.status, headers: { 'Content-Type': upstream.headers.get('content-type') ?? 'application/json' } })
 }
 
 export async function rerunModels(req: Request): Promise<Response> {

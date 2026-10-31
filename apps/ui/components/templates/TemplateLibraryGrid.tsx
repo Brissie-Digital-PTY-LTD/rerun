@@ -21,6 +21,7 @@ export function TemplateLibraryGrid({
     empty,
     filtered,
     revealKey,
+    onScratch,
 }: {
     templates: LibraryTemplate[]
     selectedSlug: string | null
@@ -34,6 +35,7 @@ export function TemplateLibraryGrid({
     // one changes on every keystroke, and re-staggering the grid under a typing cursor is the
     // opposite of settled. Under a search, cards leave and arrive one by one instead.
     revealKey: string
+    onScratch?: () => void
 }) {
     const reduceMotion = useReducedMotion() ?? false
 
@@ -50,7 +52,7 @@ export function TemplateLibraryGrid({
                 ))}
                 {empty && (
                     <GridCell key="empty" reduceMotion={reduceMotion} delay={0} className="col-span-full">
-                        <TemplateLibraryEmpty filtered={filtered} />
+                        <TemplateLibraryEmpty filtered={filtered} onScratch={onScratch} />
                     </GridCell>
                 )}
             </AnimatePresence>

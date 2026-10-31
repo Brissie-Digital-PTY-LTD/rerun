@@ -1,4 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const edition = vi.hoisted(() => ({ cloud: true }))
+vi.mock('@/cloud/edition', () => ({
+    get RERUN_CLOUD() {
+        return edition.cloud
+    },
+}))
 
 import { foremanPhase, foremanUseCases, type ForemanPhase, type ForemanProfile, type ForemanState } from './phase'
 import { intakeBoxes } from '@/lib/onboarding/intake'
@@ -17,6 +24,24 @@ function stateOf(phase: ForemanPhase, patch: Partial<ForemanState> = {}): Forema
 function beltOf(phase: ActiveForemanPhase, patch: Partial<ForemanState> = {}): readonly string[] {
     return phaseTools(PHASES[phase], stateOf(phase, patch))
 }
+
+describe('a self-hosted install, where every workspace is entitled from its first minute', () => {
+    afterEach(() => {
+        edition.cloud = true
+    })
+
+    it('walks a new workspace through the funnel', () => {
+        edition.cloud = false
+        expect(foremanPhase({ ...fresh, entitled: true })).toBe('discover')
+        expect(foremanPhase({ ...fresh, foreman: profiled, entitled: true })).toBe('plan')
+        expect(foremanPhase({ ...fresh, foreman: planned, entitled: true })).toBe('build')
+    })
+
+    it('leaves a workspace that already holds coworkers to the companion', () => {
+        edition.cloud = false
+        expect(foremanPhase({ ...fresh, entitled: true, agentCount: 1 })).toBe('companion')
+    })
+})
 
 describe('foremanPhase', () => {
     it('walks a brand new workspace from discover to the built team', () => {

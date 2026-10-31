@@ -2,6 +2,7 @@ import { FOREMAN_PHASES, type ForemanClient, type ForemanPhase } from '@rerun/co
 
 import type { OnboardingAnswers } from '@/app/actions/onboarding'
 import type { PriceArm } from '@/cloud/billing'
+import { RERUN_CLOUD } from '@/cloud/edition'
 import type { ForemanAgentRow, ForemanSpaceRow } from './board-map'
 import type { KickoffIntent } from './kickoff-marker'
 
@@ -104,8 +105,10 @@ export function foremanPhase({ foreman, onboardingCompletedAt, entitled, agentCo
 
     // Entering the funnel is the one decision that cannot be undone by deriving it again later, so
     // it is refused to any workspace that is already running: a paying account, one that holds
-    // agents, or one that went through the old survey is talking to a companion, not a guide.
-    if (!inFunnel && (entitled || agentCount > 0 || onboardingCompletedAt)) return 'companion'
+    // agents, or one that went through the old survey is talking to a companion, not a guide. On a
+    // self-hosted install every workspace is entitled from its first minute, which says nothing of
+    // whether it is running.
+    if (!inFunnel && ((RERUN_CLOUD && entitled) || agentCount > 0 || onboardingCompletedAt)) return 'companion'
 
     // What a ready-made arrival still owes once its coworker is on the board: the welcome card it
     // was let past on the way in.

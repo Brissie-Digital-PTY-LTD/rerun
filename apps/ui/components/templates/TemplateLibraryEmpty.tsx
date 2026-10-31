@@ -1,5 +1,6 @@
 'use client'
 
+import { RERUN_CLOUD } from '@/cloud/edition'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ExternalLinkIcon, HammerIcon } from '@/lib/icons'
@@ -9,7 +10,24 @@ import { landingUrl } from '@/lib/site'
 
 // A search that lands on nothing is the moment someone knows exactly what they wanted and the
 // catalogue does not have it, which is the best moment to offer them the other side of it.
-export function TemplateLibraryEmpty({ filtered }: { filtered: boolean }) {
+// A self-hosted install has no marketplace and starts with no template: it creates its own.
+export function TemplateLibraryEmpty({ filtered, onScratch }: { filtered: boolean; onScratch?: () => void }) {
+    if (!RERUN_CLOUD) {
+        return (
+            <EmptyState
+                icon={HammerIcon}
+                title={filtered ? 'No template matches these filters' : 'No template here yet'}
+                description="Recruit a coworker, then save it as a template."
+                action={
+                    <Button variant="outline" size="sm" onClick={onScratch}>
+                        Create New Coworker
+                    </Button>
+                }
+                className="pt-8"
+            />
+        )
+    }
+
     return (
         <EmptyState
             icon={HammerIcon}
