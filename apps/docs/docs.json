@@ -75,6 +75,7 @@
             "pages": [
               "self-host/overview",
               "self-host/install",
+              "self-host/dokploy",
               "self-host/configuration"
             ]
           },

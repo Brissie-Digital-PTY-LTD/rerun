@@ -93,6 +93,10 @@ Pick one. The first is simpler to keep running, the second keeps everything on o
     ```
 
     No email leaves this machine: every code is in Mailpit. That is fine for you alone, and not for a team.
+
+    <Warning>
+      This stack is made for trying Rerun on your own machine. Its keys are public defaults, and Studio and Postgres listen on every network interface with no password of yours. On a server reachable from the internet, use a project on supabase.com.
+    </Warning>
   </Tab>
 </Tabs>
 
@@ -159,7 +163,7 @@ Put your own email in `ADMIN_EMAILS` to see the admin switches in the app. See [
 
 ## 8. Meet your first coworker
 
-The Foreman, Rerun's guide, greets you and asks what you need done. Answer in plain words: it plans a team and builds it. You can also create a coworker yourself and describe its job in the chat.
+The Foreman, Rerun's guide, greets you and asks what you need done. Answer in plain words: it plans a team and builds it. You can also click the board to create a coworker yourself and describe its job in the chat.
 
 The first coworker you place on the board needs a machine to run on. Your first workspace takes the engine that docker compose started, with nothing to configure. The second workspace, and every one after it, needs a [server of its own](/self-host/servers).
 
@@ -180,7 +184,8 @@ The engine migrates its data-dir on start. When a release adds database migratio
 
 ## Next steps
 
-<CardGroup cols={3}>
+<CardGroup cols={2}>
+  <Card title="Deploy on Dokploy" icon="rocket" href="/self-host/dokploy" horizontal />
   <Card title="Connect your AI" icon="cpu" href="/self-host/models" horizontal />
   <Card title="Add a server" icon="server" href="/self-host/servers" horizontal />
   <Card title="Troubleshooting" icon="life-buoy" href="/self-host/troubleshooting" horizontal />

@@ -52,6 +52,14 @@ docker compose --profile local-supabase up -d --build
 
 And keep `NEXT_PUBLIC_SUPABASE_URL=http://localhost:54421`, the address your browser uses too.
 
+## Tables are missing after `npx supabase start`
+
+If the first start failed partway, the next one reuses a database that never received the migrations: pages fail with `relation "public.services" does not exist`. Rebuild it, which erases its data:
+
+```bash
+npx supabase db reset
+```
+
 ## The build fails for lack of memory
 
 Symptoms: `Killed`, exit code `137`, or `JavaScript heap out of memory` while building the app.
@@ -68,7 +76,7 @@ docker compose up -d --build
 
 Any other value only needs `docker compose up -d`, which recreates the containers with the new `.env`.
 
-## "This workspace has no server yet"
+## "This workspace has no server yet", or a coworker "could not be built"
 
 The engine docker compose started already belongs to another workspace. It goes to the first workspace that needs an engine, which can be a workspace you created while trying things out.
 
