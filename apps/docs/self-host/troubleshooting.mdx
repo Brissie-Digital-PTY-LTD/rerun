@@ -60,6 +60,14 @@ If the first start failed partway, the next one reuses a database that never rec
 npx supabase db reset
 ```
 
+## No sign-in code in the email
+
+With open source Supabase, the default emails carry a link and no code. Serve the templates of your clone to the `auth` service, as in [Install](/self-host/install#2-set-up-supabase).
+
+## A Supabase service dies during the build
+
+The server ran out of memory: `dmesg | grep -i "out of memory"` confirms it. Add swap or memory, as in [Install](/self-host/install#2-set-up-supabase), then restart Supabase with `docker compose up -d` in its folder.
+
 ## The build fails for lack of memory
 
 Symptoms: `Killed`, exit code `137`, or `JavaScript heap out of memory` while building the app.

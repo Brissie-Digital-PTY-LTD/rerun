@@ -70,7 +70,16 @@ Pick one. The first is simpler to keep running, the second is the full open sour
     ```
   </Tab>
   <Tab title="Open source Supabase on your server">
-    Run the official [self-hosted Supabase](https://supabase.com/docs/guides/self-hosting/docker) next to Rerun. Everything stays on your machines, and you need 8 GB of memory for the two together.
+    Run the official [self-hosted Supabase](https://supabase.com/docs/guides/self-hosting/docker) next to Rerun. Everything stays on your machines.
+
+    <Warning>
+      Building Rerun with Supabase running next to it takes more than 8 GB of memory: without swap, the build can kill Supabase services. Use a server with 16 GB, or add 4 GB of swap to a server with 8 GB.
+
+      ```bash
+      fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      ```
+    </Warning>
 
     1. Get the stack and generate its secrets, from a folder outside your Rerun clone:
 
@@ -99,14 +108,25 @@ Pick one. The first is simpler to keep running, the second is the full open sour
     SMTP_SENDER_NAME=Rerun
     ```
 
-    3. Rerun signs people in with a 6-digit code. Add this file next to the stack's `docker-compose.yml`:
+    3. Rerun signs people in with a 6-digit code, and the default Supabase emails only carry a link. Add this file next to the stack's `docker-compose.yml`, with the path of your Rerun clone. It serves the email templates of your clone to Supabase:
 
     ```yaml supabase-stack/docker-compose.override.yml
     services:
+      mail-templates:
+        image: nginx:1.27-alpine
+        restart: unless-stopped
+        volumes:
+          - /path/to/rerun/supabase/templates:/usr/share/nginx/html:ro
       auth:
+        depends_on:
+          mail-templates:
+            condition: service_started
         environment:
           GOTRUE_MAILER_OTP_LENGTH: "6"
           GOTRUE_MAILER_OTP_EXP: "900"
+          GOTRUE_MAILER_TEMPLATES_CONFIRMATION: http://mail-templates/confirmation.html
+          GOTRUE_MAILER_TEMPLATES_MAGIC_LINK: http://mail-templates/magic_link.html
+          GOTRUE_MAILER_TEMPLATES_EMAIL_CHANGE: http://mail-templates/email_change.html
     ```
 
     4. Start it, then point `api.example.com` at port 8000 of this server, with HTTPS, through your reverse proxy:
