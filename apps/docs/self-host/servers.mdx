@@ -96,7 +96,7 @@ The app must reach the server on its port, and the server must reach the app. Tw
     }
     ```
 
-    Caddy forwards WebSockets on its own, so the screen works through it.
+    Caddy forwards WebSockets on its own, so the screen works through it. This is for a server you paired, where the engine listens on 3000. On the machine that runs docker compose, the engine is on 3001: see [On a server](/self-host/install#on-a-server).
   </Tab>
 </Tabs>
 
@@ -109,9 +109,7 @@ Each coworker has a screen you can watch and take over. The browser opens it dir
 - The person watching must be able to reach the server, not just the app.
 - When the app is on HTTPS, the server must be on HTTPS too. A browser refuses a `ws://` connection from an `https://` page.
 
-<Warning>
-  The engine docker compose starts is known to the app as `http://engine:3000`, an address that only exists inside Docker. Its coworkers run normally, but a browser cannot open their screen. If you need the screen, pair a server instead.
-</Warning>
+A browser reaches the engine docker compose starts at `RERUN_ENGINE_BROWSER_URL`: `http://localhost:3001` by default, its own `https` domain on a server. See [On a server](/self-host/install#on-a-server).
 
 ## Remove or replace a server
 
@@ -178,7 +176,7 @@ docker compose exec engine node dist/cli/bin.js doctor                # the engi
 
 Two things hold your data, and you back up both.
 
-**The Supabase database**: accounts, workspaces, members, the catalog. On supabase.com, the project's own backups cover it. Otherwise, dump it with `pg_dump` and the connection string from **Connect** in the Supabase dashboard. For the local stack:
+**The Supabase database**: accounts, workspaces, members, the catalog. On supabase.com, the project's own backups cover it. With open source Supabase, run `docker exec supabase-db pg_dump -U postgres postgres | gzip > rerun-db.sql.gz`. Otherwise, dump it with `pg_dump` and the connection string from **Connect** in the Supabase dashboard. For the local stack:
 
 ```bash
 pg_dump postgresql://postgres:postgres@localhost:54422/postgres -Fc -f rerun-db.dump

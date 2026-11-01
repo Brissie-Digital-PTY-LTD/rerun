@@ -3,7 +3,7 @@ title: "Configuration"
 description: "Every variable of .env, what it does, and what happens when it is empty."
 ---
 
-Rerun reads its settings from `.env` at the root of your clone. `.env.example` lists every variable with a comment, in the groups below. Five values are required, three are generated for you by `node scripts/self-host-check.mjs`, and the rest are optional.
+Rerun reads its settings from `.env` at the root of your clone. `.env.example` lists every variable with a comment, in the groups below. Four values are required, three are generated for you by `node scripts/self-host-check.mjs`, and the rest are optional.
 
 <Note>
   Variables starting with `NEXT_PUBLIC_` are read by the browser, so they are baked into the app when its image is built. After changing one, run `docker compose up -d --build`. Any other change only needs `docker compose up -d`.
@@ -29,6 +29,8 @@ Rerun reads its settings from `.env` at the root of your clone. `.env.example` l
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `RERUN_ENGINE_API_KEY` | generated | The key shared by the app and the engine docker compose starts next to it. The app calls the engine with it, and the engine calls the app back with it. |
+| `RERUN_ENGINE_PORT` | `3001` | The port docker compose publishes that engine on, on this machine. |
+| `RERUN_ENGINE_BROWSER_URL` | `http://localhost:3001` | The address a browser reaches that engine at, to watch a coworker's screen. On a server, its `https` domain. See [On a server](/self-host/install#on-a-server). |
 
 ## AI
 
@@ -77,17 +79,13 @@ Each one switches a feature on. Empty means the feature is off, and the rest of 
 
 ## Sign-in
 
-These are not in `.env.example`.
-
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `NEXT_PUBLIC_OAUTH_PROVIDERS` | empty | `google`, `apple` or `google,apple` adds those buttons to the sign-in page. Configure each provider on your Supabase project first. |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | empty | The site key of a Cloudflare Turnstile captcha on sign-up. |
 | `TURNSTILE_SECRET_KEY` | empty | Its secret key. Without it, no captcha. |
 
-<Warning>
-  `apps/ui/Dockerfile` only passes the `NEXT_PUBLIC_` values listed in `docker-compose.yml` to the build. To use the two above, add each one as an `ARG` and an `ENV` in the build stage of `apps/ui/Dockerfile` and under `args` in `docker-compose.yml`, then rebuild. Set `TURNSTILE_SECRET_KEY` only once the site key is built in: with a secret and no captcha on the page, every sign-up is refused.
-</Warning>
+The two `NEXT_PUBLIC_` values are baked into the app when it is built: rebuild with `docker compose up -d --build` after changing them.
 
 ## Embeddings
 

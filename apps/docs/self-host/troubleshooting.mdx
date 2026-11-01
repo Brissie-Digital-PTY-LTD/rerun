@@ -11,7 +11,9 @@ docker compose logs --since 30m app engine
 
 ## No sign-in code arrives
 
-**With Supabase on your machine**, no email leaves it. Every code lands in Mailpit, at [http://localhost:54424](http://localhost:54424).
+**With `npx supabase start`**, no email leaves your computer. Every code lands in Mailpit, at [http://localhost:54424](http://localhost:54424).
+
+**With open source Supabase on your server**, emails go through the SMTP server of `supabase-stack/.env`, and `docker logs supabase-auth` shows why one failed.
 
 **With a project on supabase.com**, check in this order:
 
@@ -35,6 +37,8 @@ npx supabase migration list      # what is applied, on a linked project
 npx supabase db push             # apply what is missing, on a project on supabase.com
 npx supabase migration up        # the same, on the local stack
 ```
+
+With open source Supabase, add `--db-url` and the address from [Install](/self-host/install#2-set-up-supabase) to `migration list` and to `db push --yes`.
 
 After `git pull`, run it again: a release can add migrations.
 
@@ -138,7 +142,7 @@ The Foreman runs on `OPENROUTER_API_KEY` only. Set it and run `docker compose up
 
 The browser opens a coworker's screen directly on the server's address, over `ws://` or `wss://`.
 
-- **The engine started by docker compose** is known as `http://engine:3000`, an address that only exists inside Docker. A browser cannot open its screen. [Pair a server](/self-host/servers#add-a-server) to have one.
+- **The engine started by docker compose** needs `RERUN_ENGINE_BROWSER_URL`: its `https` domain on a server, as in [On a server](/self-host/install#on-a-server).
 - **Your browser must reach the server.** On Tailscale, the person watching must be on the tailnet too.
 - **HTTPS on both sides.** When the app is on `https://`, the server must be too, or the browser blocks the connection. Put it behind [Caddy](/self-host/servers#networking).
 - **The screen was turned off** with `RERUN_DESKTOP=off` on the server.

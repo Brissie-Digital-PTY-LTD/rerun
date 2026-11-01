@@ -43,7 +43,7 @@ This repository is Rerun, the same product Rerun Cloud runs, for you to host.
 
 ## Quick start
 
-You need Docker, and a Supabase project (a free one on [supabase.com](https://supabase.com) works).
+You need Docker, Node.js 22, and a Supabase project (a free one on [supabase.com](https://supabase.com) works).
 
 ```bash
 git clone https://github.com/rerun-build/rerun.git && cd rerun
