@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 
+import { RERUN_CLOUD } from '@/cloud/edition'
 import { Button } from '@/components/ui/button'
 import { DialogFooter } from '@/components/ui/dialog'
 import { ArrowLeftIcon } from '@/lib/icons'
@@ -28,7 +29,7 @@ export function DeclineButton({ onClick }: { onClick: () => void }) {
     return (
         <Button variant="destructive" onClick={onClick}>
             <RerunGlyph className="size-3.5" />
-            I&apos;d rather stay on Rerun credits
+            {RERUN_CLOUD ? "I'd rather stay on Rerun credits" : "I'd rather stay on OpenRouter"}
         </Button>
     )
 }

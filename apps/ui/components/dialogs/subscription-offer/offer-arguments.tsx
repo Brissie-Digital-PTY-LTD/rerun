@@ -1,5 +1,6 @@
 'use client'
 
+import { RERUN_CLOUD } from '@/cloud/edition'
 import { Icon } from '@/components/ui/icon'
 import { ProviderIcon } from '@/lib/engine/provider-icons'
 import { PlugIcon, ShieldCheckIcon, UsersIcon, type LucideIcon } from '@/lib/icons'
@@ -20,7 +21,7 @@ const ARGUMENTS: OfferArgument[] = [
     },
     {
         label: 'Unplug it whenever',
-        description: 'Disconnect in one click and your coworkers fall back on Rerun credits.',
+        description: `Disconnect in one click and your coworkers fall back on ${RERUN_CLOUD ? 'Rerun credits' : 'your OpenRouter key'}.`,
         icon: PlugIcon,
     },
 ]
