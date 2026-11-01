@@ -1,4 +1,4 @@
-import { PAID_DATA_TOOL } from '@rerun/contracts'
+import { PAID_DATA_TOOL, SUB_RUN_TOOL_NAMES } from '@rerun/contracts'
 import { abortRun } from '../../runtime/run-control.js'
 import type { AgentRun } from '../../runtime/loop.js'
 import { BLOCKED_SOURCE_PREFIX, isFailureStatus } from '../host-breaker.js'
@@ -15,6 +15,7 @@ const FAILURE_MARKERS = ['Command failed', 'Command timed out', 'Navigation fail
 const STATUS_PREFIX = /^\[(\d{3})\]/
 const SECRET_IN_INPUT = /(bearer|token|key|secret|password)([=: ]+)\S+/gi
 const URL_TOOLS = new Set(['web_fetch', 'browser_navigate', 'download'])
+const SUB_RUN_TOOLS = new Set(Object.values(SUB_RUN_TOOL_NAMES))
 
 export type SubRunCall = { tool: string; summary: string; startedAt: number; endedAt?: number; failed?: boolean }
 
@@ -163,9 +164,13 @@ export async function followSubRun(
         stop = stopReason => resolve({ stopReason })
     })
 
+    const openCalls = new Map<string, SubRunCall>()
     let idleTimer: NodeJS.Timeout | undefined
     const armIdleTimer = () => {
         clearTimeout(idleTimer)
+        // A run waiting on its own sub-run says nothing until that sub-run ends, and the watcher of
+        // that sub-run already stops it if it hangs.
+        if ([...openCalls.values()].some(call => SUB_RUN_TOOLS.has(call.tool))) return
         idleTimer = setTimeout(() => stop(`no activity for ${Math.round(idleTimeoutMs / 60_000)} min, sub-coworker stopped`), idleTimeoutMs)
         idleTimer.unref?.()
     }
@@ -177,7 +182,6 @@ export async function followSubRun(
     else taskSignal?.addEventListener('abort', onTaskAbort, { once: true })
 
     const iterator = (run.result.fullStream as AsyncIterable<StreamPart>)[Symbol.asyncIterator]()
-    const openCalls = new Map<string, SubRunCall>()
     let text = ''
     let streamError: string | undefined
     armIdleTimer()
@@ -196,9 +200,12 @@ export async function followSubRun(
             armIdleTimer()
             if (part.type === 'error') streamError = part.error instanceof Error ? part.error.message : String(part.error)
             if (part.type === 'text-delta') text += part.text ?? ''
-            else if (part.type === 'tool-call') openCall(progress, openCalls, part)
-            else if (part.type === 'tool-result' || part.type === 'tool-error') {
+            else if (part.type === 'tool-call') {
+                openCall(progress, openCalls, part)
+                armIdleTimer()
+            } else if (part.type === 'tool-result' || part.type === 'tool-error') {
                 if (!closeCall(progress, openCalls, part)) continue
+                armIdleTimer()
             } else if (part.type === 'finish-step') progress.steps += 1
             else continue
             progress.preview = text.slice(-PREVIEW_LENGTH)

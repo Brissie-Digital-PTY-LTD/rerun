@@ -167,6 +167,29 @@ describe('followSubRun', () => {
         expect(aborted).toEqual([])
     })
 
+    it.each(['mcp__rerun__call_agent', 'call_agent', 'delegate_tasks'])('does not count a run waiting on %s as idle, then watches it again', async toolName => {
+        let push!: (part: Part) => void
+        const run = scriptedRun(p => {
+            push = p
+        })
+        const following = followSubRun(run, freshProgress(), { onChange: () => {} })
+        push(call('nested', toolName, { agent: 'Carol' }))
+        await vi.advanceTimersByTimeAsync(SUB_RUN_IDLE_TIMEOUT_MS * 3)
+        expect(aborted).toEqual([])
+        push(result('nested', 'answer'))
+        await vi.advanceTimersByTimeAsync(SUB_RUN_IDLE_TIMEOUT_MS)
+        await expect(following).resolves.toMatchObject({ stopReason: 'no activity for 15 min, sub-coworker stopped' })
+        expect(aborted).toEqual(['child-run'])
+    })
+
+    it('still stops a run silent on any other tool', async () => {
+        const run = scriptedRun(push => push(call('slow', 'shell_exec', { command: 'sleep 9999' })))
+        const following = followSubRun(run, freshProgress(), { onChange: () => {} })
+        await vi.advanceTimersByTimeAsync(SUB_RUN_IDLE_TIMEOUT_MS)
+        await expect(following).resolves.toMatchObject({ stopReason: 'no activity for 15 min, sub-coworker stopped' })
+        expect(aborted).toEqual(['child-run'])
+    })
+
     it('aborts a run that stays silent for the idle timeout and returns what it had said', async () => {
         const run = scriptedRun(push => push({ type: 'text-delta', text: 'so far' }))
         const following = followSubRun(run, freshProgress(), { onChange: () => {} })

@@ -12,6 +12,7 @@ const { isHitlToolName, lastStepHasHitlCall } = await import('./hitl.js')
 const { writeSkill } = await import('../../skills/loader.js')
 const { skillsDir } = await import('../../config/paths.js')
 const { listSessionSkillProposals, transitionSkillProposal } = await import('../../db/repos/skill-proposals.js')
+const { getSystemDb } = await import('../../db/systemDb.js')
 const { skillProposalInputSchema } = await import('@rerun/contracts')
 
 const id = 'proposer'
@@ -112,6 +113,30 @@ describe('skill_propose', () => {
         expect(await propose(otherSession, { ...rule, instruction: 'Posts stay under 900 characters.' })).toContain('Already proposed once')
         expect(await listSessionSkillProposals(id, 'session-2')).toHaveLength(0)
         expect(announced).toHaveLength(2)
+    })
+
+    it('saves proposals whose bridge request ids repeat across runs', async () => {
+        const firstRun = runOn('session-run-1', 'claude-sub', 'claude', 'claude-opus-5-5', { skillProposals: [] })
+        const secondRun = runOn('session-run-2', 'claude-sub', 'claude', 'claude-opus-5-5', { skillProposals: [] })
+        const execute = (tool: typeof tools, instruction: string) => (tool.skill_propose as any).execute({ ...rule, instruction }, { toolCallId: '7' }) as Promise<string>
+
+        const first = parse(await execute(firstRun, 'Every invoice is checked twice before it goes out.'))
+        const second = parse(await execute(secondRun, 'Every quote names the person who approved it.'))
+
+        expect(first.status).toBe('shown')
+        expect(second.status).toBe('shown')
+        expect(first.proposalId).not.toBe(second.proposalId)
+    })
+
+    it('answers in plain words when the proposal cannot be saved', async () => {
+        const broken = 'proposer-broken-db'
+        const { client } = await getSystemDb(broken)
+        await client.execute('DROP TABLE skill_proposals')
+        const tool = skillProposeTool({ agent: { id: broken, resolved: { connection: null } }, sessionId: 'session-1', provider: 'claude', model: 'claude-opus-5-5', skillProposals: [] } as any)
+
+        const result = await (tool.skill_propose as any).execute(rule, { toolCallId: 'call-broken' })
+
+        expect(result).toBe('Could not save the proposal. Nothing shown. Do not retry.')
     })
 })
 

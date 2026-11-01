@@ -28,7 +28,7 @@ export function callAgentTools(ctx: RunContext): ToolSet {
     return {
         call_agent: tool({
             description:
-                'Send a one-shot message to another persistent coworker on this engine. Use it whenever your instructions name another coworker to contact (e.g. @someAgent), including from a scheduled task. The called coworker runs in its own fresh session with its own personality, tools and memory, and cannot call further coworkers. By default the message is dispatched and you move on without waiting; set wait to true when you need the coworker\'s answer to continue. Use delegate_tasks for subtasks of your own work instead.' +
+                'Send a one-shot message to another persistent coworker on this engine. Use it whenever your instructions name another coworker to contact (e.g. @someAgent), including from a scheduled task. The called coworker runs in its own fresh session with its own personality, tools and memory. By default the message is dispatched and you move on without waiting; set wait to true when you need the coworker\'s answer to continue. Use delegate_tasks for subtasks of your own work instead.' +
                 (roster ? ` Coworkers you can call: ${roster}.` : ''),
             inputSchema: z.object({
                 agent: z.string().describe('Name or id of the target coworker, as mentioned by the user'),
@@ -55,7 +55,6 @@ export function callAgentTools(ctx: RunContext): ToolSet {
                 const target = await getAgent(resolved.agent.id)
                 if (!target.config.enabled) return refuse(`Coworker "${target.config.name}" is switched off and cannot be called.`)
                 const config = structuredClone(target.config)
-                config.tools.callAgent = false
                 config.selfImprovement.enabled = false
                 const callee = { ...target, config }
 

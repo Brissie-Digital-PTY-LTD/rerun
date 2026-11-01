@@ -79,12 +79,18 @@ describe('call_agent', () => {
         expect(written.at(-1)?.data).toMatchObject({ status: 'error', error: answer })
     })
 
-    it('runs the callee without the ability to call agents or self-improve, leaving its own config alone', async () => {
+    it('lets the callee call coworkers but not self-improve, leaving its own config alone', async () => {
         await callBob({ wait: false })
-        expect(state.runs[0].callee.config.tools.callAgent).toBe(false)
+        expect(state.runs[0].callee.config.tools.callAgent).toBe(true)
         expect(state.runs[0].callee.config.selfImprovement.enabled).toBe(false)
         expect(state.target.config.tools.callAgent).toBe(true)
         expect(state.target.config.selfImprovement.enabled).toBe(true)
+    })
+
+    it('leaves the callee without call_agent when its own settings turn it off', async () => {
+        state.target.config.tools.callAgent = false
+        await callBob({ wait: false })
+        expect(state.runs[0].callee.config.tools.callAgent).toBe(false)
     })
 
     it('puts the context above the message', async () => {
