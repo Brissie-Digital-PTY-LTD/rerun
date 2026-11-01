@@ -9,7 +9,7 @@ vi.mock('@/cloud/edition', () => ({
 
 import { foremanPhase, foremanUseCases, type ForemanPhase, type ForemanProfile, type ForemanState } from './phase'
 import { intakeBoxes } from '@/lib/onboarding/intake'
-import { PHASES, phaseSpec, phaseTools, pinnedPlanBoxes, planKinds, type ActiveForemanPhase } from './phases'
+import { forcesFirstPlan, PHASES, phaseSpec, phaseTools, pinnedPlanBoxes, planKinds, type ActiveForemanPhase } from './phases'
 import { FOREMAN_TOOL_NAMES } from './tool-defs'
 
 const fresh = { foreman: {} as ForemanProfile, onboardingCompletedAt: null, entitled: false, agentCount: 0 }
@@ -40,6 +40,18 @@ describe('a self-hosted install, where every workspace is entitled from its firs
     it('leaves a workspace that already holds coworkers to the companion', () => {
         edition.cloud = false
         expect(foremanPhase({ ...fresh, entitled: true, agentCount: 1 })).toBe('companion')
+    })
+
+    it('makes the first plan a tool call, since no starter pack opens this step', () => {
+        const shown = { id: 'a', role: 'assistant', parts: [{ type: 'tool-show_plan', state: 'output-available', toolCallId: 'c', input: planned.plan, output: {} }] } as never
+        const planning = stateOf('plan', { foreman: profiled })
+        expect(forcesFirstPlan(planning, [])).toBe(false)
+        edition.cloud = false
+        expect(forcesFirstPlan(planning, [])).toBe(true)
+        expect(forcesFirstPlan(planning, [shown])).toBe(false)
+        expect(forcesFirstPlan(stateOf('plan', { foreman: profiled, intent }), [])).toBe(false)
+        expect(forcesFirstPlan(stateOf('plan'), [])).toBe(false)
+        expect(forcesFirstPlan(stateOf('discover', { foreman: profiled }), [])).toBe(false)
     })
 })
 

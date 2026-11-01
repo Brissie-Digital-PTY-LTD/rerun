@@ -1,7 +1,11 @@
+import type { UIMessage } from 'ai'
+
+import { RERUN_CLOUD } from '@/cloud/edition'
 import { intakeBoxes } from '@/lib/onboarding/intake'
 import { describeNeed } from '../needs'
 import { foremanUseCases } from '../phase'
 import type { ForemanState } from '../phase'
+import { lastShownPlan } from '../shown-plan'
 import type { PlanItemKind } from '../tool-defs'
 import type { PhaseSpec } from './spec'
 
@@ -34,6 +38,13 @@ export function planKinds(state: ForemanState): readonly PlanItemKind[] {
 // standing.
 export function pinnedPlanBoxes(state: ForemanState): string[] {
     return intakeBoxes(state.answers.industry)
+}
+
+// A self-hosted install has no template library, so no starter pack opens this step and the model
+// writes the first card. A model that only announces the card would leave a new workspace with
+// nothing to click.
+export function forcesFirstPlan(state: ForemanState, messages: UIMessage[]): boolean {
+    return !RERUN_CLOUD && state.phase === 'plan' && !state.intent && !!state.foreman.profileAt && lastShownPlan(messages) === null
 }
 
 // What to build, decided out loud with the user and written down before anything is paid for.

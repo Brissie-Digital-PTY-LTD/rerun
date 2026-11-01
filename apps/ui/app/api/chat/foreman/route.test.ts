@@ -62,7 +62,7 @@ describe('POST /api/chat/foreman', () => {
             vi.mocked(isPhoneStepPending).mockResolvedValue(false)
             vi.mocked(loadForemanState).mockResolvedValue({ phase: 'plan', answers: {} } as never)
             vi.mocked(prepareScript).mockResolvedValue(null as never)
-            vi.mocked(createForemanTurn).mockReturnValue({ state: () => ({ phase: 'plan' }) } as never)
+            vi.mocked(createForemanTurn).mockReturnValue({ state: () => ({ phase: 'plan', foreman: {} }) } as never)
         })
 
         afterEach(() => vi.restoreAllMocks())

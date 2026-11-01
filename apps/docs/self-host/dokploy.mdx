@@ -9,7 +9,7 @@ description: "Run Rerun on a server managed by Dokploy, with a domain and HTTPS.
 ## Before you start
 
 - A server attached to Dokploy, with at least 8 GB of memory: the app build needs 6.
-- A Supabase project on [supabase.com](https://supabase.com), set up as in [Install](/self-host/install#2-set-up-supabase).
+- Supabase, on [supabase.com](https://supabase.com) or open source on your server, set up as in [Install](/self-host/install#2-set-up-supabase).
 - Two domains pointing at the server, one for the app and one for the engine: `rerun.example.com` and `engine.example.com`.
 
 ## 1. Create the service
@@ -23,11 +23,11 @@ Paste the content of your `.env` in the **Environment** tab. Start from `.env.ex
 
 ```bash .env
 NEXT_PUBLIC_APP_URL=https://rerun.example.com
-NEXT_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=<the address of your Supabase>
 RERUN_ENGINE_BROWSER_URL=https://engine.example.com
 ```
 
-Set the **Site URL** of your Supabase project to the same address as `NEXT_PUBLIC_APP_URL`.
+The **Site URL** of your Supabase must be the same address as `NEXT_PUBLIC_APP_URL`.
 
 ## 3. Add the domains
 

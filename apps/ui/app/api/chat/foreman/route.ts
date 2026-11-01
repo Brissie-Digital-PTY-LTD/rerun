@@ -11,7 +11,7 @@ import { dedupeMessagesById } from '@/lib/foreman/dedupe-messages'
 import { foremanErrorText } from '@/lib/foreman/error-text'
 import { withInlineAttachments } from '@/lib/foreman/inline-attachments'
 import { arrivingIntent } from '@/lib/foreman/opening'
-import { isOnboardingPhase, pinnedPlanBoxes } from '@/lib/foreman/phases'
+import { forcesFirstPlan, isOnboardingPhase, pinnedPlanBoxes } from '@/lib/foreman/phases'
 import { pinPlanBoxesTransform } from '@/lib/foreman/pin-plan-boxes'
 import { sealPendingWidgets } from '@/lib/foreman/seal-pending'
 import { loadForemanState } from '@/lib/foreman/state'
@@ -190,9 +190,10 @@ export async function POST(req: Request): Promise<Response> {
                 activeTools: foremanActiveTools(state),
                 // Instructions and belt are rebuilt from the same state, so a phase can never read
                 // instructions naming a tool it does not hold.
-                prepareStep: () => {
+                prepareStep: ({ stepNumber }) => {
                     const now = turn.state()
-                    return { system: systemFor(now), activeTools: foremanActiveTools(now) }
+                    const step = { system: systemFor(now), activeTools: foremanActiveTools(now) }
+                    return stepNumber === 0 && forcesFirstPlan(now, messages) ? { ...step, toolChoice: { type: 'tool' as const, toolName: 'show_plan' } } : step
                 },
                 experimental_transform: pinPlanBoxesTransform(pinned),
                 // A profile saved by a workspace that installed first ends the onboarding in the middle of
