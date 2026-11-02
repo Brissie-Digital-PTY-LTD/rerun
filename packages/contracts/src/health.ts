@@ -36,3 +36,18 @@ export const ENGINE_CAPABILITY_DESKTOP = 'desktop'
 
 // A schedule's PATCH takes a new `name` and writes it into the schedule's own file, its slug unchanged.
 export const ENGINE_CAPABILITY_SCHEDULE_RENAME = 'schedules.rename'
+
+// `POST /update` takes a prebuilt artifact (`{ artifact: { url, sha256, commit } }`) instead of pulling and building.
+export const ENGINE_CAPABILITY_ARTIFACT_UPDATE = 'update.artifact'
+
+// What the last `rerun update` on a box did, as `/health` reports it.
+export const engineLastUpdateSchema = z.object({
+    status: z.enum(['running', 'error', 'restarting', 'success']),
+    commit: z.string().nullable(),
+    error: z.string().optional(),
+    at: z.string(),
+})
+export type EngineLastUpdate = z.infer<typeof engineLastUpdateSchema>
+
+export const ENGINE_LAYOUTS = ['release', 'monorepo', 'image'] as const
+export type EngineLayout = (typeof ENGINE_LAYOUTS)[number]

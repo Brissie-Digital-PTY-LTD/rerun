@@ -4,6 +4,12 @@
     "bin": {
         "rerun": "./dist/cli/bin.js"
     },
+    "files": [
+        "dist",
+        "assets",
+        "patches",
+        "scripts"
+    ],
     "scripts": {
         "dev": "tsx watch --env-file-if-exists=.env src/cli/bin.ts run",
         "build": "tsc",

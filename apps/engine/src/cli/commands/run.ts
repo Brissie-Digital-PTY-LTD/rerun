@@ -13,10 +13,13 @@ import { env } from '../../config/env.js'
 import { logger } from '../../lib/logger.js'
 import { closeAllMcp } from '../../tools/mcp-pool.js'
 import { loadPairingIdentity, pairWithHub } from '../../pairing/pairing.js'
+import { settleLastUpdateOnBoot } from '../../runtime/last-update.js'
 
 export async function runCommand(): Promise<void> {
     loadPairingIdentity()
     await prepareDataDir()
+    const lastUpdate = settleLastUpdateOnBoot()
+    if (lastUpdate?.status === 'error') logger.warn({ error: lastUpdate.error, commit: lastUpdate.commit }, 'last update did not land')
     await ensureForeman()
     await reconcileInterruptedRuns()
     if (await installBrowserInBackground()) logger.info('chromium missing: installing it in the background')

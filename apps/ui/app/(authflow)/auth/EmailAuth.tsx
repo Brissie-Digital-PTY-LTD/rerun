@@ -3,6 +3,7 @@
 import { prepareEmailSignIn, resendLiveSignInCode } from '@/app/(authflow)/auth/actions'
 import { EmailCodeForm, type EmailCodeStep } from '@/components/auth/EmailCodeForm'
 import { useTurnstile } from '@/components/auth/useTurnstile'
+import { rememberSignInMethod } from '@/lib/auth/last-sign-in'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/supabase/client'
 import { SIGNUP_INTENT_COOKIE } from '@rerun/analytics'
@@ -32,6 +33,7 @@ export default function EmailAuth({ beforeEmail, onStepChange, onSignedIn }: { b
     const verifyCode = async (email: string, code: string) => {
         const { error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' })
         if (error) throw error
+        rememberSignInMethod('email')
         onSignedIn()
     }
 

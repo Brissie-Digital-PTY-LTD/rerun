@@ -7,7 +7,7 @@ import { skillCommand } from './commands/skill.js'
 import { scheduleCommand } from './commands/schedule.js'
 import { mcpCommand } from './commands/mcp.js'
 import { doctorCommand } from './commands/doctor.js'
-import { updateCommand, installBrowserCommand, installDesktop } from './commands/update.js'
+import { installBrowserCommand, installDesktop, installLayoutCommand, rollbackCommand, updateCommand } from './commands/update.js'
 import { serviceCommand } from './commands/service.js'
 import { restoreFinalizeCommand } from './commands/restore-finalize.js'
 
@@ -26,7 +26,11 @@ Usage:
   rerun mcp status <agentId>      Check MCP server connections
   rerun mcp logout <id> <server>  Clear a stored MCP token
   rerun doctor                    Check the environment
-  rerun update                    Pull, rebuild, migrate and restart the service
+  rerun update                    Pull, rebuild, migrate and restart the service (git checkout)
+  rerun update --artifact <url> --sha256 <hex> --commit <sha>
+                                  Install a prebuilt release, migrate and restart the service
+  rerun rollback                  Go back to the previous release and restart the service
+  rerun install-layout            Write the launcher and the systemd units for the release layout
   rerun install-browser           Install Chromium for the browser tool
   rerun install-desktop           Install the window manager and VNC server behind the Computer
   rerun start | stop | restart    Control the systemd service
@@ -55,6 +59,10 @@ async function main() {
             return doctorCommand()
         case 'update':
             return updateCommand(rest)
+        case 'rollback':
+            return rollbackCommand()
+        case 'install-layout':
+            return installLayoutCommand()
         case 'install-browser':
             return installBrowserCommand()
         case 'install-desktop':

@@ -7,6 +7,7 @@ import { OAuthSignInButton } from '@/components/auth/OAuthSignInButton'
 import { PHONE_ENABLED } from '@/cloud/phone'
 import { PhoneSignIn } from '@/cloud/phone.client'
 import { useSignupFunnel } from '@/components/auth/useSignupFunnel'
+import { rememberSignInMethod } from '@/lib/auth/last-sign-in'
 import { signupStep } from '@/lib/auth/signup-abandon'
 import { useOnboardingStore } from '@/stores/onboarding.store'
 import { createClient } from '@/supabase/client'
@@ -62,6 +63,7 @@ export function useAnonymousSignUp({ surface, active, onEntered }: { surface: Si
     const verifyCode = async (email: string, code: string) => {
         const { error } = await supabase.auth.verifyOtp({ email, token: code, type: emailIsNew.current ? 'email_change' : 'email' })
         if (error) throw error
+        rememberSignInMethod('email')
         await enter(emailIsNew.current)
     }
 

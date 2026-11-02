@@ -248,6 +248,9 @@ importers:
       apify-client:
         specifier: ^2.23.4
         version: 2.23.4
+      aws4fetch:
+        specifier: ^1.0.20
+        version: 1.0.20
       canvas-confetti:
         specifier: ^1.9.4
         version: 1.9.4
@@ -6774,6 +6777,10 @@ packages:
     dependencies:
       possible-typed-array-names: 1.1.0
     dev: true
+
+  /aws4fetch@1.0.20:
+    resolution: {integrity: sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g==}
+    dev: false
 
   /axe-core@4.12.0:
     resolution: {integrity: sha512-FTavr/7Ba0IptwGOPxnQvdyW2tAsdLBMTBXz7rKH6xJ2skpyxpBxyHkDdBs4lf69yRqYpkqCdfhnwS8YULGOmg==}

@@ -6,15 +6,16 @@ process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-health-'))
 process.env.RERUN_API_KEY = 'secret'
 
 const { describe, expect, it } = await import('vitest')
-const { ENGINE_CAPABILITY_FILES_STREAM, ENGINE_CAPABILITY_FOREMAN_FILES, ENGINE_CAPABILITY_SCHEDULE_RENAME } = await import('@rerun/contracts')
+const { ENGINE_CAPABILITY_ARTIFACT_UPDATE, ENGINE_CAPABILITY_FILES_STREAM, ENGINE_CAPABILITY_FOREMAN_FILES, ENGINE_CAPABILITY_SCHEDULE_RENAME } = await import('@rerun/contracts')
 const { createServer } = await import('../server.js')
 const { claimSession, registerRunAbort, releaseSession, unregisterRunAbort } = await import('../../runtime/run-control.js')
 const { buildCommit, processStartedAt } = await import('../../runtime/build-info.js')
 const { DATA_DIR_VERSION } = await import('../../datadir/migrations.js')
+const { writeLastUpdate } = await import('../../runtime/last-update.js')
 
 const app = createServer()
 
-type Health = { status: string; activeAgents: number; activeRuns: number; claimedSessions: number; capabilities: string[]; commit: string | null; startedAt: string }
+type Health = { status: string; activeAgents: number; activeRuns: number; claimedSessions: number; capabilities: string[]; commit: string | null; startedAt: string; layout: string; lastUpdate: unknown }
 
 async function health(): Promise<Health> {
     const res = await app.request('/health')
@@ -33,7 +34,14 @@ describe('GET /health', () => {
         expect(body.capabilities).toContain(ENGINE_CAPABILITY_FILES_STREAM)
         expect(body.capabilities).toContain(ENGINE_CAPABILITY_FOREMAN_FILES)
         expect(body.capabilities).toContain(ENGINE_CAPABILITY_SCHEDULE_RENAME)
+        expect(body.capabilities).toContain(ENGINE_CAPABILITY_ARTIFACT_UPDATE)
         expect(Number.isNaN(Date.parse(body.startedAt))).toBe(false)
+    })
+
+    it('says how its code is laid out and what the last update did', async () => {
+        expect(await health()).toMatchObject({ layout: 'monorepo', lastUpdate: null })
+        const last = writeLastUpdate({ status: 'error', commit: 'abc1234', error: 'checksum mismatch' })
+        expect(await health()).toMatchObject({ lastUpdate: last })
     })
 
     // Nothing migrated this data-dir, so it reads as one from before the ladder.

@@ -4,6 +4,8 @@ import { cn } from '../cn'
 
 export interface FieldProps {
     label?: string
+    /** Rendu juste après le titre, en colonne seulement (un badge, une pastille). */
+    labelTrailing?: React.ReactNode
     optional?: boolean
     hideRequired?: boolean
     helperText?: string
@@ -14,7 +16,7 @@ export interface FieldProps {
     children: React.ReactNode
 }
 
-function Field({ label, optional, hideRequired, helperText, error, htmlFor, orientation = 'column', className, children }: FieldProps) {
+function Field({ label, labelTrailing, optional, hideRequired, helperText, error, htmlFor, orientation = 'column', className, children }: FieldProps) {
     const showOptional = optional && !hideRequired
     const hasTitle = label || showOptional
 
@@ -44,7 +46,14 @@ function Field({ label, optional, hideRequired, helperText, error, htmlFor, orie
         <div className={cn('flex flex-col gap-1.5', className)}>
             {hasTitle && (
                 <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-                    <Title htmlFor={htmlFor}>{label}</Title>
+                    {labelTrailing ? (
+                        <span className="flex items-center gap-1.5">
+                            <Title htmlFor={htmlFor}>{label}</Title>
+                            {labelTrailing}
+                        </span>
+                    ) : (
+                        <Title htmlFor={htmlFor}>{label}</Title>
+                    )}
                     {showOptional && <span className="opacity-70">Optional</span>}
                 </div>
             )}

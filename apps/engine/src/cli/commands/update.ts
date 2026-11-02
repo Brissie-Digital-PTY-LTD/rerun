@@ -1,43 +1,36 @@
-import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, resolve } from 'node:path'
+import { basename, dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { prepareDataDir } from '../../datadir/ladder.js'
 import { desktopEnabled } from '../../config/env.js'
+import { detectLayout, type Layout } from '../../runtime/layout.js'
+import { readLastUpdate, writeLastUpdate } from '../../runtime/last-update.js'
+import { asRoot, canSudo, hasCommand, isRoot, run } from './exec.js'
+import {
+    type Artifact,
+    downloadArtifact,
+    extractArtifact,
+    installLayout,
+    parseArtifactArgs,
+    pruneReleases,
+    releaseBin,
+    releaseDir,
+    releasesDir,
+    requireFreeSpace,
+    rollbackRelease,
+    sweepLegacyCheckout,
+    switchCurrent,
+    verifyRelease,
+} from './release.js'
 
+// Resolved through symlinks by Node, so this is the bin.js of the release that is running, even
+// when the process was started through `current/`.
 const CLI_ENTRY = fileURLToPath(new URL('../bin.js', import.meta.url))
 
-function monorepoRoot(): string {
-    let dir = dirname(fileURLToPath(import.meta.url))
-    while (dir !== dirname(dir)) {
-        if (existsSync(resolve(dir, 'pnpm-workspace.yaml'))) return dir
-        dir = dirname(dir)
-    }
-    throw new Error('could not locate monorepo root (no pnpm-workspace.yaml found)')
-}
-
-function run(command: string, args: string[], cwd?: string): void {
-    process.stdout.write(`\n$ ${command} ${args.join(' ')}\n`)
-    execFileSync(command, args, { stdio: 'inherit', cwd })
-}
-
-function hasCommand(command: string): boolean {
-    try {
-        execFileSync('command', ['-v', command], { stdio: 'ignore', shell: '/bin/sh' })
-        return true
-    } catch {
-        return false
-    }
-}
-
-function canSudo(): boolean {
-    try {
-        execFileSync('sudo', ['-n', 'true'], { stdio: 'ignore' })
-        return true
-    } catch {
-        return false
-    }
+const continuing = (what: string, err: unknown): void => {
+    process.stdout.write(`${what} failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
 }
 
 async function browserInstalled(): Promise<boolean> {
@@ -50,19 +43,27 @@ async function browserInstalled(): Promise<boolean> {
     }
 }
 
-export async function installBrowser(root: string): Promise<void> {
+// A checkout drives patchright through pnpm; a prebuilt package has it in its own node_modules.
+function patchrightCommand(layout: Layout, args: string[]): { command: string; args: string[]; cwd: string } {
+    if (layout.kind === 'monorepo') return { command: 'pnpm', args: ['--filter', 'rerun-engine', 'exec', 'patchright', ...args], cwd: layout.root }
+    return { command: process.execPath, args: [resolve(layout.packageDir, 'node_modules', 'patchright', 'cli.js'), ...args], cwd: layout.packageDir }
+}
+
+export async function installBrowser(layout: Layout): Promise<void> {
     if (await browserInstalled()) {
         process.stdout.write('chromium already installed\n')
         return
     }
-    if (process.getuid?.() === 0) {
-        run('pnpm', ['--filter', 'rerun-engine', 'exec', 'patchright', 'install-deps', 'chromium'], root)
+    const deps = patchrightCommand(layout, ['install-deps', 'chromium'])
+    if (isRoot()) {
+        run(deps.command, deps.args, { cwd: deps.cwd })
     } else if (canSudo()) {
-        run('sudo', ['-n', 'pnpm', '--filter', 'rerun-engine', 'exec', 'patchright', 'install-deps', 'chromium'], root)
+        run('sudo', ['-n', deps.command, ...deps.args], { cwd: deps.cwd })
     } else {
         process.stdout.write('no passwordless sudo available: skipping chromium system dependencies (the browser may fail to launch)\n')
     }
-    run('pnpm', ['--filter', 'rerun-engine', 'exec', 'patchright', 'install', '--no-shell', 'chromium'], root)
+    const install = patchrightCommand(layout, ['install', '--no-shell', 'chromium'])
+    run(install.command, install.args, { cwd: install.cwd })
 }
 
 const DESKTOP_PACKAGES = ['openbox', 'x11vnc', 'xdotool', 'thunar', 'xfce4-terminal', 'adwaita-icon-theme', 'tint2', 'hsetroot', 'curl', 'maim']
@@ -79,18 +80,16 @@ export function installDesktop(): void {
         process.stdout.write('desktop already installed\n')
         return
     }
-    const root = process.getuid?.() === 0
-    if (!root && !canSudo()) {
+    if (!isRoot() && !canSudo()) {
         process.stdout.write('no passwordless sudo available: skipping the desktop packages\n')
         return
     }
-    const asRoot = (command: string[]) => (root ? run(command[0]!, command.slice(1)) : run('sudo', ['-n', ...command]))
     try {
         // A box that has not installed anything since it was born holds package lists that point at versions the mirror dropped.
         asRoot(['apt-get', 'update', '-qq'])
         asRoot(['env', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'install', '-y', '-qq', '--no-install-recommends', ...DESKTOP_PACKAGES])
     } catch (err) {
-        process.stdout.write(`desktop install failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
+        continuing('desktop install', err)
     }
 }
 
@@ -112,7 +111,7 @@ export async function installBrowserInBackground(): Promise<boolean> {
 }
 
 export async function installBrowserCommand(): Promise<void> {
-    await installBrowser(monorepoRoot())
+    await installBrowser(detectLayout())
 }
 
 // Kept in step with the pin in scripts/install.sh. The subscription providers are only ever as
@@ -125,22 +124,22 @@ const CODEX_PACKAGE = '@openai/codex@^0.159.1'
 // heard of them, so the refresh belongs here. Both steps are best-effort: a box that cannot reach
 // npm still gets its engine update, it just keeps the CLI it had.
 export function updateCliTools(): void {
-    const sudo = process.getuid?.() !== 0 && canSudo()
+    const sudo = !isRoot() && canSudo()
     try {
         if (sudo) run('sudo', ['-n', 'npm', 'install', '-g', CODEX_PACKAGE])
         else run('npm', ['install', '-g', CODEX_PACKAGE])
     } catch (err) {
-        process.stdout.write(`codex CLI update failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
+        continuing('codex CLI update', err)
     }
     try {
         run('sh', ['-c', 'curl -fsSL https://claude.ai/install.sh | bash'])
     } catch (err) {
-        process.stdout.write(`claude CLI update failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
+        continuing('claude CLI update', err)
     }
     try {
         pruneClaudeVersions()
     } catch (err) {
-        process.stdout.write(`claude CLI cleanup failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
+        continuing('claude CLI cleanup', err)
     }
 }
 
@@ -167,54 +166,162 @@ const RETURN_MEMORY_SCRIPT = `sync; echo 3 > ${DROP_CACHES}; echo 1 > /proc/sys/
 function returnMemoryToHost(): void {
     if (!existsSync(DROP_CACHES)) return
     try {
-        if (process.getuid?.() === 0) run('sh', ['-c', RETURN_MEMORY_SCRIPT])
+        if (isRoot()) run('sh', ['-c', RETURN_MEMORY_SCRIPT])
         else if (canSudo()) run('sudo', ['-n', 'sh', '-c', RETURN_MEMORY_SCRIPT])
         else process.stdout.write('no passwordless sudo available: skipping memory return\n')
     } catch (err) {
-        process.stdout.write(`memory return failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
+        continuing('memory return', err)
     }
+}
+
+const serviceName = (): string => process.env.RERUN_SERVICE ?? 'rerun'
+
+function restartService(): void {
+    if (!hasCommand('systemctl')) {
+        process.stdout.write('systemctl not found; restart the engine manually to load the new build\n')
+        return
+    }
+    const service = serviceName()
+    const useSudo = !isRoot() && hasCommand('sudo')
+    run(useSudo ? 'sudo' : 'systemctl', useSudo ? ['systemctl', 'restart', service] : ['restart', service])
+    process.stdout.write(`restarted ${service}\n`)
+}
+
+function finishUpdate(noRestart: boolean): void {
+    returnMemoryToHost()
+    if (noRestart) {
+        process.stdout.write('skipping restart (--no-restart)\n')
+        return
+    }
+    restartService()
 }
 
 export async function updateCommand(args: string[]): Promise<void> {
     const noRestart = args.includes('--no-restart')
-    const root = monorepoRoot()
-    const service = process.env.RERUN_SERVICE ?? 'rerun'
+    const artifact = parseArtifactArgs(args)
+    const layout = detectLayout()
+    if (artifact) return updateFromArtifact(layout, artifact, noRestart)
+    if (layout.kind === 'image') throw new Error('this engine was installed from an image: pull the new image to update it')
+    if (layout.kind === 'release') throw new Error('this engine was installed from a release artifact: pass --artifact <url> --sha256 <hex> --commit <sha>')
+    await updateFromGit(layout, noRestart)
+}
 
-    run('git', ['pull', '--ff-only'], root)
-    run('pnpm', ['--filter', 'rerun-engine...', 'install', '--prod=false', '--frozen-lockfile'], root)
-    run('pnpm', ['--filter', 'rerun-engine...', 'build'], root)
+async function updateFromGit(layout: Layout, noRestart: boolean): Promise<void> {
+    const root = layout.root
+    run('git', ['pull', '--ff-only'], { cwd: root })
+    run('pnpm', ['--filter', 'rerun-engine...', 'install', '--prod=false', '--frozen-lockfile'], { cwd: root })
+    run('pnpm', ['--filter', 'rerun-engine...', 'build'], { cwd: root })
 
     // Through the freshly built CLI: this process still runs the code it started with, and the new
     // build may expect another browser than the one it knows how to install.
     try {
-        run(process.execPath, [CLI_ENTRY, 'install-browser'], root)
+        run(process.execPath, [CLI_ENTRY, 'install-browser'], { cwd: root })
     } catch (err) {
-        process.stdout.write(`chromium install failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
+        continuing('chromium install', err)
     }
 
     updateCliTools()
     if (desktopEnabled()) {
         try {
-            run(process.execPath, [CLI_ENTRY, 'install-desktop'], root)
+            run(process.execPath, [CLI_ENTRY, 'install-desktop'], { cwd: root })
         } catch (err) {
-            process.stdout.write(`desktop install failed (continuing): ${err instanceof Error ? err.message : String(err)}\n`)
+            continuing('desktop install', err)
         }
     }
 
     await prepareDataDir()
     process.stdout.write('migrated data dir\n')
+    finishUpdate(noRestart)
+}
 
-    returnMemoryToHost()
+// Every step that runs code runs the NEW release's bin.js: this process is the old release, and its
+// own CLI_ENTRY resolves into the old folder. The updater dies with the restart it triggers, so the
+// `restarting` mark is its last word; the engine that comes up on the new build settles it.
+async function updateFromArtifact(layout: Layout, artifact: Artifact, noRestart: boolean): Promise<void> {
+    if (layout.kind === 'image') throw new Error('an image does not take release artifacts: pull the new image instead')
+    const root = layout.root
+    const previousUpdate = readLastUpdate()
+    writeLastUpdate({ status: 'running', commit: artifact.commit })
+    const tmp = resolve(releasesDir(root), `.tmp-${artifact.commit}`)
+    try {
+        if (!isRoot() && !canSudo()) throw new Error('passwordless sudo is required to install a release')
+        mkdirSync(releasesDir(root), { recursive: true })
+        requireFreeSpace(releasesDir(root), artifact.bytes)
 
-    if (noRestart) {
-        process.stdout.write('skipping restart (--no-restart)\n')
-        return
+        const target = releaseDir(root, artifact.commit)
+        if (existsSync(target)) {
+            process.stdout.write(`release ${artifact.commit} already on disk\n`)
+        } else {
+            rmSync(tmp, { recursive: true, force: true })
+            mkdirSync(tmp)
+            const tarball = resolve(tmp, 'engine.tar.gz')
+            process.stdout.write(`downloading ${artifact.url}\n`)
+            const bytes = await downloadArtifact(artifact.url, tarball, artifact.sha256)
+            process.stdout.write(`downloaded ${bytes} bytes, checksum ok\n`)
+            extractArtifact(tarball, tmp)
+            rmSync(tarball, { force: true })
+            verifyRelease(tmp, artifact)
+            renameSync(tmp, target)
+        }
+
+        const bin = releaseBin(target)
+        run(process.execPath, [bin, 'migrate'])
+        process.stdout.write('migrated data dir\n')
+        try {
+            run(process.execPath, [bin, 'install-browser'])
+        } catch (err) {
+            continuing('chromium install', err)
+        }
+        updateCliTools()
+        if (desktopEnabled()) {
+            try {
+                run(process.execPath, [bin, 'install-desktop'])
+            } catch (err) {
+                continuing('desktop install', err)
+            }
+        }
+
+        const previous = switchCurrent(root, target)
+        process.stdout.write(`current -> releases/${artifact.commit}${previous ? ` (previous: ${basename(previous)})` : ''}\n`)
+        for (const path of installLayout(root)) process.stdout.write(`wrote ${path}\n`)
+        for (const name of pruneReleases(root)) process.stdout.write(`removed release ${name}\n`)
+        // Only once a release has booted and served: the running engine may still read from the checkout.
+        if (layout.kind === 'release' && previousUpdate?.status === 'success') {
+            for (const path of sweepLegacyCheckout(root)) process.stdout.write(`removed legacy ${path}\n`)
+        }
+        writeLastUpdate({ status: 'restarting', commit: artifact.commit })
+    } catch (err) {
+        rmSync(tmp, { recursive: true, force: true })
+        writeLastUpdate({ status: 'error', commit: artifact.commit, error: err instanceof Error ? err.message : String(err) })
+        throw err
     }
-    if (!hasCommand('systemctl')) {
-        process.stdout.write('systemctl not found; restart the engine manually to load the new build\n')
-        return
+    finishUpdate(noRestart)
+}
+
+// A dangling link counts: it was placed on purpose and `existsSync` would follow it to nothing.
+function linkExists(path: string): boolean {
+    try {
+        lstatSync(path)
+        return true
+    } catch {
+        return false
     }
-    const useSudo = process.getuid?.() !== 0 && hasCommand('sudo')
-    run(useSudo ? 'sudo' : 'systemctl', useSudo ? ['systemctl', 'restart', service] : ['restart', service])
-    process.stdout.write(`restarted ${service}\n`)
+}
+
+export function rollbackCommand(): void {
+    const layout = detectLayout()
+    if (layout.kind !== 'release') throw new Error('rollback needs a release layout (releases/ beside a current link)')
+    const previous = rollbackRelease(layout.root)
+    process.stdout.write(`current -> ${relative(layout.root, previous)}\n`)
+    writeLastUpdate({ status: 'restarting', commit: basename(previous) })
+    restartService()
+}
+
+// Run by the installer on a fresh machine, from the release it just unpacked: points `current` at it
+// when nothing does yet and writes the launcher and the units.
+export function installLayoutCommand(): void {
+    const layout = detectLayout()
+    if (layout.kind !== 'release') throw new Error('install-layout runs from a release under <root>/releases/<commit>/')
+    if (!linkExists(resolve(layout.root, 'current'))) switchCurrent(layout.root, layout.packageDir)
+    for (const path of installLayout(layout.root)) process.stdout.write(`wrote ${path}\n`)
 }

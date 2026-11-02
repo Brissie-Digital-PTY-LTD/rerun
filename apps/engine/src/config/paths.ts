@@ -18,6 +18,9 @@ export const dbPath = () => resolve(dataDir(), 'rerun.db')
 // The last step of the data-dir migration ladder this folder has been through. Absent means v0.
 export const dataVersionPath = () => resolve(dataDir(), 'data-version.json')
 
+// What the last `rerun update` did, read back by `/health`.
+export const lastUpdatePath = () => resolve(dataDir(), 'last-update.json')
+
 export const agentsDir = () => resolve(dataDir(), 'agents')
 
 export const sharedDir = () => resolve(dataDir(), 'shared')

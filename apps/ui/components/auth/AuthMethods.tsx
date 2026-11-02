@@ -1,7 +1,9 @@
 'use client'
 
+import { LastUsedBadge } from '@/components/auth/LastUsedBadge'
 import { Button } from '@/components/ui/button'
 import type { AuthMethod } from '@/lib/auth/auth-method'
+import { useLastSignInMethod, type LastSignInMethod } from '@/lib/auth/last-sign-in'
 import { MailIcon, Smartphone } from '@/lib/icons'
 import { detectMobileOs } from '@/lib/in-app-browser'
 import { StepTransition } from '@rerun/ui/steps'
@@ -17,7 +19,7 @@ function Divider({ children }: { children: ReactNode }) {
     )
 }
 
-export type PhoneSurroundings = { beforePhone?: ReactNode; afterPhone?: ReactNode }
+export type PhoneSurroundings = { beforePhone?: ReactNode; afterPhone?: ReactNode; phoneLastUsed?: boolean }
 
 // The ways into an account, one form at a time with the others a tap away. The forms belong to the
 // caller, which knows whether it signs in or upgrades an anonymous visitor: each is handed the
@@ -30,6 +32,7 @@ export function AuthMethods({
     phone,
     email,
     onMethodChange,
+    lastUsed,
 }: {
     initialMethod?: AuthMethod
     // Left out where nothing is rendered on the server, and read from the browser instead.
@@ -41,7 +44,11 @@ export function AuthMethods({
     email: (beforeEmail: ReactNode) => ReactNode
     // Switching remounts the form on its first step, which the form itself does not report.
     onMethodChange?: (method: AuthMethod) => void
+    // Forced by the lab; read from this browser everywhere else. The provider buttons read it themselves.
+    lastUsed?: LastSignInMethod | null
 }) {
+    const remembered = useLastSignInMethod()
+    const usedLast = lastUsed === undefined ? remembered : lastUsed
     const [method, setMethodState] = useState<AuthMethod>(phone ? initialMethod : 'email')
     const setMethod = (next: AuthMethod) => {
         setMethodState(next)
@@ -53,6 +60,7 @@ export function AuthMethods({
         <Button variant="outline" className="w-full gap-2" onClick={() => setMethod('email')}>
             <MailIcon className="size-4" />
             Continue with email
+            {usedLast === 'email' && <LastUsedBadge />}
         </Button>
     )
 
@@ -62,6 +70,7 @@ export function AuthMethods({
                 ? phone(
                       numberOnTop
                           ? {
+                                phoneLastUsed: usedLast === 'phone',
                                 afterPhone: (
                                     <>
                                         <Divider>Or</Divider>
@@ -71,6 +80,7 @@ export function AuthMethods({
                                 ),
                             }
                           : {
+                                phoneLastUsed: usedLast === 'phone',
                                 beforePhone: (
                                     <>
                                         {oauth}
@@ -87,6 +97,7 @@ export function AuthMethods({
                               <Button variant="outline" className="w-full gap-2" onClick={() => setMethod('phone')}>
                                   <Smartphone className="size-4" />
                                   Continue with phone number
+                                  {usedLast === 'phone' && <LastUsedBadge />}
                               </Button>
                           )}
                           {(oauth || phone) && <Divider>Or continue with</Divider>}

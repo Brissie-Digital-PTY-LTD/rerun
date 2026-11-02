@@ -184,6 +184,16 @@ export type EngineToolCallsList = ToolCallsList
 export const engineUploadResultSchema = z.object({ path: z.string(), bytes: z.number() })
 export type EngineUploadResult = z.infer<typeof engineUploadResultSchema>
 
+// What the last `rerun update` on a box did; `restarting` is the updater's last word before the
+// service restart kills it, the engine that comes back settles it.
+export const engineLastUpdateSchema = z.object({
+    status: z.enum(['running', 'error', 'restarting', 'success']),
+    commit: z.string().nullable(),
+    error: z.string().optional(),
+    at: z.string(),
+})
+export type EngineLastUpdate = z.infer<typeof engineLastUpdateSchema>
+
 export const engineHealthSchema = z.object({
     status: z.string(),
     activeAgents: z.number(),
@@ -191,6 +201,10 @@ export const engineHealthSchema = z.object({
     capabilities: z.array(z.string()).default([]),
     commit: z.string().nullable().optional(),
     startedAt: z.string().nullable().optional(),
+    // How the box holds its code: `release` (prebuilt artifact), `monorepo` (git checkout) or `image`.
+    // Absent on an engine that predates artifact updates.
+    layout: z.string().optional(),
+    lastUpdate: engineLastUpdateSchema.nullable().optional(),
     // Absent on an engine that predates the data-dir migration ladder.
     dataVersion: z.number().optional(),
     dataVersionTarget: z.number().optional(),
@@ -202,6 +216,7 @@ export const engineUpdateResultSchema = z.object({
     reason: z.string().optional(),
     activeRuns: z.number().optional(),
     commit: z.string().nullable().optional(),
+    lastUpdate: engineLastUpdateSchema.nullable().optional(),
 })
 export type EngineUpdateResult = z.infer<typeof engineUpdateResultSchema>
 

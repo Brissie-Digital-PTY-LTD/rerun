@@ -49,6 +49,45 @@ describe('GET /auth/callback', () => {
         expect(response.headers.get('location')).toBe('https://app.rerun.build/invite/token-1')
     })
 
+    it('remembers Google as the last way in', async () => {
+        requestCookies.set('rr_oauth_provider', 'google')
+
+        const response = await callback('?code=abc')
+
+        expect(response.cookies.get('rr_last_sign_in')?.value).toBe('google')
+    })
+
+    it('remembers Apple as the last way in', async () => {
+        requestCookies.set('rr_oauth_provider', 'apple')
+
+        const response = await callback('?code=abc')
+
+        expect(response.cookies.get('rr_last_sign_in')?.value).toBe('apple')
+    })
+
+    it('does not remember a provider connected from the account settings', async () => {
+        requestCookies.set('rr_link_intent', 'apple')
+        requestCookies.set('rr_oauth_provider', 'apple')
+
+        const response = await callback('?code=abc')
+
+        expect(response.cookies.get('rr_last_sign_in')).toBeUndefined()
+    })
+
+    it('does not remember a sign-in whose provider cookie is gone', async () => {
+        const response = await callback('?code=abc')
+
+        expect(response.cookies.get('rr_last_sign_in')).toBeUndefined()
+    })
+
+    it('does not remember a sign-in that failed', async () => {
+        requestCookies.set('rr_oauth_provider', 'apple')
+
+        const response = await callback('?error=access_denied')
+
+        expect(response.cookies.get('rr_last_sign_in')).toBeUndefined()
+    })
+
     it('sends a failed sign-in to the expired link page', async () => {
         const response = await callback('?error=access_denied')
 

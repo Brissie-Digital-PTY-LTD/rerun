@@ -821,8 +821,12 @@ export async function getEngineDoctor(conn: EngineConnection): Promise<EngineDoc
     return engineDoctorSchema.parse(await res.json())
 }
 
-export async function requestEngineUpdate(conn: EngineConnection, force = false): Promise<EngineUpdateResult> {
-    return request(conn, '/update', { method: 'POST', body: JSON.stringify({ force }), signal: AbortSignal.timeout(15000) }, d => engineUpdateResultSchema.parse(d))
+// What a box needs to install a prebuilt release: the URL is signed for a short while.
+export type EngineUpdateArtifact = { url: string; sha256: string; commit: string; bytes?: number }
+
+// Without an artifact the engine pulls and rebuilds its checkout; with one it downloads the release.
+export async function requestEngineUpdate(conn: EngineConnection, force = false, artifact?: EngineUpdateArtifact): Promise<EngineUpdateResult> {
+    return request(conn, '/update', { method: 'POST', body: JSON.stringify({ force, ...(artifact ? { artifact } : {}) }), signal: AbortSignal.timeout(15000) }, d => engineUpdateResultSchema.parse(d))
 }
 
 // --- Runs (execution history) ---

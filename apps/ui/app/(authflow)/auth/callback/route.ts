@@ -1,4 +1,5 @@
 import type { Database } from '@/app/api/database.types'
+import { LAST_SIGN_IN_COOKIE, LAST_SIGN_IN_MAX_AGE_SECONDS } from '@/lib/auth/last-sign-in-cookie'
 import { ACCOUNT_LINK_ERROR_PARAM, ACCOUNT_LINK_PROVIDER_PARAM, ACCOUNT_PARAM, LINK_INTENT_COOKIE } from '@/lib/auth/link-intent'
 import { OAUTH_PROVIDER_COOKIE, isOAuthProvider, type OAuthProvider } from '@/lib/auth/oauth-providers'
 import { PENDING_INVITE_COOKIE } from '@/lib/auth/pending-invite'
@@ -93,6 +94,11 @@ export async function GET(request: Request) {
             if (pendingInvite) {
                 response.cookies.delete(PENDING_INVITE_COOKIE)
             }
+
+            // Only a provider the click left behind is worth remembering: the guess that restarts a
+            // sign-in would badge the wrong button for a year.
+            const provider = cookieStore.get(OAUTH_PROVIDER_COOKIE)?.value
+            if (!linking && isOAuthProvider(provider)) response.cookies.set(LAST_SIGN_IN_COOKIE, provider, { path: '/', maxAge: LAST_SIGN_IN_MAX_AGE_SECONDS, sameSite: 'lax' })
 
             if (!linking && (await wasSignedUpBeforeThisSignIn(supabase, data.session.user.id))) forgetSignupIntent(request, response)
 

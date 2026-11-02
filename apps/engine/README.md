@@ -73,7 +73,11 @@ rerun agent list                List agents
 rerun agent delete <id>         Delete an agent
 rerun skill list <agentId>      List an agent's skills
 rerun doctor                    Check the data-dir without changing it (exits 1 on a failure)
-rerun update                    Pull, rebuild, migrate and restart the service
+rerun update                    Pull, rebuild, migrate and restart the service (git checkout)
+rerun update --artifact <url> --sha256 <hex> --commit <sha>
+                                Install a prebuilt release, migrate and restart the service
+rerun rollback                  Go back to the previous release and restart the service
+rerun install-layout            Write the launcher and the systemd units for the release layout
 rerun start | stop | restart    Control the systemd service
 rerun status                    Show the service status
 rerun logs [--no-follow]        Tail the service logs
