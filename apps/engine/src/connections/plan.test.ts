@@ -46,10 +46,10 @@ describe('allowedModel', () => {
 
     it('steps a trial down to Sonnet and Sol, in the spelling of each provider', async () => {
         await writeBoxPlan({ premiumModels: false })
-        expect(allowedModel('claude', 'claude-opus-5-5')).toBe('claude-sonnet-5[1m]')
-        expect(allowedModel('claude', 'opus')).toBe('claude-sonnet-5[1m]')
-        expect(allowedModel('anthropic', 'claude-fable-5-1')).toBe('claude-sonnet-5')
-        expect(allowedModel('openrouter', 'anthropic/claude-opus-5.5')).toBe('anthropic/claude-sonnet-5')
+        expect(allowedModel('claude', 'claude-opus-5-5')).toBe('claude-sonnet-5-5')
+        expect(allowedModel('claude', 'opus')).toBe('claude-sonnet-5-5')
+        expect(allowedModel('anthropic', 'claude-fable-5-1')).toBe('claude-sonnet-5-5')
+        expect(allowedModel('openrouter', 'anthropic/claude-opus-5.5')).toBe('anthropic/claude-sonnet-5.5')
         expect(allowedModel('openrouter', 'openai/gpt-6-astra')).toBe('openai/gpt-6-sol')
         expect(allowedModel('codex', 'gpt-6-astra')).toBe('gpt-6-sol')
         expect(allowedModel('codex', 'gpt-6-sol')).toBe('gpt-6-sol')
@@ -61,7 +61,7 @@ describe('model resolution on a trial box', () => {
     it('runs a pinned Opus agent on Sonnet without rewriting the pin', async () => {
         await writeBoxPlan({ premiumModels: false })
         const agent = await pinnedAgent('claude', 'claude-opus-5-5')
-        expect(agent.resolved.model).toBe('claude-sonnet-5[1m]')
+        expect(agent.resolved.model).toBe('claude-sonnet-5-5')
         expect(agent.config.model).toBe('claude-opus-5-5')
     })
 
@@ -78,14 +78,14 @@ describe('model resolution on a trial box', () => {
         const agent = await pinnedAgent('codex', 'gpt-6-sol')
         const claude = await createConnection({ name: 'claude', provider: 'claude', models: DEFAULT_CONNECTION_MODELS.claude, extraModels: [], keys: {} })
         const run = await resolveRunModel(agent, { connectionId: claude.id, model: 'claude-opus-5-5' })
-        expect(run).toMatchObject({ provider: 'claude', model: 'claude-sonnet-5[1m]' })
+        expect(run).toMatchObject({ provider: 'claude', model: 'claude-sonnet-5-5' })
     })
 
     it('adopts the first model the plan runs as the connection default', async () => {
         const connection = await createConnection({ name: 'claude', provider: 'claude', models: DEFAULT_CONNECTION_MODELS.claude, extraModels: [], keys: {} })
         expect(defaultModelOf(connection)).toBe('claude-opus-5-5')
         await writeBoxPlan({ premiumModels: false })
-        expect(defaultModelOf(connection)).toBe('claude-sonnet-5[1m]')
+        expect(defaultModelOf(connection)).toBe('claude-sonnet-5-5')
     })
 
     it('reads a corrupt file as unrestricted', async () => {

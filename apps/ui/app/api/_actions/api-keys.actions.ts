@@ -13,8 +13,8 @@ import type { ActionResult } from './space.actions'
 
 // Every member of a workspace may issue a key: a key reaches exactly what the member already
 // reaches through the UI, so gating it on the owner would only push people to share one key.
-// What is gated is the subscription, and a trial does not count. A sandbox, which has no
-// subscription at all, is the one workspace entitled by nature: see `isWorkspaceApiEntitled`.
+// What is gated is the subscription, trial included. A sandbox, which has no subscription at
+// all, is entitled by nature: see `isWorkspaceApiEntitled`.
 
 const MAX_ACTIVE_KEYS = 20
 const MAX_NAME_LENGTH = 60
@@ -73,7 +73,7 @@ export async function createApiKeyAction(rawName: string): Promise<ActionResult<
     try {
         const ctx = await requireWorkspaceContext()
         if (!isWorkspaceApiEntitled(ctx.workspace)) {
-            return { ok: false, error: 'The Rerun API is available on a paid plan. Start your subscription to create a key.' }
+            return { ok: false, error: 'The Rerun API needs an active subscription. Start your subscription to create a key.' }
         }
 
         const name = rawName.trim()

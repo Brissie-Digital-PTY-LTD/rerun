@@ -77,7 +77,7 @@ const ROOT = resolve(import.meta.dirname, '../../../../..')
 const INSTALL_BROWSER = `${process.execPath} ${resolve(import.meta.dirname, '../bin.js')} install-browser`
 const INSTALL_DESKTOP = `${process.execPath} ${resolve(import.meta.dirname, '../bin.js')} install-desktop`
 const DESKTOP_APT = 'env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openbox x11vnc xdotool thunar xfce4-terminal adwaita-icon-theme tint2 hsetroot curl maim'
-const CODEX = '@openai/codex@^0.156.1'
+const CODEX = '@openai/codex@^0.159.1'
 const CLAUDE_INSTALL = 'sh -c curl -fsSL https://claude.ai/install.sh | bash'
 const RETURN_MEMORY = `sync; echo 3 > ${DROP_CACHES}; echo 1 > /proc/sys/vm/compact_memory`
 

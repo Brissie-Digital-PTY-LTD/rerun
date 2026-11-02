@@ -66,7 +66,7 @@ export function runForemanClientTool(name: ForemanClientToolName, input: unknown
             const panel = resolveTab(requested, SETTINGS_PANEL_LABELS)
             if (!panel) return { ok: false, error: unknownTab(requested, SETTINGS_PANEL_LABELS, 'panel') }
             if (panel === 'api_keys' && !gates.apiEntitled) {
-                return { ok: false, error: 'API keys and the MCP client are on the paid plans, and this workspace is not on one. Say so, and offer to open the billing panel instead.' }
+                return { ok: false, error: 'API keys and the MCP client need an active subscription, and this workspace has none. Say so, and offer to open the billing panel instead.' }
             }
             if (gates.isSandbox && (panel === 'workspace' || panel === 'members' || panel === 'billing')) {
                 return { ok: false, error: 'This is the expert sandbox: it has no settings, no members and no billing of its own. Those belong to the real workspace.' }

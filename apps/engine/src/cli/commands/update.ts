@@ -116,9 +116,9 @@ export async function installBrowserCommand(): Promise<void> {
 }
 
 // Kept in step with the pin in scripts/install.sh. The subscription providers are only ever as
-// capable as the CLI behind them: GPT-6 Sol and Luna need Codex 0.156.1, Opus 5.5 needs Claude Code
-// 2.1.280.
-const CODEX_PACKAGE = '@openai/codex@^0.156.1'
+// capable as the CLI behind them: GPT-6.1 Sol and Terra need Codex 0.159.1, Haiku 5.5 needs Claude
+// Code 2.1.293.
+const CODEX_PACKAGE = '@openai/codex@^0.159.1'
 
 // install.sh puts both CLIs on the box once, at birth, and nothing moved them since. An engine that
 // self-updates into a catalog naming newer models would offer them against a client that has never

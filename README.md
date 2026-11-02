@@ -79,44 +79,91 @@ them all on one board, you talk to any of them like to a colleague, and they ask
 pay or delete anything.
 
 <p align="center">
-  <img alt="A coworker asking what to research, on the board" src=".github/assets/screen-chat.jpg" width="100%">
+  <img alt="Eight coworkers in three Boxes on the board, the Sales Rep reporting the companies it found" src=".github/assets/screen-team.jpg" width="100%">
 </p>
 
-A few coworkers people hire on day one:
+A few coworkers people hire on day one, each a ready-made template:
 
 <table>
   <tr>
-    <td width="33%">📬 <strong>Inbox keeper</strong><br /><sub>Sorts your mail, drafts the replies, flags what needs you</sub></td>
-    <td width="33%">📊 <strong>Weekly reporter</strong><br /><sub>Pulls the numbers every Monday and writes the recap</sub></td>
-    <td width="33%">🕵️ <strong>Competitor watcher</strong><br /><sub>Reads their site, posts and pricing, tells you what moved</sub></td>
+    <td width="33%" valign="top">
+      <a href="https://rerun.build/templates/executive-assistant?utm_source=github&amp;utm_medium=readme"><img alt="Executive Assistant" src=".github/assets/coworkers/executive-assistant.jpg"></a><br />
+      <a href="https://rerun.build/templates/executive-assistant?utm_source=github&amp;utm_medium=readme"><strong>Executive Assistant</strong></a><br />
+      <sub>Sorts your inbox, clears your calendar, briefs you every morning</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="https://rerun.build/templates/data-analyst?utm_source=github&amp;utm_medium=readme"><img alt="Data Analyst" src=".github/assets/coworkers/data-analyst.jpg"></a><br />
+      <a href="https://rerun.build/templates/data-analyst?utm_source=github&amp;utm_medium=readme"><strong>Data Analyst</strong></a><br />
+      <sub>Answers your questions from your data, with charts and a weekly KPI report</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="https://rerun.build/templates/online-reputation-manager?utm_source=github&amp;utm_medium=readme"><img alt="Reputation Manager" src=".github/assets/coworkers/online-reputation-manager.jpg"></a><br />
+      <a href="https://rerun.build/templates/online-reputation-manager?utm_source=github&amp;utm_medium=readme"><strong>Reputation Manager</strong></a><br />
+      <sub>Watches your reviews and your competitors, drafts every reply</sub>
+    </td>
   </tr>
   <tr>
-    <td width="33%">🎯 <strong>Lead researcher</strong><br /><sub>Finds the right people, fills your CRM, skips the duplicates</sub></td>
-    <td width="33%">✍️ <strong>Content writer</strong><br /><sub>Turns a voice note into a post, a thread and a newsletter</sub></td>
-    <td width="33%">🧾 <strong>Ops assistant</strong><br /><sub>Chases invoices, files receipts, keeps the sheet up to date</sub></td>
+    <td width="33%" valign="top">
+      <a href="https://rerun.build/templates/sales-development-rep?utm_source=github&amp;utm_medium=readme"><img alt="Sales Development Rep" src=".github/assets/coworkers/sales-development-rep.jpg"></a><br />
+      <a href="https://rerun.build/templates/sales-development-rep?utm_source=github&amp;utm_medium=readme"><strong>Sales Development Rep</strong></a><br />
+      <sub>Finds prospects who fit and writes each one a first email</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="https://rerun.build/templates/social-media-manager?utm_source=github&amp;utm_medium=readme"><img alt="Social Media Manager" src=".github/assets/coworkers/social-media-manager.jpg"></a><br />
+      <a href="https://rerun.build/templates/social-media-manager?utm_source=github&amp;utm_medium=readme"><strong>Social Media Manager</strong></a><br />
+      <sub>Writes a week of posts for each network, publishes when you say go</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="https://rerun.build/templates/collections-officer?utm_source=github&amp;utm_medium=readme"><img alt="Collections Specialist" src=".github/assets/coworkers/collections-officer.jpg"></a><br />
+      <a href="https://rerun.build/templates/collections-officer?utm_source=github&amp;utm_medium=readme"><strong>Collections Specialist</strong></a><br />
+      <sub>Chases every late invoice, without the awkward emails</sub>
+    </td>
   </tr>
 </table>
 
 ## ✨ Features
 
+<p align="center">
+  <img alt="The Foreman, taking requests by voice, hiring a coworker and running the team on autopilot" src=".github/assets/features/foreman.gif" width="100%">
+</p>
+
+**🧑‍✈️ The Foreman runs your team.** Say what you need, out loud if you like. It spots what needs doing,
+hires the coworker for it, and answers your coworkers by your rules while you are away.
+
 <table>
   <tr>
-    <td width="50%"><img alt="The Foreman answering on a fresh install" src=".github/assets/screen-board.jpg"></td>
-    <td width="50%"><img alt="A server attached to a workspace" src=".github/assets/screen-servers.jpg"></td>
+    <td width="50%" valign="top">
+      <img alt="A coworker sending an email from its own browser" src=".github/assets/features/computer.gif"><br />
+      <strong>🖥️ Their own computer</strong><br />
+      <sub>A browser and a screen you can watch, and take over at any time</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img alt="A coworker waiting for a teammate to approve a payment" src=".github/assets/features/approvals.gif"><br />
+      <strong>✋ You stay in charge</strong><br />
+      <sub>They stop and ask before they send, pay or delete anything</sub>
+    </td>
   </tr>
   <tr>
-    <td align="center"><sub>The Foreman, ready on a fresh install</sub></td>
-    <td align="center"><sub>Your own servers, attached in one command</sub></td>
+    <td width="50%" valign="top">
+      <img alt="Coworkers running at night while the team is away" src=".github/assets/features/night.gif"><br />
+      <strong>⏰ Work while you sleep</strong><br />
+      <sub>Schedules and webhook triggers: the 7am run happens without you</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img alt="Three coworkers handing a job down the line" src=".github/assets/features/together.gif"><br />
+      <strong>🤝 They work together</strong><br />
+      <sub>One finds the leads, the next writes to them, a third files the result</sub>
+    </td>
   </tr>
 </table>
 
+And everything else a colleague needs:
+
 - 🧠 **Coworkers that remember**: a soul, skills, a memory that grows with every task
-- ⏰ **Work while you sleep**: schedules and webhook triggers
 - 🗺️ **One board**: every coworker, every Box and every running task in sight
 - 💬 **Chat like with a colleague**: files, voice notes, tables and approvals inline
-- 🖥️ **Their own computer**: a browser and a screen you can watch, and take over
-- ✋ **You stay in charge**: they ask before they send, pay or delete
 - 🔌 **Plugs into everything**: 200+ ready integrations, any MCP server, Composio
+- 🏠 **Your own servers**: attach the machine your coworkers run on in one command
 - ♾️ **No limits**: as many coworkers and seats as you want, nothing to pay
 
 ## 🚀 Quick start

@@ -36,14 +36,21 @@ beforeEach(() => {
 })
 
 describe('createApiKeyAction', () => {
-    it('refuses a workspace on trial, which is not entitled to the API', async () => {
-        signedIn({ subscription_status: 'trialing', is_sandbox: false })
+    it('refuses a workspace whose subscription is over', async () => {
+        signedIn({ subscription_status: 'canceled', is_sandbox: false })
         const db = database()
 
         const result = await createApiKeyAction('CI')
 
         expect(result.ok).toBe(false)
         expect(db.writes('api_keys')).toHaveLength(0)
+    })
+
+    it('lets a workspace on trial create a key', async () => {
+        signedIn({ subscription_status: 'trialing', is_sandbox: false })
+        database(() => ({ count: 0 }))
+
+        await expect(createApiKeyAction('CI')).resolves.toMatchObject({ ok: true })
     })
 
     it('lets a sandbox create a key without a subscription', async () => {

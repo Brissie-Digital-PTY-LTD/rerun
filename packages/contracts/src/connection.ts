@@ -155,9 +155,21 @@ export const DEFAULT_CONNECTION_MODELS: Record<z.infer<typeof providerSchema>, s
     // step below the top tier: not every plan includes the top model, and a box that adopts it on
     // connect fails its very first run ("Fable 5.1 requires usage credits").
     rerun: [RERUN_MODELS.balanced, RERUN_MODELS.fast, RERUN_MODELS.smart],
-    anthropic: ['claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+    anthropic: [
+        'claude-fable-5-1',
+        'claude-fable-5',
+        'claude-opus-5-5',
+        'claude-opus-5',
+        'claude-opus-4-8',
+        'claude-sonnet-5-5',
+        'claude-sonnet-5',
+        'claude-sonnet-4-6',
+        'claude-haiku-5-5',
+        'claude-haiku-4-5-20251001',
+    ],
     // Claude Code's own picker, id for id. `[1m]` is how the CLI names the 1M-context variant of a
-    // model whose default window is smaller; Fable and Opus 5/5.5 are 1M natively and take no suffix.
+    // model whose default window is smaller; Fable, Opus 5/5.5, Sonnet 5.5 and Haiku 5.5 are 1M
+    // natively and take no suffix.
     claude: [
         'claude-opus-5-5',
         'claude-fable-5-1',
@@ -166,29 +178,32 @@ export const DEFAULT_CONNECTION_MODELS: Record<z.infer<typeof providerSchema>, s
         'claude-opus-4-8[1m]',
         'claude-opus-4-7[1m]',
         'claude-opus-4-6[1m]',
+        'claude-sonnet-5-5',
         'claude-sonnet-5[1m]',
         'claude-sonnet-4-6[1m]',
         'claude-sonnet-4-6',
+        'claude-haiku-5-5',
         'claude-haiku-4-5',
     ],
-    codex: ['gpt-6-sol', 'gpt-6-astra', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'],
-    openai: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'],
-    google: ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'],
+    codex: ['gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+    openai: ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'],
+    google: ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'],
     openrouter: [
         'anthropic/claude-fable-5.1',
         'anthropic/claude-opus-5.5',
-        'anthropic/claude-sonnet-5',
+        'anthropic/claude-sonnet-5.5',
         'openai/gpt-6-astra',
+        'openai/gpt-6.1-sol',
         'openai/gpt-6-sol',
         'openai/gpt-6-luna',
+        'google/gemini-4-argon',
         'google/gemini-3.8-flash',
-        'google/gemini-3.1-pro-preview',
-        'x-ai/grok-4.6',
-        'moonshotai/kimi-k3',
+        'x-ai/grok-4.7',
+        'moonshotai/kimi-k3.1-pro',
         'deepseek/deepseek-v4-pro',
-        'xiaomi/mimo-v2.5-pro',
+        'xiaomi/mimo-v2.6-pro',
         'qwen/qwen3.8-flash',
-        'minimax/minimax-m3',
+        'minimax/minimax-m3.1-flash',
     ],
 }
 

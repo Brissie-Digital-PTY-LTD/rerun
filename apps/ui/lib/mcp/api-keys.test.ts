@@ -92,9 +92,9 @@ describe('authenticateApiKey', () => {
         expect(db.writes('api_keys')).toEqual([])
     })
 
-    it('refuses a key on a workspace still in its trial', async () => {
+    it('accepts a key on a workspace still in its trial', async () => {
         workspaceRow = { subscription_status: 'trialing', is_sandbox: false }
-        await expect(authenticateApiKey(generateApiKey())).resolves.toBeNull()
+        await expect(authenticateApiKey(generateApiKey())).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdBy: 'u1' })
     })
 
     it('refuses a key whose workspace is gone', async () => {

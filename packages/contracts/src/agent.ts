@@ -102,8 +102,8 @@ export const DEFAULT_PROVIDER_MODEL: Record<Provider, string> = {
     claude: 'claude-opus-5-5',
     codex: 'gpt-6-sol',
     openai: 'gpt-5.4',
-    google: 'gemini-3.5-flash',
-    openrouter: 'anthropic/claude-sonnet-5',
+    google: 'gemini-3.6-flash',
+    openrouter: 'anthropic/claude-sonnet-5.5',
 }
 
 // How much prose the agent addresses to the user, independent of how much work it does. `normal`

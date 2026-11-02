@@ -10,11 +10,11 @@ export function isPremiumModel(model: string): boolean {
     return PREMIUM_MODEL.test(model)
 }
 
-// Sonnet 5 as each provider spells it. Only the providers that serve Opus or Fable need one.
+// Sonnet 5.5 as each provider spells it. Only the providers that serve Opus or Fable need one.
 const TRIAL_CLAUDE_MODEL: Partial<Record<Provider, string>> = {
-    claude: 'claude-sonnet-5[1m]',
-    anthropic: 'claude-sonnet-5',
-    openrouter: 'anthropic/claude-sonnet-5',
+    claude: 'claude-sonnet-5-5',
+    anthropic: 'claude-sonnet-5-5',
+    openrouter: 'anthropic/claude-sonnet-5.5',
 }
 
 // What a trial box runs in place of a premium model, one step down in the same family.

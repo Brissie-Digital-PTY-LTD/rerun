@@ -56,8 +56,10 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
             model('claude-opus-5-5', 5),
             model('claude-opus-5', 5),
             model('claude-opus-4-8', 4),
+            model('claude-sonnet-5-5', 4),
             model('claude-sonnet-5', 4),
             model('claude-sonnet-4-6', 3),
+            model('claude-haiku-5-5', 3),
             model('claude-haiku-4-5-20251001', 2),
         ],
     },
@@ -68,8 +70,8 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
         section: 'subscription',
         apiKeyUrl: 'https://docs.claude.com/en/docs/claude-code/setup',
         // Claude Code's own picker, id for id. `[1m]` is how the CLI names the 1M-context variant of
-        // a model whose default window is smaller; Fable and Opus 5/5.5 are 1M natively and take none.
-        // Opus 5.5 needs Claude Code 2.1.280, which `rerun update` now installs.
+        // a model whose default window is smaller; Fable, Opus 5/5.5, Sonnet 5.5 and Haiku 5.5 are 1M
+        // natively and take none. Haiku 5.5 needs Claude Code 2.1.293, which `rerun update` installs.
         models: [
             model('claude-opus-5-5', 5),
             model('claude-fable-5-1', 6),
@@ -78,9 +80,11 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
             model('claude-opus-4-8[1m]', 4),
             model('claude-opus-4-7[1m]', 4),
             model('claude-opus-4-6[1m]', 3),
+            model('claude-sonnet-5-5', 4),
             model('claude-sonnet-5[1m]', 4),
             model('claude-sonnet-4-6[1m]', 3),
             model('claude-sonnet-4-6', 3),
+            model('claude-haiku-5-5', 3),
             model('claude-haiku-4-5', 2),
         ],
     },
@@ -90,18 +94,19 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
         keyName: 'CODEX_OAUTH_TOKEN',
         section: 'subscription',
         apiKeyUrl: 'https://developers.openai.com/codex/cli',
-        // `gpt-6-sol` and `gpt-6-luna` need Codex CLI 0.156.1, which `rerun update` now installs; the
-        // same release retired `gpt-5.4` from the picker. GPT-6 rollouts are staged the way
-        // `gpt-5.6-sol`'s was, so the backend can still answer 400 "not supported when using Codex
-        // with a ChatGPT account" on the smaller plans.
+        // `gpt-6.1-sol` and `gpt-6.1-terra` need Codex CLI 0.159.1, which `rerun update` now installs.
+        // `gpt-5.5` left Codex for ChatGPT sign-ins on 2026-10-14. GPT-6.1 Sol is still rolling out
+        // plan by plan, so `gpt-6-sol` stays first: the backend can answer 400 "not supported when
+        // using Codex with a ChatGPT account" on a plan that does not have it yet.
         models: [
             model('gpt-6-sol', 5),
+            model('gpt-6.1-sol', 5),
             model('gpt-6-astra', 6),
+            model('gpt-6.1-terra', 4),
             model('gpt-6-luna', 3),
             model('gpt-5.6-sol', 5),
             model('gpt-5.6-terra', 4),
             model('gpt-5.6-luna', 2),
-            model('gpt-5.5', 4),
         ],
     },
     {
@@ -112,7 +117,9 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
         apiKeyUrl: 'https://platform.openai.com/api-keys',
         models: [
             model('gpt-6-astra', 6),
+            model('gpt-6.1-sol', 5),
             model('gpt-6-sol', 5),
+            model('gpt-6.1-terra', 4),
             model('gpt-6-luna', 3),
             model('gpt-5.6-sol', 5),
             model('gpt-5.5', 4),
@@ -127,9 +134,9 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
         section: 'api',
         apiKeyUrl: 'https://aistudio.google.com/apikey',
         models: [
+            model('gemini-4-argon', 5),
             model('gemini-3.8-flash', 4),
-            model('gemini-3.1-pro-preview', 4),
-            model('gemini-3.5-flash', 3),
+            model('gemini-3.6-flash', 3),
             model('gemini-3.5-flash-lite', 2),
         ],
     },
@@ -142,18 +149,19 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
         models: [
             model('anthropic/claude-fable-5.1', 6),
             model('anthropic/claude-opus-5.5', 5),
-            model('anthropic/claude-sonnet-5', 4),
+            model('anthropic/claude-sonnet-5.5', 4),
             model('openai/gpt-6-astra', 6),
+            model('openai/gpt-6.1-sol', 5),
             model('openai/gpt-6-sol', 5),
             model('openai/gpt-6-luna', 3),
+            model('google/gemini-4-argon', 5),
             model('google/gemini-3.8-flash', 4),
-            model('google/gemini-3.1-pro-preview', 4),
-            model('x-ai/grok-4.6', 4),
-            model('moonshotai/kimi-k3', 4),
+            model('x-ai/grok-4.7', 4),
+            model('moonshotai/kimi-k3.1-pro', 4),
             model('deepseek/deepseek-v4-pro', 3),
-            model('xiaomi/mimo-v2.5-pro', 3),
+            model('xiaomi/mimo-v2.6-pro', 3),
             model('qwen/qwen3.8-flash', 2),
-            model('minimax/minimax-m3', 2),
+            model('minimax/minimax-m3.1-flash', 2),
         ],
     },
 ]
