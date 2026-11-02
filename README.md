@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-night.jpg">
-    <img alt="Rerun: the Foreman and four coworkers" src=".github/assets/banner-cream.jpg" width="100%">
+    <img alt="Rerun: the Foreman presenting a team of coworkers on the board" src=".github/assets/banner-cream.jpg" width="100%">
   </picture>
 </p>
 
@@ -121,7 +121,20 @@ A few coworkers people hire on day one:
 
 ## 🚀 Quick start
 
-You need Docker, Node.js 22, and a Supabase project (a free one on [supabase.com](https://supabase.com) works).
+Let an AI install it for you:
+
+<p align="center">
+  <a href="https://claude.ai/new?q=Install%20Rerun%2C%20the%20open%20source%20AI%20coworkers%20app%2C%20for%20me.%20Follow%20the%20guide%20written%20for%20AI%20assistants%3A%20https%3A%2F%2Fraw.githubusercontent.com%2Frerun-build%2Frerun%2Fmain%2FINSTALL.md"><img alt="Install with Claude" src=".github/assets/install-with-claude.svg" height="56"></a>
+  <a href="https://chatgpt.com/?q=Install%20Rerun%2C%20the%20open%20source%20AI%20coworkers%20app%2C%20for%20me.%20Follow%20the%20guide%20written%20for%20AI%20assistants%3A%20https%3A%2F%2Fraw.githubusercontent.com%2Frerun-build%2Frerun%2Fmain%2FINSTALL.md"><img alt="Install with ChatGPT" src=".github/assets/install-with-chatgpt.svg" height="56"></a>
+</p>
+
+Or paste this into Claude Code, Codex or Cursor, which run the commands for you:
+
+```text
+Install Rerun, the open source AI coworkers app, for me. Follow the guide written for AI assistants: https://raw.githubusercontent.com/rerun-build/rerun/main/INSTALL.md
+```
+
+By hand, you need Docker, Node.js 22, and a Supabase project (a free one on [supabase.com](https://supabase.com) works).
 
 ```bash
 git clone https://github.com/rerun-build/rerun.git && cd rerun

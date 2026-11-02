@@ -508,10 +508,13 @@ export async function resetServiceConnection(agentId: string, key: string, works
     if (!entry) return { mode: 'config' }
 
     // A paid app's account belongs to the workspace, so a reset only sends the coworker back to
-    // picking one: the account itself stays connected for the other coworkers.
+    // picking one: the account itself stays connected for the other coworkers. A coworker still
+    // bound keeps working while the picker is open, since closing it without a pick changes nothing.
     if (entry.app?.serverName) {
         const app = { appSlug: entry.app.appSlug, serverName: entry.app.serverName }
-        await upsertRegistryEntry(conn, engineAgentId, key, { ...entry, status: 'needs_auth', app })
+        const bound = isAppSlug(app.appSlug) ? await boundAccountLabel(agentId, app.appSlug) : null
+        if (bound === null) await upsertRegistryEntry(conn, engineAgentId, key, { ...entry, status: 'needs_auth', app })
+        else await upsertRegistryEntry(conn, engineAgentId, key, { ...entry, status: 'active', app: { ...app, ...(bound ? { accountLabel: bound } : {}) } })
         return { mode: 'auth', app }
     }
 

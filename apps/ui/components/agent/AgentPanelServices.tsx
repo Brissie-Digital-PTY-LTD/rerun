@@ -206,12 +206,12 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
     }, [agentId, debouncedQuery, selectedCategory])
 
     const onInstall = useCallback(
-        async (key: string) => {
+        async (key: string, authTarget?: AuthTargets) => {
             const { slug } = parseServiceRegistryKey(key)
             const [details, alternatives] = await Promise.all([getServiceDetailsAction(agentId, key), getServiceAlternativesAction([slug])])
             if (!details) return
             const icon = [...installed, ...browseServices, ...searchResults].find(s => s.slug === slug)?.icon ?? null
-            const target = toSetupTarget(details, icon, alternatives[slug] ?? [])
+            const target = { ...toSetupTarget(details, icon, alternatives[slug] ?? []), ...(authTarget ? { initialAuthTarget: authTarget } : {}) }
             setSwapError(null)
             // Already compiled and only waiting on the sign-in → the form opens straight on
             // Connect rather than recompiling the service to rediscover a target we already hold.
@@ -264,7 +264,8 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
 
 
     // Clear the stored sign-in, then hand over to onInstall: the entry now reads needs_auth, so
-    // it lands straight on Connect without recompiling anything.
+    // it lands straight on Connect without recompiling anything. A paid app still bound to an
+    // account stays active, so its picker is opened explicitly.
     const onReconnect = useCallback(
         async (key: string) => {
             setError(null)
@@ -275,7 +276,7 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
                 setError(res.error)
                 return
             }
-            await onInstall(key)
+            await onInstall(key, res.result.mode === 'auth' && res.result.app ? { app: res.result.app } : undefined)
             await load()
         },
         [agentId, onInstall, load],
