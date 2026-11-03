@@ -1,23 +1,23 @@
-# La page de la template (draft privé)
+# The template page (private draft)
 
-Tout en anglais. La page vend **un résultat**, et ne promet que ce que l'agent capturé porte vraiment (apps déclarées, skill, schedule). Limites : `packages/contracts/src/template.ts` et `template-display.ts`.
+All in English. The page sells **a result**, and only promises what the captured agent really carries (declared apps, skill, schedule). Limits: `packages/contracts/src/template.ts` and `template-display.ts`.
 
-## `title` (≤ 50 caractères, fixe le slug pour toujours)
+## `title` (≤ 50 characters, sets the slug forever)
 
-Verbe + objet, 3 à 6 mots, en Title Case. Test littéral : « This agent will {title} » doit être grammatical et nommer un job concret.
+Verb + object, 3 to 6 words, in Title Case. Literal test: "This agent will {title}" must be grammatical and name a concrete job.
 
-- Bon : `Create TikTok Carousels`, `Find Qualified B2B Leads`, `Copy Winning Competitor Ads`, `Triage Incoming Email`.
-- Mauvais : `Carousel Studio` (le nom de l'agent), `TikTok Assistant`, `Lead Gen Copilot`, `Ad Monitor` (étiquettes sans verbe).
+- Good: `Create TikTok Carousels`, `Find Qualified B2B Leads`, `Copy Winning Competitor Ads`, `Triage Incoming Email`.
+- Bad: `Carousel Studio` (the agent's name), `TikTok Assistant`, `Lead Gen Copilot`, `Ad Monitor` (labels with no verb).
 
-Le titre est **indépendant du nom d'affichage** de l'agent. Je le fais valider dans le brief, avant `create_template`, car le slug ne se change plus.
+The title is **independent of the agent's display name**. I have it validated in the brief, before `create_template`, because the slug can no longer be changed.
 
-## `tagline` (~160 caractères, sous-titre de la carte)
+## `tagline` (~160 characters, the card's subtitle)
 
-Une phrase : ce que le propriétaire obtient, pour qui. « Turn any idea, link or product into ready-to-post TikTok carousels, designed in your brand and posted when you say go. »
+One sentence: what the owner gets, for whom. "Turn any idea, link or product into ready-to-post TikTok carousels, designed in your brand and posted when you say go."
 
-## `longDescription` (markdown, c'est le corps de la page)
+## `longDescription` (markdown, it is the body of the page)
 
-Court, scannable, honnête :
+Short, scannable, honest:
 
 ```markdown
 {1–2 sentences: the outcome, in the reader's words.}
@@ -36,47 +36,47 @@ Court, scannable, honnête :
 - {what it never does without approval: posting, sending, spending}
 ```
 
-Je n'annonce ni intégration, ni automatisation, ni chiffre de résultat que l'agent ne porte pas.
+I announce no integration, automation or result figure that the agent does not carry.
 
 ## `category`
 
-L'audience qui installe, pas l'équipe qui ferait le travail : `agencies`, `ecommerce`, `saas`, `sales`, `recruiting`, `real-estate`, `legal`, `creators`, `productivity`, `other`.
+The audience that installs, not the team that would do the work: `agencies`, `ecommerce`, `saas`, `sales`, `recruiting`, `real-estate`, `legal`, `creators`, `productivity`, `other`.
 
 ## `tags`
 
-4 à 8 termes simples qu'on taperait dans une recherche : `tiktok`, `carousel`, `content`, `social media`.
+4 to 8 simple terms someone would type in a search: `tiktok`, `carousel`, `content`, `social media`.
 
-## `setupMinutes` (honnête, jamais 5 par défaut)
+## `setupMinutes` (honest, never 5 by default)
 
-1 min d'install
-+ 2 par app connectée par popup OAuth
-+ 3 + 1 par champ pour une app dont la clé doit être récupérée dans un autre dashboard
-+ 2 si `setup.required`
-+ 1 par schedule à confirmer
-→ arrondi au palier supérieur parmi 2, 3, 5, 8, 10, 12, 15, 20.
+1 min of install
++ 2 per app connected through an OAuth popup
++ 3 + 1 per field for an app whose key has to be fetched from another dashboard
++ 2 if `setup.required`
++ 1 per schedule to confirm
+→ rounded up to the next step among 2, 3, 5, 8, 10, 12, 15, 20.
 
-Exemple : install (1) + setup (2) + aucune app au départ = 3 → **3**.
+Example: install (1) + setup (2) + no app at the start = 3 → **3**.
 
-## `faq` (4 à 6)
+## `faq` (4 to 6)
 
-Les questions telles qu'on les tape dans Google, réponses de 1 à 3 phrases, vraies pour ce que porte l'agent :
-- « Can it post to TikTok automatically? »
-- « Do I need a Canva account? »
-- « How much does it cost to run? » — réponse : les runs consomment du crédit Rerun ; le paid data, s'il est on, est validé avant chaque dépense. Je ne cite pas de montant.
-- « Can I use it for Instagram or LinkedIn too? » — montre l'ouverture de l'agent.
+The questions as people type them into Google, answers of 1 to 3 sentences, true for what the agent carries:
+- "Can it post to TikTok automatically?"
+- "Do I need a Canva account?"
+- "How much does it cost to run?" Answer: runs consume Rerun credit; paid data, if on, consumes credit too: the agent says what each spend cost, and in chat it asks for approval before a large spend. I don't quote an amount and I never promise that every spend is approved.
+- "Can I use it for Instagram or LinkedIn too?" Shows the agent's openness.
 
-## `metaDescription` (120 à 155 caractères, exigée à la soumission)
+## `metaDescription` (120 to 155 characters, required at submission)
 
-Une phrase SEO avec le mot-clé principal au début. Je compte les caractères avant d'envoyer.
+One SEO sentence with the main keyword at the start. I count the characters before sending.
 
-## Prix
+## Price
 
-`pricingModel: "free"`, `priceAmountCents: 0` sauf demande explicite de l'auteur (payant : 500 à 200 000 centimes, `one_time` ou `recurring`, Stripe à configurer par l'auteur).
+`pricingModel: "free"`, `priceAmountCents: 0` unless the author explicitly asks (paid: 500 to 200,000 cents, `one_time` or `recurring`, Stripe to be set up by the author).
 
-## Ce que le MCP ne peut pas écrire
+## What the MCP cannot write
 
-`story`, `slug`, `status`, `featured`, `leadMagnet`, la visibilité, `ogImageUrl`. Le flag lead magnet est posé par un admin après publication ; la story se fait avec `template-story <slug>` une fois les agents capturés.
+`story`, `slug`, `status`, `featured`, `leadMagnet`, visibility, `ogImageUrl`. The lead magnet flag is set by an admin after publication; the story is done with `template-story <slug>` once the agents are captured.
 
 ## Image
 
-Je n'en génère pas ici. La soumission demandera une image de couverture : je la liste dans `humanFollowUp` et je propose `rerun-image-from-agent-task` (prompt) puis `add_template_image` (URL https, `cover: true`).
+I don't generate one here. Submission does not require an image (the cards draw the board of the captured agents), but a cover sells better: I list it in `humanFollowUp` as recommended and I propose `rerun-image-from-agent-task` (prompt) then `add_template_image` (https URL, `cover: true`).

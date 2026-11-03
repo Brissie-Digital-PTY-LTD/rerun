@@ -4,7 +4,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, 
 import { DetailBlock } from '@/components/connections/DetailBlock'
 import { PowerBars } from '@/components/ui/power-bars'
 import { TooltipLabeled } from '@/components/ui/tooltip'
-import { isModelEnabled, offeredModels } from '@/lib/engine/ai-sources'
+import { cliUnavailableReason, isModelEnabled, offeredModels } from '@/lib/engine/ai-sources'
 import type { CatalogModel } from '@/lib/engine/models'
 import type { BoxConnection } from '@/lib/engine/types'
 import { EyeOffIcon, PlusIcon, StarIcon } from '@/lib/icons'
@@ -38,7 +38,23 @@ function ChipFace({ model, muted, lifted, corner }: { model: CatalogModel; muted
     )
 }
 
-function ModelChip({ model, bucket, isDefault, lockReason, onMove }: { model: CatalogModel; bucket: Bucket; isDefault: boolean; lockReason?: string; onMove: () => void }) {
+// `unavailable` is why the subscription's CLI cannot run the model on this box: still curated like any
+// other, shown muted so a model that is switched on but cannot run does not read as ready.
+function ModelChip({
+    model,
+    bucket,
+    isDefault,
+    lockReason,
+    unavailable,
+    onMove,
+}: {
+    model: CatalogModel
+    bucket: Bucket
+    isDefault: boolean
+    lockReason?: string
+    unavailable?: string
+    onMove: () => void
+}) {
     const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: model.id, disabled: !!lockReason })
     const MoveIcon = bucket === 'available' ? EyeOffIcon : PlusIcon
 
@@ -46,7 +62,7 @@ function ModelChip({ model, bucket, isDefault, lockReason, onMove }: { model: Ca
         <div ref={setNodeRef} {...listeners} {...attributes} className={cn('group/chip touch-none rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring', lockReason ? 'cursor-not-allowed' : 'cursor-grab', isDragging && 'opacity-30')}>
             <ChipFace
                 model={model}
-                muted={bucket === 'hidden'}
+                muted={bucket === 'hidden' || !!unavailable}
                 corner={
                     isDefault ? (
                         <StarIcon aria-label="Default model" className="size-3.5 self-start text-yellow-400 [&_polygon]:fill-current" />
@@ -68,7 +84,8 @@ function ModelChip({ model, bucket, isDefault, lockReason, onMove }: { model: Ca
         </div>
     )
 
-    return lockReason ? <TooltipLabeled label={lockReason}>{chip}</TooltipLabeled> : chip
+    const reason = lockReason ?? unavailable
+    return reason ? <TooltipLabeled label={reason}>{chip}</TooltipLabeled> : chip
 }
 
 function ModelZone({ bucket, title, aside, empty, count, children }: { bucket: Bucket; title: string; aside?: ReactNode; empty: string; count: number; children: ReactNode }) {
@@ -154,12 +171,20 @@ export function ModelBuckets({ connection, defaultModel, onModelsChange }: Model
                     count={available.length}
                 >
                     {available.map(model => (
-                        <ModelChip key={model.id} model={model} bucket="available" isDefault={model.id === defaultModel} lockReason={lockReason(model)} onMove={() => move(model.id, 'hidden')} />
+                        <ModelChip
+                            key={model.id}
+                            model={model}
+                            bucket="available"
+                            isDefault={model.id === defaultModel}
+                            lockReason={lockReason(model)}
+                            unavailable={cliUnavailableReason(connection, model.id)}
+                            onMove={() => move(model.id, 'hidden')}
+                        />
                     ))}
                 </ModelZone>
                 <ModelZone bucket="hidden" title="Turned off" empty="Drag a model here to keep coworkers off it." count={hidden.length}>
                     {hidden.map(model => (
-                        <ModelChip key={model.id} model={model} bucket="hidden" isDefault={false} onMove={() => move(model.id, 'available')} />
+                        <ModelChip key={model.id} model={model} bucket="hidden" isDefault={false} unavailable={cliUnavailableReason(connection, model.id)} onMove={() => move(model.id, 'available')} />
                     ))}
                 </ModelZone>
             </div>

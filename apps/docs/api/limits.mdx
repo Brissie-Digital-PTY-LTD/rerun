@@ -18,6 +18,8 @@ description: "What the API caps, what it refuses, and what it promises."
 | `list_connectors` | 60 per page by default, 200 maximum |
 | Reference files per skill | 200, 10 MB each, 50 MB per skill including `SKILL.md` |
 | `read_skill_file` | 100 000 characters per page |
+| `get_run` tool call `input` and `result` | 2,000 characters each, the rest replaced by a truncation marker |
+| One tool result | 200,000 characters. A larger one is refused with an error asking for a narrower request |
 | Webhook request body | 1 MB |
 | Payload handed to a coworker by a webhook | 64 KB |
 | Paid template price | \$5 minimum, \$2,000 maximum |
@@ -64,7 +66,7 @@ There is no read-only key, no per-coworker key and no per-tool permission. If yo
 - **Skills are written atomically.** `upsert_skill` stages the whole folder and swaps it in, so a failed call never leaves a half-written skill.
 - **Multi-statement SQL is transactional.** `db_execute` and `space_db_execute` with `statements` apply all of them or none.
 - **A tool error is readable.** Failures come back as `isError` results with a message written to be acted on, not as an opaque protocol error. See [Errors](/api/protocol#errors).
-- **Renaming is safe.** Changing a coworker `name` never moves its `handle`, so `@handle` references in other coworkers keep resolving.
+- **Renaming is safe.** Changing a coworker `name` re-derives its `handle` and rewrites every `@handle` reference in the other coworkers, so their calls keep resolving.
 
 ## Availability
 

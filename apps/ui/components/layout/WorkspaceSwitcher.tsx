@@ -34,9 +34,10 @@ import { useBillingStore } from '@/stores/billing.store'
 import { useCreatorStore } from '@/stores/creator.store'
 import { useBrainStore } from '@/stores/brain.store'
 import { useForemanStore } from '@/stores/foreman.store'
+import { useNotificationsStore } from '@/stores/notifications.store'
 import { useWorkspaceSettingsStore } from '@/stores/workspace-settings.store'
 import { useSession } from '@/supabase/session/SessionProvider'
-import { BadgeCheck, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserPlus, UserRoundIcon } from '@/lib/icons'
+import { BadgeCheck, BellIcon, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserPlus, UserRoundIcon } from '@/lib/icons'
 import { openCrisp } from '@/lib/crisp'
 import { cn } from '@/lib/utils'
 import { abortWorkspaceSwitch, beginWorkspaceSwitch, enterActiveWorkspace } from '@/lib/workspace/workspace-switch'
@@ -346,6 +347,10 @@ export function WorkspaceSwitcher() {
                     />
                 </DropdownMenuSubContent>
             </DropdownMenuSub>
+            <DropdownMenuItem onSelect={() => useNotificationsStore.getState().openNotifications()} className="gap-2 text-muted-foreground">
+                <BellIcon className="size-4" />
+                Notifications
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => openAccount()} className="gap-2 text-muted-foreground">
                 <UserRoundIcon className="size-4" />
                 Account

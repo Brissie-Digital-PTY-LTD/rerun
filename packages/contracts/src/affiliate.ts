@@ -24,6 +24,16 @@ export const AFFILIATE_REFERRAL_COOKIE = 'affonso_referral'
 // The key Affonso looks for in the metadata of whatever Stripe object carries the revenue.
 export const AFFILIATE_REFERRAL_METADATA_KEY = 'affonso_referral'
 
+// The query parameters the pixel reads a referral from, in the order `pixel.js` checks them, plus
+// the click id it appends to the landing URL itself. A page arriving with one of them has an
+// affiliate to credit before anything else happens.
+export const AFFILIATE_REFERRAL_PARAMS = ['affonso', 'atp', 'aff', 'via', 'ref', 'affonso_id'] as const
+
+export function hasAffiliateReferral(search: string): boolean {
+    const params = new URLSearchParams(search)
+    return AFFILIATE_REFERRAL_PARAMS.some(name => params.has(name))
+}
+
 // The pixel resolves `psl.min.js` against its own src, so both static assets sit under this path
 // and `next.config` rewrites them straight to the CDN. The API endpoints below cannot take that
 // route, see `proxyAffiliateApi`.

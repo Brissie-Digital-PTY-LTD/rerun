@@ -385,7 +385,7 @@ const AGENT_TOOL_DEFS = [
     },
     {
         name: 'get_run',
-        description: 'One execution in full: its final output, status, error, token usage and cost. Set includeToolCalls to also get every tool the coworker called with its input and result, which is what you read when the output is not what you expected.',
+        description: 'One execution: its final output, status, error, token usage and cost. Set includeToolCalls to also get every tool the coworker called with its input and result, which is what you read when the output is not what you expected. Each input and result is cut at 2,000 characters with a [truncated] marker: a preview to diagnose from, not the full payload.',
         inputSchema: {
             type: 'object',
             properties: { agentId: { type: 'string' }, runId: { type: 'string' }, includeToolCalls: { type: 'boolean' } },

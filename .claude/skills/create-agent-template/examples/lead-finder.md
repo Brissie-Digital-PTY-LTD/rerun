@@ -1,32 +1,32 @@
-# Exemple 2 — « Un agent qui trouve des leads »
+# Example 2: « Un agent qui trouve des leads »
 
-Cadrage **Cadré** · install **Standard** · paid data **on** (`people`, `companies`, `search`) · computer use **off** · aucune app déclarée · récurrent (hebdo) + à la demande.
+**Framed** framing · **Standard** install · paid data **on** (`people`, `companies`, `search`) · computer use **off** · no declared app · recurring (weekly) + on demand.
 
-## Pré-calcul (phase 1)
+## Pre-computation (phase 1)
 
-- Livrable héros : une table de prospects qualifiés (personne, rôle, entreprise, pourquoi elle colle, comment la joindre), en base, affichée dans le chat.
-- Audience : `sales`.
-- Premier résultat sans connexion : à partir du site du propriétaire, déduire son client idéal et sortir 10 premiers leads.
-- Atterrissage : la base de l'agent + un export ; le CRM varie trop d'un propriétaire à l'autre (HubSpot, Pipedrive, Attio, un Sheet) → **aucune app déclarée**, l'agent proposera celle du propriétaire au moment de pousser les leads.
-- Paid data : le cœur du job (recherche de personnes, enrichissement d'entreprises, Google Maps pour du local) → **on**.
-- Computer use : rien à opérer sur un site → **off**.
-- La forme du livrable est la promesse (colonnes, raison du fit, déduplication d'une semaine à l'autre) → **Cadré**.
-- Ce qui varie : la cible (ICP), l'offre, la zone, où vont les leads.
+- Hero deliverable: a table of qualified prospects (person, role, company, why they fit, how to reach them), in the database, shown in the chat.
+- Audience: `sales`.
+- First result without a connection: from the owner's site, infer their ideal customer and come out with 10 first leads.
+- Landing: the agent's database + an export; the CRM varies too much from one owner to the next (HubSpot, Pipedrive, Attio, a Sheet) → **no declared app**, the agent will offer the owner's one when it is time to push the leads.
+- Paid data: the core of the job (people search, company enrichment, Google Maps for local) → **on**.
+- Computer use: nothing to operate on a site → **off**.
+- The form of the deliverable is the promise (columns, fit reason, deduplication from one week to the next) → **Framed**.
+- What varies: the target (ICP), the offer, the area, where the leads go.
 
 ## Interview (2 rounds, 7 questions)
 
-Round 1 : promesse (« A fresh list of qualified leads every week » *Recommandé*) · déclencheur (Les deux : à la demande + lundi 9 h *Recommandé*) · cadrage (Cadré *Recommandé* : la table est le produit) · install (Standard *Recommandé*).
-Round 2 : apps (Aucune déclarée *Recommandé* / HubSpot / Google Sheets) · paid data (On *Recommandé* : « pour trouver les décideurs et leurs emails pro ») · computer use (Off *Recommandé*).
+Round 1: promise ("A fresh list of qualified leads every week" *Recommended*) · trigger (Both: on demand + Monday 9 am *Recommended*) · framing (Framed *Recommended*: the table is the product) · install (Standard *Recommended*).
+Round 2: apps (None declared *Recommended* / HubSpot / Google Sheets) · paid data (On *Recommended*: "to find the decision-makers and their work emails") · computer use (Off *Recommended*).
 
 ## Build
 
 **`create_agent`**
-- `name` : `Lead Scout`
-- `description` : `Finds qualified leads that fit your offer and keeps a fresh list every week.`
-- `tools` : `{ "computer": false }`
-- `connectors` : `[]`
+- `name`: `Lead Scout`
+- `description`: `Finds qualified leads that fit your offer and keeps a fresh list every week.`
+- `tools`: `{ "computer": false }`
+- `connectors`: `[]`
 
-**SOUL.md** (≈ 85 mots)
+**SOUL.md** (≈ 85 words)
 
 ```markdown
 # Lead Scout
@@ -38,7 +38,7 @@ A great lead list is short and earned: every row is a real decision-maker at a c
 Adapt to each user's market, offer and tools; when they want it done differently, do it their way.
 ```
 
-**INSTALL.md** (≈ 125 mots)
+**INSTALL.md** (≈ 125 words)
 
 ```markdown
 First result: ask for their website, infer who they sell to, state that profile in two lines, then find 10 leads that fit and show them as a table.
@@ -49,7 +49,7 @@ Schedule: confirm the weekly run day, time and timezone.
 Done when: they are happy with the profile and the second list.
 ```
 
-**Skill `weekly-leads`** (Cadré, ≈ 250 mots)
+**Skill `weekly-leads`** (Framed, ≈ 250 words)
 
 ```markdown
 ---
@@ -79,7 +79,7 @@ The `leads` table keeps: name, role, company, website, location, fit reason, ema
 - The spend matched what the list needed.
 ```
 
-**Schedule `weekly-lead-run`** — `cron: "0 9 * * 1"`, `timezone: "Europe/Paris"` (défaut, confirmé à l'install), **`enabled: false`**
+**Schedule `weekly-lead-run`**: `cron: "0 9 * * 1"`, `timezone: "Europe/Paris"` (default, confirmed at install), **`enabled: false`**
 
 ```
 Find this week's new leads for the profile in memory, add them to the leads table without duplicates, and send the user a short summary with the 5 best and why they fit.
@@ -87,15 +87,15 @@ Find this week's new leads for the profile in memory, add them to the leads tabl
 
 ## Test (phase 4)
 
-`send_message` : « Find me 10 leads. We sell an onboarding tool for B2B SaaS — site: userflow.com. »
-Attendu : profil déduit en deux lignes, puis une première table achetée en paid data avec son coût en crédits. À corriger si : l'agent pose cinq questions avant de proposer un profil, ou assemble la liste à la main en recherches web.
+`send_message`: "Find me 10 leads. We sell an onboarding tool for B2B SaaS — site: userflow.com."
+Expected: profile inferred in two lines, then a first table bought with paid data with its cost in credits. To fix if: the agent asks five questions before proposing a profile, or assembles the list by hand with web searches.
 
-À la capture : la table `leads` créée par le test est dans `data/agent.db` → **exclue**.
+At capture: the `leads` table created by the test is in `data/agent.db` → **excluded**.
 
 ## Listing
 
-- `title` : `Find Qualified B2B Leads` — « This agent will find qualified B2B leads » ✓
-- `tagline` : `Get a fresh list of decision-makers who fit your offer every week, each with the reason they fit and a way to reach them.`
-- `category` : `sales` · `tags` : `leads`, `prospecting`, `b2b`, `sales`, `lead generation`
-- `setupMinutes` : install 1 + setup 2 + 1 schedule = 4 → **5**
-- `metaDescription` (≈ 145 caractères) : `Find qualified B2B leads every week: decision-makers that fit your offer, why they fit and how to reach them, kept fresh and deduplicated by Rerun.`
+- `title`: `Find Qualified B2B Leads` ("This agent will find qualified B2B leads" ✓)
+- `tagline`: `Get a fresh list of decision-makers who fit your offer every week, each with the reason they fit and a way to reach them.`
+- `category`: `sales` · `tags`: `leads`, `prospecting`, `b2b`, `sales`, `lead generation`
+- `setupMinutes`: install 1 + setup 2 + 1 schedule = 4 → **5**
+- `metaDescription` (≈ 145 characters): `Find qualified B2B leads every week: decision-makers that fit your offer, why they fit and how to reach them, kept fresh and deduplicated by Rerun.`

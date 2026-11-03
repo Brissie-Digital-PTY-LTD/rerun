@@ -12,6 +12,7 @@ const { DEFAULT_CONNECTION_MODELS, agentConfigSchema } = await import('@rerun/co
 const { boxPlanPath, connectionsDir } = await import('../config/paths.js')
 const { createConnection } = await import('./store.js')
 const { allowedModel, readBoxPlan, writeBoxPlan } = await import('./plan.js')
+const { forgetCliModels, recordCliModels } = await import('./cli-models.js')
 const { defaultModelOf, resolveConfiguredModel, resolveRunModel } = await import('../agents/availability.js')
 
 async function pinnedAgent(provider: Provider, model: string): Promise<LoadedAgent> {
@@ -86,6 +87,21 @@ describe('model resolution on a trial box', () => {
         expect(defaultModelOf(connection)).toBe('claude-opus-5-5')
         await writeBoxPlan({ premiumModels: false })
         expect(defaultModelOf(connection)).toBe('claude-sonnet-5-5')
+    })
+
+    it('adopts the first model the subscription CLI serves, and any once it has no reading', async () => {
+        const connection = await createConnection({ name: 'codex', provider: 'codex', models: ['gpt-6.1-sol', 'gpt-6-sol'], extraModels: [], keys: {} })
+        recordCliModels(connection.id, ['gpt-6-sol', 'gpt-6-luna'], '0.156.1', true)
+        expect(defaultModelOf(connection)).toBe('gpt-6-sol')
+        forgetCliModels(connection.id)
+        expect(defaultModelOf(connection)).toBe('gpt-6.1-sol')
+    })
+
+    it('keeps the first model as the Claude default whatever Claude Code lists', async () => {
+        const connection = await createConnection({ name: 'claude', provider: 'claude', models: DEFAULT_CONNECTION_MODELS.claude, extraModels: [], keys: {} })
+        recordCliModels(connection.id, ['claude-sonnet-5-5', 'claude-haiku-5-5'], '2.1.317', false)
+        expect(defaultModelOf(connection)).toBe('claude-opus-5-5')
+        forgetCliModels(connection.id)
     })
 
     it('reads a corrupt file as unrestricted', async () => {

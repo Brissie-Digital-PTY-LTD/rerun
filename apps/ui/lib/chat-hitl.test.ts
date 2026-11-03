@@ -338,6 +338,13 @@ describe('browser takeover', () => {
         expect(parseHitlReply(serializeTakeoverResult(null))).toEqual({ kind: 'takeover', url: null })
     })
 
+    it('tells the coworker its window is closed and which tool reopens the page', () => {
+        const text = serializeTakeoverResult('https://web.whatsapp.com/')
+        expect(text).toContain('The window is closed')
+        expect(text).toContain('computer_open_app when you were working on your screen')
+        expect(text).toContain('browser_navigate otherwise')
+    })
+
     it('tells a skipped takeover apart from a completed one', () => {
         expect(parseHitlReply(HITL_CANCELLED.takeover)).toEqual({ kind: 'cancelled', of: 'takeover' })
         expect(parseHitlReply('Browser handed back, thanks')).toBeNull()

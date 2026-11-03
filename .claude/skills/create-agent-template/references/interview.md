@@ -1,81 +1,81 @@
-# L'interview : peu de questions, toutes avec une recommandation
+# The interview: few questions, all with a recommendation
 
-Le but n'est pas de tout demander, c'est de faire trancher à l'auteur **les choix qui changent le build**. Tout le reste, je le décide et je l'annonce dans le brief.
+The goal is not to ask everything, it is to have the author settle **the choices that change the build**. Everything else I decide and announce in the brief.
 
-Contraintes : `AskUserQuestion`, ≤ 4 questions par round, 2 rounds, 3 au maximum, ≤ 12 questions au total. Option recommandée en premier, suffixée « (Recommandé) ». Chaque option a une description d'une ligne qui dit **ce que le choix change**. Les questions sont en français, les formulations proposées pour l'agent en anglais.
+Constraints: `AskUserQuestion`, ≤ 4 questions per round, 2 rounds, 3 at most, ≤ 12 questions in total. Recommended option first, suffixed "(Recommended)". Each option has a one-line description that says **what the choice changes**. The questions are in the user's language, the wordings proposed for the agent in English.
 
-## Pré-calcul (phase 1, sans rien demander)
+## Pre-computation (phase 1, without asking anything)
 
-Pour chaque sujet, je remplis cette fiche en interne avant le round 1 :
+For each topic, I fill in this sheet internally before round 1:
 
-| Champ | Comment je le trouve |
+| Field | How I find it |
 |---|---|
-| Livrable héros | L'objet fini qu'un pro rendrait. « Créer un carrousel TikTok » → 6 à 8 slides prêtes à poster + légende + hashtags. « Trouver des leads » → une table de prospects qualifiés avec la raison du fit. |
-| Audience | La personne qui installe, pas l'équipe qui ferait le travail. → une catégorie de `TEMPLATE_CATEGORIES`. |
-| Premier résultat sans connexion | Ce que l'agent peut montrer avec une URL publique ou un exemple : le site du propriétaire, son handle public, une niche. |
-| Déclencheur | À la demande si le besoin est ponctuel ; récurrent si le livrable a une fraîcheur (veille, reporting, contenu régulier) ; webhook si un outil externe produit l'événement. |
-| Atterrissage | Fichier livré (`publish_file`), app (connecteur), ou site sans API (→ computer use). |
-| Apps candidates | `search_connectors` par capacité. Une par rôle. |
-| Paid data | Groupes utiles selon `capabilities.md`. |
-| Computer use | Grille de `capabilities.md`. |
-| Ce qui varie d'un propriétaire à l'autre | Les 2 à 5 préférences qui changent vraiment le livrable (marque, ton, cible, cadence, destination). C'est la matière de l'INSTALL.md. |
+| Hero deliverable | The finished object a professional would hand over. « Créer un carrousel TikTok » → 6 to 8 slides ready to post + caption + hashtags. « Trouver des leads » → a table of qualified prospects with the reason for the fit. |
+| Audience | The person who installs, not the team that would do the work. → a category from `TEMPLATE_CATEGORIES`. |
+| First result without a connection | What the agent can show with a public URL or an example: the owner's site, their public handle, a niche. |
+| Trigger | On demand if the need is one-off; recurring if the deliverable has a freshness (monitoring, reporting, regular content); webhook if an external tool produces the event. |
+| Landing | Delivered file (`publish_file`), app (connector), or site with no API (→ computer use). |
+| Candidate apps | `search_connectors` by capability. One per role. |
+| Paid data | Useful groups according to `capabilities.md`. |
+| Computer use | Grid from `capabilities.md`. |
+| What varies from one owner to the next | The 2 to 5 preferences that really change the deliverable (brand, tone, target, cadence, destination). This is the material for the INSTALL.md. |
 
-## Round 1 — le job et les deux curseurs
+## Round 1: the job and the two dials
 
-**Q1. Promesse.** « Quelle promesse porte l'agent ? » — 2 à 3 formulations du livrable héros, de la plus étroite à la plus large. Je recommande celle qui produit un résultat visible en moins de 5 minutes.
+**Q1. Promise.** "What promise does the agent carry?": 2 to 3 wordings of the hero deliverable, from the narrowest to the broadest. I recommend the one that produces a visible result in under 5 minutes.
 
-**Q2. Déclencheur.**
-- À la demande — l'utilisateur demande, l'agent livre.
-- Récurrent — « {cadence proposée}, ex. tous les lundis 9 h » ; un schedule est créé, l'install fait confirmer cadence et fuseau.
-- Les deux — à la demande + une cadence proposée pendant l'install, sans schedule précréé.
-- Webhook — seulement si le sujet le dit (un formulaire, un outil qui pousse un événement).
+**Q2. Trigger.**
+- On demand: the user asks, the agent delivers.
+- Recurring: "{proposed cadence}, e.g. every Monday 9 am"; a schedule is created, the install has the cadence and timezone confirmed.
+- Both: on demand + a cadence; a schedule is pre-created with `enabled: false`, the install has the cadence and time zone confirmed, then turns it on.
+- Webhook: only if the topic says so (a form, a tool that pushes an event).
 
-**Q3. Cadrage du process** (ce que je mets dans le skill d'agent) :
-- **Ouvert** — SOUL seul, pas de skill. Pour un job créatif ou qui change à chaque demande. L'agent s'appuie sur son jugement.
-- **Guidé** — un skill de méthode : ce qui fait un bon livrable, les pièges, les sources à consulter. Aucune étape imposée. *Recommandé par défaut.*
-- **Cadré** — un skill avec étapes et format de sortie, plus une clause « si l'utilisateur veut autrement, suis l'utilisateur ». Pour un livrable dont la forme fait la valeur (un rapport, une table de leads scorée par le propriétaire, un audit).
+**Q3. Process framing** (what I put in the agent skill):
+- **Open**: SOUL only, no skill. For a creative job or one that changes with every request. The agent relies on its judgment.
+- **Guided**: a method skill: what makes a good deliverable, the pitfalls, the sources to check. No imposed steps. *Recommended by default.*
+- **Framed**: a skill with steps and an output format, plus a clause "if the user wants it differently, follow the user". For a deliverable whose form is what makes it valuable (a report, a lead table scored by the owner, an audit).
 
-Je recommande Cadré seulement quand la **forme** du livrable est la promesse ; Ouvert quand la variété est la promesse.
+I recommend Framed only when the **form** of the deliverable is the promise; Open when variety is the promise.
 
-**Q4. Profondeur de l'install** (combien l'agent interroge son futur propriétaire) :
-- **Express** — 0 ou 1 question, un résultat dès le premier message, les apps proposées au moment où elles servent. Pour un lead magnet qui doit faire « waouh » en 2 minutes. INSTALL.md ≤ 80 mots.
-- **Standard** — 2 ou 3 préférences qui changent vraiment le résultat, une app clé connectée, un test réel. *Recommandé par défaut.* ≤ 150 mots.
-- **Guidée** — jusqu'à 5 points (marque, cible, cadence, destination, validation), test réel complet. Pour un agent récurrent branché sur plusieurs apps. ≤ 250 mots.
+**Q4. Install depth** (how much the agent questions its future owner):
+- **Express**: 0 or 1 question, a result from the first message, apps offered at the moment they are useful. For a lead magnet that has to "wow" in 2 minutes. INSTALL.md ≤ 80 words.
+- **Standard**: 2 or 3 preferences that really change the result, one key app connected, a real test. *Recommended by default.* ≤ 150 words.
+- **Guided**: up to 5 points (brand, target, cadence, destination, approval), full real test. For a recurring agent wired to several apps. ≤ 250 words.
 
-Je recommande Express pour un job créatif ponctuel, Standard pour la plupart, Guidée seulement si l'agent tourne seul ensuite (schedule) avec des actions sortantes.
+I recommend Express for a one-off creative job, Standard for most, Guided only if the agent then runs on its own (schedule) with outgoing actions.
 
-## Round 2 — les capacités
+## Round 2: the capabilities
 
-**Q5. Apps du catalogue** (multiSelect). Les candidates de ma recherche, format « {Nom} — {rôle : lit / fait / publie} », au plus 3 pré-recommandées, une par rôle. Plus l'option « Aucune déclarée : l'agent trouvera dans le catalogue celles que le propriétaire utilise déjà ».
-- Déclarer une app : son logo apparaît sur la page de la template, l'install la propose au moment où elle débloque le résultat. À recommander quand l'app *est* le produit (TikTok, HubSpot, Meta Ads).
-- Aucune déclarée : install plus courte, l'agent s'adapte aux outils du propriétaire. À recommander quand la capacité a beaucoup de fournisseurs équivalents (email, CRM, stockage).
+**Q5. Catalog apps** (multiSelect). The candidates from my research, in the format "{Name}: {role: reads / does / publishes}", at most 3 pre-recommended, one per role. Plus the option "None declared: the agent will find in the catalog the ones the owner already uses".
+- Declaring an app: its logo appears on the template page, the install offers it at the moment it unlocks the result. Recommend it when the app *is* the product (TikTok, HubSpot, Meta Ads).
+- None declared: shorter install, the agent adapts to the owner's tools. Recommend it when the capability has many equivalent providers (email, CRM, storage).
 
-Dans tous les cas le catalogue reste ouvert en runtime (`hub` + `suggestService`) : c'est ce qui permet à l'agent de proposer Outlook à qui n'utilise pas Gmail, et de faire connecter les apps pendant l'install. Je ne le coupe pas.
+In every case the catalog stays open at runtime (`hub` + `suggestService`): it is what lets the agent offer Outlook to someone who doesn't use Gmail, and get the apps connected during the install. I don't turn it off.
 
 **Q6. Paid data.**
-- On — « pour {usage concret : trouver les emails des décideurs / lire les 30 derniers posts d'un compte} », chaque dépense validée par l'utilisateur en crédits.
-- Off — le web gratuit suffit.
-La recommandation suit la grille de `capabilities.md`. Je nomme toujours l'usage, jamais « au cas où ».
+- On: "to {concrete use: find the decision-makers' emails / read an account's last 30 posts}", paid in Rerun credits. In chat, the agent spends without asking up to 200 credits per task and asks for approval beyond that; in a routine (schedule, webhook), it spends without asking and says what it cost.
+- Off: the free web is enough.
+The recommendation follows the grid in `capabilities.md`. I always name the use, never "just in case".
 
 **Q7. Computer use.**
-- On — « pour {publier sur TikTok / remplir le formulaire / opérer Canva} sous les yeux de l'utilisateur ».
-- Off — tout passe par connecteurs, web et fichiers.
+- On: "to {post on TikTok / fill in the form / operate Canva} in front of the user".
+- Off: everything goes through connectors, the web and files.
 
-## Round 3 — seulement si une réponse manque vraiment
+## Round 3: only if an answer is really missing
 
-À poser seulement si le sujet comporte une action sortante ou une contrainte que je ne peux pas déduire :
+Ask only if the topic includes an outgoing action or a constraint I cannot infer:
 
-- **Validation avant d'agir** : « L'agent publie / envoie / dépense seul, ou montre d'abord ? » — je recommande toujours « montre d'abord » pour une première version de template ; l'engine impose déjà l'accord avant un envoi final sur un site.
-- **Contrainte métier réelle** citée par l'auteur (un pays, une langue de livrable, un volume).
-- **Prix** : seulement si l'auteur a parlé de template payante. Sinon `free` sans question.
+- **Approval before acting**: "Does the agent post / send / spend on its own, or show first?"; I always recommend "show first" for a first version of a template; the engine already enforces agreement before a final send on a site.
+- **Real business constraint** cited by the author (a country, a deliverable language, a volume).
+- **Price**: only if the author mentioned a paid template. Otherwise `free` without a question.
 
-## Ce que je ne demande jamais
+## What I never ask
 
-- Le nom de l'agent, la description, le titre marketplace, la catégorie, les tags : je les propose dans le brief, l'auteur corrige s'il veut.
-- Des préférences du futur propriétaire (son ton, sa cible) : c'est le rôle de l'INSTALL.md.
-- Des seuils, scores ou formats que le sujet ne donne pas.
-- Une confirmation de chaque étape du build : un seul OK, sur le brief.
+- The agent's name, the description, the marketplace title, the category, the tags: I propose them in the brief, the author corrects them if they want.
+- The future owner's preferences (their tone, their target): that is the INSTALL.md's job.
+- Thresholds, scores or formats that the topic does not give.
+- A confirmation of each build step: a single OK, on the brief.
 
-## Si l'auteur répond « Other »
+## If the author answers "Other"
 
-Je reformule sa réponse en une ligne dans le brief et je l'applique. Si elle contredit une règle d'or (ex. « mets un process en 15 étapes »), je l'applique dans l'esprit (un skill Cadré, la clause d'adaptation incluse) et je le signale dans le brief.
+I rephrase their answer in one line in the brief and I apply it. If it contradicts a golden rule (e.g. « mets un process en 15 étapes »), I apply it in spirit (a Framed skill, adaptation clause included) and I flag it in the brief.

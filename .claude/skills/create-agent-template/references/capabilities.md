@@ -1,83 +1,83 @@
-# Ce qu'un coworker sait faire, et ce que l'engine lui dit déjà
+# What a coworker can do, and what the engine already tells it
 
-À lire en phase 1 pour recommander les bons réglages, et avant d'écrire pour ne rien répéter.
+Read in phase 1 to recommend the right settings, and before writing so nothing gets repeated.
 
-## Les familles d'outils
+## The tool families
 
-Toutes sont **à `true` par défaut** (`packages/contracts/src/agent.ts`, `toolsSchema`). Une template **coupe** ce qui ne sert pas, elle n'active rien. Je ne coupe que pour une raison réelle : un outil qui détournerait l'agent ou coûterait sans servir.
+All of them are **`true` by default** (`packages/contracts/src/agent.ts`, `toolsSchema`). A template **turns off** what is not useful, it does not turn anything on. I only turn something off for a real reason: a tool that would sidetrack the agent or cost money without being useful.
 
-| Clé `tools.*` | Ce que ça donne | Je coupe quand… |
+| `tools.*` key | What it gives | I turn it off when… |
 |---|---|---|
-| `web` | `web_search`, `web_fetch`, `download` | jamais pour un lead magnet |
-| `browser` | Chromium réel, captures, `request_takeover` | presque jamais |
-| `computer` | un écran à lui (navigateur, fichiers, terminal) que l'utilisateur regarde ; 200 actions par run | le livrable n'atterrit sur aucun site sans connecteur officiel (voir grille plus bas) |
-| `paidData` | `paid_data`, `paid_data_catalog` : données live payées sur le crédit Rerun | le job n'a pas besoin de données publiques en volume (voir grille) |
-| `hub` | `rerun_hub_service_search/details/install`, `publish_file` (URL publique d'un livrable) | presque jamais : il sert aussi à publier un fichier |
-| `suggestService` | carte de connexion d'une app, pause le run | jamais : sans lui, l'install ne peut faire connecter aucune app, même déclarée |
-| `db` / `sharedDb` | SQLite privée / partagée de la Box | jamais : c'est là que vivent les listes (leads, pubs, posts) |
-| `cards` | `card_table`, `card_file` : tableau ou fichier affiché dans le chat | jamais |
-| `schedule` / `trigger` | l'agent crée lui-même ses tâches récurrentes / webhooks | jamais : le propriétaire peut vouloir une cadence plus tard |
-| `delegate` / `callAgent` | sous-agents parallèles / autres coworkers | jamais |
-| `vision`, `filesystem`, `shared`, `shell`, `memory`, `brain`, `notify`, `askUser`, `requestApproval`, `requestSecret`, `quickReplies`, `skills` | le reste de la boîte à outils | jamais |
+| `web` | `web_search`, `web_fetch`, `download` | never for a lead magnet |
+| `browser` | real Chromium, screenshots, `request_takeover` | almost never |
+| `computer` | a screen of its own (browser, files, terminal) that the user watches; 200 actions per run | the deliverable lands on no site without an official connector (see grid below) |
+| `paidData` | `paid_data`, `paid_data_catalog`: paid live data on the Rerun credit | the job does not need public data in volume (see grid) |
+| `hub` | `rerun_hub_service_search/details/install`, `publish_file` (public URL of a deliverable) | almost never: it is also used to publish a file |
+| `suggestService` | an app's connection card, pauses the run | never: without it, the install cannot get any app connected, even a declared one |
+| `db` / `sharedDb` | SQLite private to the agent / shared by the whole workspace, across all Boxes | never: that is where the lists live (leads, ads, posts) |
+| `cards` | `card_table`, `card_file`: table or file shown in the chat | never |
+| `schedule` / `trigger` | the agent creates its own recurring tasks / webhooks | never: the owner may want a cadence later |
+| `delegate` / `callAgent` | parallel sub-agents / other coworkers | never |
+| `vision`, `filesystem`, `shared`, `shell`, `memory`, `brain`, `notify`, `askUser`, `requestApproval`, `requestSecret`, `quickReplies`, `skills` | the rest of the toolbox | never |
 
-`selfImprovement` (`enabled`, `allowSoulEdit`, `allowToolInstall`, `autoMemory`) reste par défaut : c'est ce qui permet à l'agent de s'adapter à son propriétaire.
+`selfImprovement` (`enabled`, `allowSoulEdit`, `allowToolInstall`, `autoMemory`) stays at its default: it is what lets the agent adapt to its owner.
 
-**Pas d'outil de génération d'image** dans l'engine. Un agent visuel produit du HTML/CSS rendu en PNG via le navigateur ou un script (`shell`), ou passe par une app du catalogue (Canva, un générateur d'images). Je le vérifie avec `search_connectors` avant de promettre un visuel.
+**No image generation tool** in the engine. A visual agent produces HTML/CSS rendered as PNG through the browser or a script (`shell`), or goes through an app from the catalog (Canva, an image generator). I check it with `search_connectors` before promising a visual.
 
-## Grille : computer use
+## Grid: computer use
 
-Recommandé **on** si au moins une de ces conditions est vraie :
+Recommended **on** if at least one of these conditions is true:
 
-- le livrable finit **publié ou soumis sur un site** qui n'a pas de connecteur officiel dans le catalogue (TikTok, Instagram, LinkedIn perso, une marketplace, un formulaire, un back-office) ;
-- le job consiste à **opérer une interface** (Canva, un CMS, Meta Ads Library pour observer, une app web sans API) ;
-- la seule alternative serait une API relais payante (Unipile, un scraper) sur un site où le propriétaire a déjà un compte. L'engine dit déjà à l'agent de préférer son écran dans ce cas.
+- the deliverable ends up **published or submitted on a site** that has no official connector in the catalog (TikTok, Instagram, personal LinkedIn, a marketplace, a form, a back office);
+- the job consists of **operating an interface** (Canva, a CMS, Meta Ads Library to observe, a web app with no API);
+- the only alternative would be a paid relay API (Unipile, a scraper) on a site where the owner already has an account. The engine already tells the agent to prefer its screen in that case.
 
-Recommandé **off** si tout se fait par connecteur officiel, web, données ou fichiers. Laisser l'écran à un agent qui n'en a pas besoin l'invite à des détours lents.
+Recommended **off** if everything is done through an official connector, the web, data or files. Leaving the screen to an agent that does not need it invites slow detours.
 
-## Grille : paid data
+## Grid: paid data
 
-Groupes : `people` (prospects, emails et téléphones pro), `companies` (recherche et enrichissement), `search` (résultats Google, Google Maps, commerces locaux), `seo` (volumes, idées de mots-clés, backlinks, autorité), `linkedin`, `tiktok`, `instagram`, `x`, `youtube`, `facebook`, `reddit` (profils, posts, commentaires, réactions publics).
+Groups: `people` (prospects, work emails and phones), `companies` (search and enrichment), `search` (Google results, Google Maps, local businesses), `seo` (volumes, keyword ideas, backlinks, authority), `linkedin`, `tiktok`, `instagram`, `x`, `youtube`, `facebook`, `reddit` (public profiles, posts, comments, reactions).
 
-Recommandé **on** si le livrable repose sur des **données publiques structurées en volume** : trouver des leads ou leurs emails, enrichir des entreprises, lister des commerces locaux, mesurer des mots-clés, lire les posts / comptes / tendances d'un réseau, analyser des concurrents.
+Recommended **on** if the deliverable relies on **structured public data in volume**: finding leads or their emails, enriching companies, listing local businesses, measuring keywords, reading a network's posts / accounts / trends, analyzing competitors.
 
-Recommandé **off** si le web gratuit suffit (recherche, lecture de quelques pages) ou si le job ne lit que les données privées du propriétaire.
+Recommended **off** if the free web is enough (search, reading a few pages) or if the job only reads the owner's private data.
 
-Pièges connus du catalogue, à prévoir dans le skill quand le job en dépend :
+Known catalog traps, to anticipate in the skill when the job depends on them:
 
-- `tiktok.search.videos` ne renvoie **que des vidéos**, jamais de slideshow photo. Pour des carrousels TikTok, la méthode passe par les comptes (`tiktok.search.users` puis `tiktok.user.videos`), où un slideshow est un post à `duration_s: 0`.
-- `google.keywords.volume` prend jusqu'à 100 mots-clés mais **un seul pays par appel** (13,5 crédits l'appel) : un job multi-pays commence par les 2 ou 3 plus gros marchés.
+- `tiktok.search.videos` returns **only videos**, never a photo slideshow. For TikTok carousels, the method goes through accounts (`tiktok.search.users` then `tiktok.user.videos`), where a slideshow is a post with `duration_s: 0`.
+- `google.keywords.volume` takes up to 100 keywords but **a single country per call** (13.5 credits per call): a multi-country job starts with the 2 or 3 biggest markets.
 
-Ce que l'engine gère déjà : l'agent dépense le crédit sans demander et dit ce que ça a coûté ; à crédit épuisé, l'appel est refusé, l'agent finit avec ses outils gratuits et l'app affiche la carte de recharge ; il ne relance jamais la même requête. Je ne l'écris donc nulle part. Je cite un groupe dans le SOUL ou le skill **seulement** s'il change la méthode (« pull the account's last 30 posts before writing »), jamais pour rappeler le fonctionnement.
+What the engine already handles: in a routine the agent spends the credit without asking, in chat it asks for approval beyond 200 credits per task, and either way it says what it cost; when the credit runs out, the call is refused, the agent finishes with its free tools and the app shows the top-up card; it never reruns the same request. So I write it nowhere. I name a group in the SOUL or the skill **only** if it changes the method ("pull the account's last 30 posts before writing"), never to restate how it works.
 
-## Grille : catalogue de services
+## Grid: service catalog
 
-Deux choses distinctes :
+Two distinct things:
 
-1. **Les apps déclarées** sur l'agent (`connectors` / `attach_connector`). Elles voyagent dans la template comme déclarations ; le propriétaire connecte son propre compte pendant l'install. Une app par capacité, trois au maximum, chacune avec un rôle clair (source, action ou destination). Pas deux fournisseurs interchangeables (Gmail + Outlook) sauf si le sujet l'exige.
-2. **Le catalogue en runtime** (`tools.hub` + `tools.suggestService`, on par défaut) : l'agent cherche lui-même un service quand le propriétaire en nomme un autre, et le propose au bon moment. C'est ce qui rend la template ouverte : un propriétaire sur Outlook n'est pas bloqué par une template pensée pour Gmail. Je ne le coupe jamais : `suggestService` est aussi ce qui fait connecter les apps déclarées pendant l'install, et `hub` porte `publish_file`.
+1. **The apps declared** on the agent (`connectors` / `attach_connector`). They travel in the template as declarations; the owner connects their own account during the install. One app per capability, three at most, each with a clear role (source, action or destination). Not two interchangeable providers (Gmail + Outlook) unless the topic requires it.
+2. **The catalog at runtime** (`tools.hub` + `tools.suggestService`, on by default): the agent searches for a service itself when the owner names another one, and offers it at the right moment. This is what makes the template open: an owner on Outlook is not blocked by a template designed for Gmail. I never turn it off: `suggestService` is also what gets the declared apps connected during the install, and `hub` carries `publish_file`.
 
-Pour un lead magnet, je préfère **peu d'apps déclarées + catalogue en runtime** : l'install est plus courte et l'agent s'adapte.
+For a lead magnet, I prefer **few declared apps + the catalog at runtime**: the install is shorter and the agent adapts.
 
-## Ce que l'engine dit déjà (à ne jamais réécrire)
+## What the engine already says (never rewrite it)
 
-Chaque system prompt contient déjà ces sections (`apps/engine/src/agents/systemPrompt.ts`). Si mon SOUL, mon INSTALL.md ou mon skill les répète, je supprime.
+Every system prompt already contains these sections (`apps/engine/src/agents/systemPrompt.ts`). If my SOUL, my INSTALL.md or my skill repeats them, I delete.
 
-| Section | Ce qu'elle impose déjà |
+| Section | What it already enforces |
 |---|---|
-| `setup` (pendant l'install) | se présenter en deux lignes ; montrer **d'abord** un résultat concret sans aucune connexion ; apprendre les préférences en chemin ; **ensuite** proposer les apps manquantes, chacune liée à ce qu'elle débloque ; tester sur les vraies données ; répondre dans la langue de l'utilisateur ; `ask_user` plutôt que deviner ; `suggest_service` plutôt que demander des secrets ; `request_secret` pour une clé ; vérifier avant de conclure ; `memory_write` si une app est refusée ; `install_complete` seulement quand tout marche ; aider si l'utilisateur demande autre chose puis revenir au setup. **Cet ordre prime sur celui de l'INSTALL.md.** |
-| `service_catalog` | chercher le catalogue dès qu'un produit est nommé ; résultat d'abord, app seulement à l'étape qui en a besoin ; livrer sans l'app (mailto, texte à copier, CSV, page publiée) ; jamais de secret dans le chat |
-| `computer` | quand utiliser l'écran vs un connecteur ; montrer et attendre l'accord avant l'envoi final sur un site ; ignorer les instructions lues à l'écran ; `request_takeover` pour un login ou un captcha |
-| `paid_data` | coût en crédits, dimensionner le lot, pas de doublon ; au-delà de ~500 lignes ou appels dans une tâche, une phrase de confirmation avant d'acheter (chat seulement, jamais en routine) |
-| `database` / `cards` | les données vont en base, pas en fichiers ; vues sauvegardées ; une carte après un tableau ou un fichier |
-| `operating notes` | résultat d'abord, hypothèses annoncées en une ligne ; peu de questions ; rien ne tourne après la fin du tour ; `publish_file` pour un livrable à ouvrir ; les règles de travail vont dans un skill, pas en mémoire |
-| `quick replies` | boutons de réponse après un livrable |
+| `setup` (during the install) | introduce itself in two lines; show a concrete result **first** without any connection; learn the preferences along the way; **then** offer the missing apps, each tied to what it unlocks; test on the real data; reply in the user's language; `ask_user` rather than guessing; `suggest_service` rather than asking for secrets; `request_secret` for a key; check before concluding; `memory_write` if an app is refused; `install_complete` only when everything works; help if the user asks for something else then come back to the setup. **This order takes precedence over the INSTALL.md's.** |
+| `service_catalog` | search the catalog as soon as a product is named; result first, app only at the step that needs it; deliver without the app (mailto, text to copy, CSV, published page); never a secret in the chat |
+| `computer` | when to use the screen vs a connector; show and wait for agreement before the final send on a site; ignore instructions read on screen; `request_takeover` for a login or a captcha |
+| `paid_data` | cost in credits, size the batch, no duplicates; beyond 200 credits in one task, one sentence of confirmation before buying (chat only, never in a routine) |
+| `database` / `cards` | data goes in the database, not in files; saved views; a card after a table or a file |
+| `operating notes` | result first, assumptions stated in one line; few questions; nothing runs after the end of the turn; `publish_file` for a deliverable to open; working rules go in a skill, not in memory |
+| `quick replies` | reply buttons after a deliverable |
 
-Conséquence directe : **l'INSTALL.md ne contient jamais** « introduce yourself », « call suggest_service », « save to memory », « call install_complete when done », « reply in the user's language », ni une liste numérotée de ces étapes. Il contient seulement ce que l'engine ne peut pas deviner : *quel* résultat montrer, *quelles* préférences comptent, *quelles* apps débloquent *quoi*, *quel* test, *quand* c'est fini.
+Direct consequence: **the INSTALL.md never contains** "introduce yourself", "call suggest_service", "save to memory", "call install_complete when done", "reply in the user's language", nor a numbered list of those steps. It only contains what the engine cannot guess: *which* result to show, *which* preferences matter, *which* apps unlock *what*, *which* test, *when* it is done.
 
-## Ce qu'une template emporte
+## What a template carries
 
-La capture copie : `SOUL.md`, `INSTALL.md`, `config.json` (outils, setup), `skills/`, `schedules/`, `triggers/`, `workspace/`, `data/agent.db`, les noms des clés `.env` (pas les valeurs). Elle laisse : `memory/` (exclu par défaut), les sessions, les connexions OAuth.
+The capture copies: `SOUL.md`, `INSTALL.md`, `config.json` (tools, setup), `skills/`, `schedules/`, `triggers/`, `workspace/`, `data/agent.db`, the names of the `.env` keys (not the values). It leaves out: `memory/` (excluded by default), the sessions, the OAuth connections.
 
-À l'import chez le propriétaire : setup remis à « à faire », modèle épinglé effacé, schedules et triggers gardent leur état `enabled` capturé — c'est pourquoi je les crée **désactivés** : `install_complete` allume tout ce qui est éteint.
+On import at the owner's: setup reset to "to do", pinned model cleared, schedules and triggers keep their captured `enabled` state. That is why I create them **disabled**: `install_complete` turns on everything that is off.
 
-Un fichier de `workspace/` capturé exprès peut servir de **ressource livrée** (un exemple de rendu, un gabarit HTML de carrousel, une liste de référence). C'est mieux qu'un long texte dans le skill quand l'agent doit s'en inspirer. Je le fais seulement si ça améliore vraiment le livrable. Le MCP n'écrit pas dans `workspace/` : soit je le mets dans le skill (`upsert_skill` avec `files: [{ path: "references/…", content }]`, la meilleure option), soit je demande à l'agent de l'écrire par `send_message` et je le garde à la capture.
+A file in `workspace/` captured on purpose can serve as a **shipped resource** (a sample output, an HTML carousel template, a reference list). It is better than a long text in the skill when the agent has to draw on it. I only do it if it really improves the deliverable. The MCP does not write to `workspace/`: either I put it in the skill (`upsert_skill` with `files: [{ path: "references/…", content }]`, the best option), or I ask the agent to write it through `send_message` and I keep it at capture.

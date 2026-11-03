@@ -17,7 +17,7 @@ export function unwrapChatError(raw: string | null | undefined): string {
     }
 }
 
-// The engine stores `String(error)`, and `String()` of an AI SDK error prefixes the class name, so
+// The engine stores `errorMessageOf(error)`, which keeps `String()` of an AI SDK error, so
 // `runs.error` reads "AI_APICallError: You've hit your session limit". The class name means nothing
 // to the person reading it: it never reaches the screen. Codex hands over the backend's whole JSON
 // body (`{"type":"error","status":400,"error":{"message":"…"}}`), of which only the sentence is read.

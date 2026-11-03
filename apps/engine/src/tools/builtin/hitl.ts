@@ -284,7 +284,7 @@ export function requestTakeoverTool(ctx: Pick<RunContext, 'turnOrder'>): ToolSet
     return {
         request_takeover: hitlTool(
             ctx.turnOrder,
-            'Hand your browser to the user so they do by hand what you cannot: sign in to an account, pass a captcha or a bot check, approve a device prompt. Then END YOUR TURN. The user sees your browser window on this URL, acts in it, and confirms when they are done; cookies and the signed-in session stay in your browser profile, so your next browser_navigate is past the wall. Use it only when a page you need is blocked behind something a person can clear, never to ask them to browse in your place.',
+            'Hand your browser to the user so they do by hand what you cannot: sign in to an account, pass a captcha or a bot check, approve a device prompt. Then END YOUR TURN. The user sees your browser window on this URL, acts in it, and confirms when they are done; cookies and the signed-in session stay in your browser profile, so the page is past the wall when you open it again (computer_open_app on your screen, browser_navigate otherwise); the window itself is closed when you get it back. Use it only when a page you need is blocked behind something a person can clear, never to ask them to browse in your place.',
             z.object({
                 url: z.string().url().describe('The page to open for the user, usually the one that blocked you or its sign-in page.'),
                 reason: z.string().min(1).max(200).describe('One short line telling the user what to do there, e.g. "Sign in to LinkedIn" or "Pass the Cloudflare check". Shown as the title of the card.'),

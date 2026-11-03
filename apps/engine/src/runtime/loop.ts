@@ -40,7 +40,7 @@ import { repairToolCall } from './tool-repair.js'
 import { stepWithScreenshots } from './screenshots.js'
 import { authorMetadata, sendNotification, type NotificationKind } from './notify.js'
 import { emitRunTerminal } from './run-events.js'
-import { ClaudeSignInRenewedError, classifyFinishReason, classifyProviderError, isFailedFinish, ProviderRefusedError, ProviderStreamCutError, RUN_ERROR_CODES, refusalReason, type RunErrorCode } from './provider-errors.js'
+import { ClaudeSignInRenewedError, classifyFinishReason, classifyProviderError, errorMessageOf, isFailedFinish, ProviderRefusedError, ProviderStreamCutError, RUN_ERROR_CODES, refusalReason, type RunErrorCode } from './provider-errors.js'
 import { armBudgetLatch, clearBudgetLatch, RERUN_BUDGET_ERROR_CODE } from './budget-latch.js'
 
 export type RunOutcome = { kind: 'done' | 'error' | 'cancelled'; error?: string; errorCode?: RunErrorCode | null }
@@ -309,8 +309,9 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             if (renewed) settlement = { ...settlement, error: new ClaudeSignInRenewedError(), errorCode: RUN_ERROR_CODES.authRenewed }
             if (settlement.errorCode === RUN_ERROR_CODES.refused) settlement = { ...settlement, error: new ProviderRefusedError(refusalReason(settlement.error)) }
             const errorCode = settlement.errorCode ?? null
+            const errorMessage = errorMessageOf(settlement.error)
             forgetCodexThread(agent.id, sessionId)
-            logger.error({ err: String(settlement.error), errorCode, agent: agent.id, run: run.id }, 'run error')
+            logger.error({ err: errorMessage, errorCode, agent: agent.id, run: run.id }, 'run error')
             if (errorCode === RERUN_BUDGET_ERROR_CODE) armBudgetLatch()
             // The token is still on file, so the connection would keep reading "Ready" while every
             // run on it fails. The keyless Rerun connection answers for the hub's key, not the user's.
@@ -318,8 +319,8 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             // A turn that failed mid-flight still said things worth keeping; without this the user
             // loses everything the agent had already produced.
             if (settlement.messages) for (const message of canonicalizeHitlNames(settlement.messages)) await appendMessage(agent.id, sessionId, message).catch(() => {})
-            await failRun(agent.id, run.id, String(settlement.error)).catch(() => {})
-            outcome = { kind: 'error', error: String(settlement.error), errorCode }
+            await failRun(agent.id, run.id, errorMessage).catch(() => {})
+            outcome = { kind: 'error', error: errorMessage, errorCode }
         }
 
         await setAgentStatus(agent.id, 'idle').catch(() => {})

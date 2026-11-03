@@ -206,9 +206,10 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
                             >
                                 {group.models.map(m => {
                                     const isDefault = pinnedConnectionId === group.connectionId && pinnedModel === m.id
-                                    if (group.connectionId === RERUN_CONNECTION_ID && rerunCredit.paused) {
+                                    const disabledReason = group.connectionId === RERUN_CONNECTION_ID && rerunCredit.paused ? RERUN_CREDIT_PAUSED_REASON : m.unavailable
+                                    if (disabledReason) {
                                         return (
-                                            <TooltipDisabledReason key={m.id} reason={RERUN_CREDIT_PAUSED_REASON} side="right" className="flex w-full">
+                                            <TooltipDisabledReason key={m.id} reason={disabledReason} side="right" className="flex w-full">
                                                 <CommandItem className="flex-1" value={`${group.label} ${m.label} ${m.id}`} disabled>
                                                     <ModelTierRow label={m.label} description={m.description} power={m.power} />
                                                 </CommandItem>

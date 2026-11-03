@@ -59,6 +59,14 @@ describe('computer section', () => {
         expect(section).toContain('go-ahead before the final submit')
     })
 
+    it('counts a site as signed in only on the screenshot it acts in, and says so when the page keeps reloading or the window is gone', async () => {
+        const prompt = await buildSystemPrompt(agentWith({ computer: true }), { source: 'chat' })
+        const section = prompt.slice(prompt.indexOf('<computer>'), prompt.indexOf('</computer>'))
+        expect(section).toContain('counts as signed in only on the screenshot you are about to act in')
+        expect(section).toContain('when a page keeps reloading or the window is gone, say so')
+        expect(section).toContain('the shortest way to do that step themselves')
+    })
+
     it('keeps the screen for acting and sends information gathering to the browser and paid data', async () => {
         const prompt = await buildSystemPrompt(agentWith({ computer: true, paidData: true }), { source: 'chat' })
         const section = prompt.slice(prompt.indexOf('<computer>'), prompt.indexOf('</computer>'))
@@ -88,6 +96,13 @@ describe('computer section', () => {
 })
 
 describe('service catalog next to a computer', () => {
+    it('offers wa.me links next to mailto: links when a messaging app is not connected', async () => {
+        const prompt = await buildSystemPrompt(agentWith({ computer: true }), { source: 'chat' })
+        const section = prompt.slice(prompt.indexOf('<service_catalog>'), prompt.indexOf('</service_catalog>'))
+        expect(section).toContain('mailto: links with the subject and body filled in')
+        expect(section).toContain('wa.me links with the number and the message filled in')
+    })
+
     const catalogOf = (prompt: string) => prompt.slice(prompt.indexOf('<service_catalog>'), prompt.indexOf('</service_catalog>'))
 
     it('does the work of a paid relay service on the screen instead of suggesting it', async () => {

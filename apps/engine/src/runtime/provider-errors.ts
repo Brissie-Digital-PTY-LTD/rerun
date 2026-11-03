@@ -74,9 +74,29 @@ export function isFailedFinish(finishReason: string | undefined, rawFinishReason
     return classifyFinishReason(finishReason, rawFinishReason) !== null
 }
 
+function serialized(value: unknown): string {
+    try {
+        return JSON.stringify(value) ?? String(value)
+    } catch {
+        return String(value)
+    }
+}
+
 function errorText(error: unknown): string {
     if (error instanceof Error) return `${error.message} ${String((error as { cause?: unknown }).cause ?? '')}`
-    return String(error)
+    return typeof error === 'object' && error !== null ? serialized(error) : String(error)
+}
+
+// What a failed run stores and shows. `@ai-sdk/openai` hands an error event of the Responses stream
+// over as the raw chunk, `{ type: 'error', error: { code, message } }`, which `String()` turns into
+// "[object Object]".
+export function errorMessageOf(error: unknown): string {
+    if (error instanceof Error || typeof error !== 'object' || error === null) return String(error)
+    const { message, error: inner } = error as { message?: unknown; error?: { message?: unknown } }
+    const innerMessage = inner?.message
+    if (typeof innerMessage === 'string' && innerMessage) return innerMessage
+    if (typeof message === 'string' && message) return message
+    return serialized(error)
 }
 
 function parseJson(text: string): unknown {

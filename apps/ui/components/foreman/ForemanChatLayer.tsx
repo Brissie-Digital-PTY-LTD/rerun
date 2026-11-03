@@ -41,6 +41,7 @@ import { ForemanActivityIndicator } from './ForemanActivityIndicator'
 import { useForemanMentionAgents } from './useForemanMentionAgents'
 import { ForemanWelcome } from './ForemanWelcome'
 import { EngineQuestionWidget } from './widgets/EngineQuestionWidget'
+import { planAgentShortcuts } from './widgets/agent-picks'
 import { renderForemanWidget, type AnswerWidget, type DismissWidget } from './widgets/renderForemanWidget'
 
 // De quoi laisser un message entier se dissoudre plutôt que d'en gommer la dernière ligne.
@@ -126,7 +127,7 @@ export function ForemanChatLayer({ messages, streaming, guided, intake, gated, a
     const renderToolPart = onWidgetAnswer
         ? (part: Parameters<typeof renderForemanWidget>[0]) => {
               if (part.toolCallId === engineHitl?.toolCallId) return null
-              const widget = renderForemanWidget(part, onWidgetAnswer, onWidgetDismiss)
+              const widget = renderForemanWidget(part, onWidgetAnswer, onWidgetDismiss, shortcuts)
               if (!widget || !isForemanWidgetTool(part.toolName)) return widget
               return <div ref={part.toolCallId === pending?.toolCallId ? pendingRef : undefined}>{widget}</div>
           }
@@ -141,6 +142,8 @@ export function ForemanChatLayer({ messages, streaming, guided, intake, gated, a
         const emptied = parts.every(part => part.type !== 'text' || !(part as { text: string }).text)
         return emptied ? [] : [{ ...message, parts } as UIMessage]
     })
+    // Toutes les lignes de raccourci d'un message tiennent dans une seule carte, posée au premier appel.
+    const shortcuts = planAgentShortcuts(visible)
 
     // Une pile vide veut dire deux choses opposées, et elles ne se rendent pas pareil. En tunnel,
     // elle veut dire que le premier tour n'est pas encore revenu : proposer « What is running in my

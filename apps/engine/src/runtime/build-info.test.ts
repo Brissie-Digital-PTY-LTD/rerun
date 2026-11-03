@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const FULL = 'abc1234def5678abc1234def5678abc1234def56'
+const REPO_ROOT = resolve(import.meta.dirname, '../../../..')
 
 function releaseDir(info: Record<string, unknown> | string): string {
     const dir = mkdtempSync(resolve(tmpdir(), 'rerun-build-info-'))
@@ -59,9 +60,10 @@ describe('build info', () => {
         expect(isBuildCommit('abc1234')).toBe(false)
     })
 
-    it('asks git in a checkout', async () => {
+    // The public export is checked from a plain folder, before it becomes a commit.
+    it.skipIf(!existsSync(resolve(REPO_ROOT, '.git')))('asks git in a checkout', async () => {
         const dir = releaseDir({ commit: FULL })
-        const { buildCommit, buildInfo } = await loadWithLayout({ kind: 'monorepo', root: resolve(import.meta.dirname, '../../../..'), packageDir: dir })
+        const { buildCommit, buildInfo } = await loadWithLayout({ kind: 'monorepo', root: REPO_ROOT, packageDir: dir })
         expect(buildInfo()).toBeNull()
         expect(buildCommit()).toMatch(/^[0-9a-f]{7}$/)
     })

@@ -96,7 +96,7 @@ All of these are on by default. A coworker that must stay exactly as you wrote i
 
 The **name** is free text and only affects what you see. The **handle** is the key other coworkers use to call it with `@handle`.
 
-Renaming a coworker does not move its handle, on purpose: a handle written into another coworker prompt would silently stop resolving. Change the handle only when you mean to, and update whatever references it.
+Renaming a coworker moves its handle too: the handle is re-derived from the new name, and every `@oldhandle` written into the other coworkers (prompts, skills, scheduled tasks, webhook triggers, memories) is rewritten to the new one. Set the handle on its own only when the call key should differ from the name.
 
 ## Doing it from the API
 

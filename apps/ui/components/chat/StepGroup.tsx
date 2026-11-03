@@ -58,7 +58,7 @@ function Activity({ label }: { label: string }) {
         <span className="relative flex min-w-0 overflow-hidden">
             <AnimatePresence initial={false} mode="popLayout">
                 <motion.span key={label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25, ease: EASE }} className="min-w-0 truncate">
-                    <TextShimmer className="block truncate text-xs">{label}</TextShimmer>
+                    <TextShimmer className="block truncate text-sm">{label}</TextShimmer>
                 </motion.span>
             </AnimatePresence>
         </span>
@@ -78,7 +78,7 @@ export function StepGroup({ items, agentId }: { items: StepGroupItem[]; agentId?
 
     return (
         <div className="flex w-full flex-col">
-            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex h-8 min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 {agentId && <AgentBuddy agentId={agentId} mood={live ? 'working' : 'idle'} size={24} facing="right" animated={live} />}
                 {running?.runningLabel && <Activity label={running.runningLabel} />}
                 <button

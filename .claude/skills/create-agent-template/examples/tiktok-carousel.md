@@ -1,31 +1,31 @@
-# Exemple 1 — « Un agent qui crée des carrousels TikTok »
+# Example 1: « Un agent qui crée des carrousels TikTok »
 
-Cadrage **Guidé** · install **Express** · computer use **on** · paid data **off** · aucune app déclarée · à la demande.
+**Guided** framing · **Express** install · computer use **on** · paid data **off** · no declared app · on demand.
 
-## Pré-calcul (phase 1)
+## Pre-computation (phase 1)
 
-- Livrable héros : un carrousel complet (slides en images + légende + hashtags), prêt à poster.
-- Audience : `creators`.
-- Premier résultat sans connexion : à partir d'un handle public, d'un site ou d'une niche.
-- Atterrissage : TikTok. `search_connectors "post to TikTok"`, `"publish social media post"` → pas de connecteur officiel qui publie un carrousel (hypothèse de l'exemple ; je vérifie toujours en vrai) → **computer use**.
-- Rendu des slides : pas d'outil image dans l'engine → HTML rendu en PNG par le navigateur ou un script. `search_connectors "design graphics"` → Canva existe, mais il n'est pas nécessaire au premier résultat → non déclaré, l'agent le proposera si le propriétaire l'utilise.
-- Paid data : le groupe `tiktok` pourrait lire les posts du compte, mais le web suffit pour un premier carrousel → off recommandé.
-- Ce qui varie d'un propriétaire à l'autre : sujet/niche, marque (couleurs, ton). C'est tout pour l'Express.
+- Hero deliverable: a complete carousel (slides as images + caption + hashtags), ready to post.
+- Audience: `creators`.
+- First result without a connection: from a public handle, a site or a niche.
+- Landing: TikTok. `search_connectors "post to TikTok"`, `"publish social media post"` → no official connector that publishes a carousel (the example's assumption; I always check for real) → **computer use**.
+- Slide rendering: no image tool in the engine → HTML rendered as PNG by the browser or a script. `search_connectors "design graphics"` → Canva exists, but it is not needed for the first result → not declared, the agent will offer it if the owner uses it.
+- Paid data: the `tiktok` group could read the account's posts, but the web is enough for a first carousel → off recommended.
+- What varies from one owner to the next: topic/niche, brand (colours, tone). That's all for Express.
 
 ## Interview (2 rounds, 7 questions)
 
-Round 1 : promesse (« Turn any idea, link or product into ready-to-post carousels » *Recommandé*) · déclencheur (à la demande *Recommandé*) · cadrage (Guidé *Recommandé*) · install (Express *Recommandé* : un créateur veut voir un carrousel en 2 minutes).
-Round 2 : apps (Aucune déclarée *Recommandé* / Canva) · paid data (Off *Recommandé*) · computer use (On *Recommandé* : « pour publier sur TikTok depuis son écran, sous les yeux de l'utilisateur »).
+Round 1: promise ("Turn any idea, link or product into ready-to-post carousels" *Recommended*) · trigger (on demand *Recommended*) · framing (Guided *Recommended*) · install (Express *Recommended*: a creator wants to see a carousel in 2 minutes).
+Round 2: apps (None declared *Recommended* / Canva) · paid data (Off *Recommended*) · computer use (On *Recommended*: "to post on TikTok from its screen, in front of the user").
 
 ## Build
 
 **`create_agent`**
-- `name` : `Carousel Studio`
-- `description` : `Turns any idea, link or product into ready-to-post TikTok carousels.`
-- `tools` : `{ "paidData": false }`
-- `connectors` : `[]`
+- `name`: `Carousel Studio`
+- `description`: `Turns any idea, link or product into ready-to-post TikTok carousels.`
+- `tools`: `{ "paidData": false }`
+- `connectors`: `[]`
 
-**SOUL.md** (≈ 100 mots)
+**SOUL.md** (≈ 100 words)
 
 ```markdown
 # Carousel Studio
@@ -39,7 +39,7 @@ Show the finished slides and caption and wait for the user's go-ahead before any
 Adapt to each user's brand, audience and tools; when they want it done differently, do it their way.
 ```
 
-**INSTALL.md** (80 mots, plafond Express)
+**INSTALL.md** (80 words, Express cap)
 
 ```markdown
 First result: ask for their TikTok handle, website or niche, then make a full carousel — slides rendered as images, caption and hashtags — on a topic their audience cares about.
@@ -48,7 +48,7 @@ Apps: none needed to start. When they want it posted, offer to do it on TikTok f
 Done when: they have one carousel they would post.
 ```
 
-**Skill `carousel-craft`** (Guidé, ≈ 250 mots)
+**Skill `carousel-craft`** (Guided, ≈ 250 words)
 
 ```markdown
 ---
@@ -81,17 +81,17 @@ description: Use when asked to make a carousel, or to turn a post, a link, a pro
 - To post, open TikTok on your computer, fill everything in, and wait for the go-ahead before the final tap.
 ```
 
-Pas de schedule (à la demande).
+No schedule (on demand).
 
 ## Test (phase 4)
 
-`send_message` : « Make me a carousel about why most SaaS onboarding emails get ignored. My site is linear.app. »
-Attendu : 6 à 9 slides rendues, légende, hashtags, sans aucune question préalable ni app demandée. À corriger si : l'agent demande ses couleurs avant de produire, ou livre du texte sans images.
+`send_message`: "Make me a carousel about why most SaaS onboarding emails get ignored. My site is linear.app."
+Expected: 6 to 9 rendered slides, caption, hashtags, with no prior question and no app requested. To fix if: the agent asks for its colours before producing, or delivers text without images.
 
 ## Listing
 
-- `title` : `Create TikTok Carousels` — « This agent will create TikTok carousels » ✓
-- `tagline` : `Turn any idea, link or product into ready-to-post TikTok carousels, designed in your brand and posted when you say go.`
-- `category` : `creators` · `tags` : `tiktok`, `carousel`, `instagram`, `content`, `social media`
-- `setupMinutes` : install 1 + setup 2 = 3 → **3**
-- `metaDescription` (≈ 140 caractères) : `Create TikTok carousels from any idea, link or product: hook, slides, caption and hashtags in your brand, ready to post in minutes with Rerun.`
+- `title`: `Create TikTok Carousels` ("This agent will create TikTok carousels" ✓)
+- `tagline`: `Turn any idea, link or product into ready-to-post TikTok carousels, designed in your brand and posted when you say go.`
+- `category`: `creators` · `tags`: `tiktok`, `carousel`, `instagram`, `content`, `social media`
+- `setupMinutes`: install 1 + setup 2 = 3 → **3**
+- `metaDescription` (≈ 140 characters): `Create TikTok carousels from any idea, link or product: hook, slides, caption and hashtags in your brand, ready to post in minutes with Rerun.`

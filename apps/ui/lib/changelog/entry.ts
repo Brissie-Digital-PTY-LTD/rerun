@@ -81,12 +81,19 @@ export async function pingChangelogRevalidate() {
     await revalidateLanding([CHANGELOG_PATH])
 }
 
-export async function upsertChangelogEntry(supabase: SupabaseClient<Database>, input: ChangelogEntryInput): Promise<WriteResult> {
+export async function upsertChangelogEntry(
+    supabase: SupabaseClient<Database>,
+    input: ChangelogEntryInput,
+    { draftsOnly = false }: { draftsOnly?: boolean } = {},
+): Promise<WriteResult> {
     const row = toRow(input)
-    await normalizeRowImages(supabase, row)
 
     const { data: existing, error: readError } = await selectMaybeSingle(supabase, 'changelog_entries', ['id', 'published_at'] as const, { slug: row.slug })
     if (readError) return { ok: false, status: 500, error: readError.message }
+    // Saving a draft over a live slug would unpublish it.
+    if (draftsOnly && existing?.published_at) return { ok: false, status: 409, error: 'This entry is already published, only an admin can change it' }
+
+    await normalizeRowImages(supabase, row)
 
     const published_at = publishedAtFor(input.publish, existing?.published_at ?? null, input.published_at)
     const { data, error } = await supabase

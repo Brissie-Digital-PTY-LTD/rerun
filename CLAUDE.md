@@ -8,6 +8,18 @@ Do not add comments in most cases. Only add a comment when it genuinely helps: c
 
 Never add comments that just restate what the code does.
 
+# Skills
+
+Every file under `.claude/skills/` is written in English: the frontmatter, the body, the references,
+the comments and the messages printed by the scripts. The repository is international, so a new
+skill is born in English even when it is designed in a French conversation.
+
+- The conversation itself follows the user: a skill says "reply in the user's language", never
+  "reply in French".
+- French stays only where it is a real value: quoted trigger phrases in the `description` (next to
+  their English equivalent), Notion statuses and property names, labels of the French `/admin`
+  back-office as they appear on screen.
+
 # Responsive
 
 Every design and every UI implementation is responsive from the first version, never as a follow-up. Before calling a screen, dialog, panel or landing section done, check it at mobile (~375px), tablet (~768px) and desktop widths, and on a short viewport (~700px tall):
@@ -19,6 +31,19 @@ Every design and every UI implementation is responsive from the first version, n
 - touch targets stay usable, hover-only affordances have a visible fallback
 
 When a design is proposed (mockup, preview, screenshot), it shows the small-screen version too.
+
+# Verify in the app before calling it done
+
+Rerun has paying customers: a change that shows anywhere (a screen, a dialog, a button, a flow, an
+API route the UI calls, the mobile app) is not done until it has been seen working in the running
+app. Tests and the typecheck are not enough. Follow the `verify-in-app` skill without being asked:
+
+- run it on the local stack only (`pnpm db:start`, `pnpm env:local`), never on production
+- `pnpm verify:ui` signs in, captures every width in both themes and reports console errors,
+  failed requests and load timings; a scenario in `.context/verify/` clicks the path that changed
+- look at every capture, fix what the change broke, run it again
+- the final message shows the captures, what was clicked, the errors found, and says plainly what
+  could not be tested
 
 # Supabase
 

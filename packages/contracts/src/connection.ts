@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { RERUN_MODELS, providerSchema } from './agent.js'
+import { RERUN_MODELS, providerSchema, type Provider } from './agent.js'
 
 // A named credential held by the box rather than by an agent. Agents point at one through
 // `config.connectionId`, so plugging a subscription once is enough for every agent on the box, and
@@ -41,6 +41,29 @@ export const planLimitsSchema = z.object({
 })
 export type PlanLimits = z.infer<typeof planLimitsSchema>
 
+// The models a subscription's own CLI says it serves, asked of the binary the box runs (Codex's
+// `model/list`, Claude Code's `supportedModels`). Codex answers for the account: an old binary has
+// never heard of a new model, a free plan is not offered a paid one, and `outdated` tells the two
+// apart (the binary is not the one this engine release pins). Claude Code only names its own picker,
+// a model it leaves out still runs, so its reading is kept for diagnosis and refuses nothing.
+export const cliModelsSchema = z.object({
+    models: z.array(z.string()),
+    version: z.string().nullable(),
+    outdated: z.boolean(),
+    capturedAt: z.string(),
+})
+export type CliModels = z.infer<typeof cliModelsSchema>
+
+// The 1M-context variants of a Claude model run on the same binary entry as the model itself.
+const cliModelKey = (id: string): string => id.replace(/\[1m\]$/, '')
+
+// Without a reading nothing is refused: a probe that failed must never lock models that work.
+export function cliServesModel(provider: Provider, cliModels: CliModels | null | undefined, id: string): boolean {
+    if (provider !== 'codex' || !cliModels) return true
+    const key = cliModelKey(id)
+    return cliModels.models.some(model => cliModelKey(model) === key)
+}
+
 export const connectionSummarySchema = connectionConfigSchema.extend({
     id: z.string(),
     // Whether the credential behind it is present. The value itself is never returned.
@@ -51,6 +74,7 @@ export const connectionSummarySchema = connectionConfigSchema.extend({
     credentialRejected: z.boolean().default(false),
     // Defaulted rather than required: an engine older than plan limits answers without it.
     planLimits: planLimitsSchema.nullable().default(null),
+    cliModels: cliModelsSchema.nullable().default(null),
 })
 export type ConnectionSummary = z.infer<typeof connectionSummarySchema>
 

@@ -174,12 +174,48 @@ export function persistAttribution() {
     setSharedCookie(ATTRIBUTION_COOKIE, JSON.stringify(pendingAttribution))
 }
 
-type PosthogRuntime = { token?: string; debug?: boolean }
+// `lateExtensions` is for a page that has to paint fast on a modest phone: the recorder, the
+// heatmaps and the dead clicks script they pull in (~70 KB and two long tasks) wait for the
+// visitor's first gesture, or a few seconds after `load`, and surveys are not loaded at all. The
+// replay then starts from that moment, not from the first millisecond.
+type PosthogRuntime = { token?: string; debug?: boolean; lateExtensions?: boolean }
+
+const LATE_EXTENSIONS_CONFIG = {
+    disable_session_recording: true,
+    capture_heatmaps: false,
+    capture_dead_clicks: false,
+    disable_surveys: true,
+} as const
+
+const LATE_EXTENSIONS_FALLBACK_MS = 6000
+const FIRST_GESTURES = ['pointerdown', 'mousemove', 'keydown', 'scroll', 'touchstart'] as const
+
+function onFirstGestureOrLater(start: () => void) {
+    let started = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const run = () => {
+        if (started) return
+        started = true
+        clearTimeout(timer)
+        for (const gesture of FIRST_GESTURES) window.removeEventListener(gesture, run)
+        start()
+    }
+
+    for (const gesture of FIRST_GESTURES) window.addEventListener(gesture, run, { once: true, passive: true })
+
+    const armFallback = () => {
+        timer = setTimeout(run, LATE_EXTENSIONS_FALLBACK_MS)
+    }
+    if (document.readyState === 'complete') armFallback()
+    else window.addEventListener('load', armFallback, { once: true })
+}
 
 export function startAnalytics({
     token,
     debug = false,
     captureAttribution = false,
+    lateExtensions = false,
 }: PosthogRuntime & { captureAttribution?: boolean }) {
     storageAllowed = true
     if (captureAttribution) persistAttribution()
@@ -198,15 +234,35 @@ export function startAnalytics({
     }
 
     mode = 'full'
-    posthog.init(token, { ...POSTHOG_BASE_CONFIG, debug })
+    if (!lateExtensions) {
+        posthog.init(token, { ...POSTHOG_BASE_CONFIG, debug })
+        return
+    }
+
+    posthog.init(token, { ...POSTHOG_BASE_CONFIG, ...LATE_EXTENSIONS_CONFIG, debug })
+    // Heatmaps and dead clicks go back to the project settings. `set_config` skips `undefined`, so
+    // the client-side `false` is cleared on the config itself; the `set_config` inside
+    // `startSessionRecording` then has every extension read it again.
+    onFirstGestureOrLater(() => {
+        posthog.config.capture_heatmaps = undefined
+        posthog.config.capture_dead_clicks = undefined
+        posthog.startSessionRecording()
+    })
 }
 
 // The one measurement a refusal does not switch off. Only ever called for a visitor who refused,
 // so it must stay storage-free and anonymous: see `POSTHOG_REPLAY_ONLY_CONFIG`.
-export function startSessionReplay({ token, debug = false }: PosthogRuntime) {
+export function startSessionReplay({ token, debug = false, lateExtensions = false }: PosthogRuntime) {
     if (!token || mode !== 'off') return
     mode = 'replay'
-    posthog.init(token, { ...POSTHOG_REPLAY_ONLY_CONFIG, debug })
+    if (!lateExtensions) {
+        posthog.init(token, { ...POSTHOG_REPLAY_ONLY_CONFIG, debug })
+        return
+    }
+
+    // `before_send` refuses heatmaps and dead clicks here anyway, so they are never loaded.
+    posthog.init(token, { ...POSTHOG_REPLAY_ONLY_CONFIG, ...LATE_EXTENSIONS_CONFIG, debug })
+    onFirstGestureOrLater(() => posthog.startSessionRecording())
 }
 
 // Gated like the cookies rather than like `capture`: an `identify` writes the email into the

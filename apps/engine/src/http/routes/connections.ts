@@ -7,7 +7,7 @@ import { connectionUsage, releaseConnection } from '../../connections/release.js
 import { clearBoxDefault, readBoxDefault, writeBoxDefault } from '../../connections/default.js'
 import { servesModel } from '../../connections/resolve.js'
 import { defaultModelOf } from '../../agents/availability.js'
-import { refreshStaleCodexPlanLimits } from '../../connections/codex-plan-limits.js'
+import { refreshCodexPlanLimits, refreshStaleCodexPlanLimits } from '../../connections/codex-plan-limits.js'
 import type { LoadedConnection } from '../../connections/types.js'
 import { sendNotification } from '../../runtime/notify.js'
 
@@ -44,6 +44,7 @@ connectionRoutes.delete('/default', async c => {
 connectionRoutes.post('/', async c => {
     const body = createConnectionSchema.parse(await c.req.json())
     const connection = await createConnection(body)
+    await readCliModelsBeforeAdopting(connection)
     await adoptBoxDefault(connection)
     announceConnected(connection)
     return c.json(toSummary(connection), 201)
@@ -67,6 +68,7 @@ connectionRoutes.patch('/:id/keys', async c => {
     const body = updateConnectionKeysSchema.parse(await c.req.json())
     const keys = await updateConnectionKeys(id, body)
     const connection = await getConnection(id)
+    await readCliModelsBeforeAdopting(connection)
     await adoptBoxDefault(connection)
     announceConnected(connection)
     return c.json({ keys })
@@ -89,6 +91,14 @@ connectionRoutes.delete('/:id', async c => {
     await deleteConnection(id)
     return c.json({ deleted: id, released })
 })
+
+// The first default a box adopts must be a model the account's Codex serves, and the only reading
+// that can say so is the one taken against the credential that just arrived. Awaited here, a few
+// seconds at most, because the adoption below is the one write that cannot wait for the next list.
+// Nothing to read for the other providers: Claude refuses nothing, a key has no CLI.
+async function readCliModelsBeforeAdopting(connection: LoadedConnection): Promise<void> {
+    if (connection.config.provider === 'codex') await refreshCodexPlanLimits(connection)
+}
 
 // Plugging the first credential into a box is the whole setup, and on its own it changes nothing:
 // with no default written, the resolution ladder keeps every agent on the keyless Rerun connection

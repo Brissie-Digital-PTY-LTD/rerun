@@ -30,15 +30,24 @@ const refused = (error: EmailAccountFailure): EmailAccountResult => ({ ok: false
 export async function ensureEmailAccount(email: string, ip: string): Promise<EmailAccountResult> {
     const admin = createServiceRoleClient()
     const { data: exists, error: existsError } = await admin.rpc('check_email_exists', { email })
-    if (existsError) return refused('unavailable')
+    if (existsError) {
+        console.error('[email-sign-up] check_email_exists failed', existsError.message)
+        return refused('unavailable')
+    }
     if (exists) return { ok: true, created: false }
 
     const { data: blocked, error: blockedError } = await admin.rpc('email_domain_is_blocked', { p_email: email })
-    if (blockedError) return refused('unavailable')
+    if (blockedError) {
+        console.error('[email-sign-up] email_domain_is_blocked failed', blockedError.message)
+        return refused('unavailable')
+    }
     if (blocked) return refused('blocked_domain')
 
     const { data: claimed, error: claimError } = await admin.rpc('claim_email_sign_up', { p_ip: callerRateKey(ip), p_ip_max: MAX_SIGN_UPS_PER_IP, p_window_seconds: SIGN_UP_WINDOW_SECONDS })
-    if (claimError) return refused('unavailable')
+    if (claimError) {
+        console.error('[email-sign-up] claim_email_sign_up failed', claimError.message)
+        return refused('unavailable')
+    }
     if (!claimed) return refused('too_many')
 
     // Left unconfirmed: the code mailed next is what proves the address.

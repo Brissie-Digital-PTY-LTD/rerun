@@ -13,7 +13,7 @@ vi.mock('next/server', () => ({ after: (task: () => Promise<unknown>) => void mo
 const afterResponse = () => Promise.all(mocks.afterTasks.splice(0))
 
 const { createServiceRoleClient } = await import('@/supabase/serviceRole')
-const { acceptInvitationAction, inviteToWorkspaceAction, removeMemberAction, revokeInvitationAction } = await import('./members.actions')
+const { acceptInvitationAction, inviteToWorkspaceAction, joinedWorkspaceForInvitationAction, removeMemberAction, revokeInvitationAction } = await import('./members.actions')
 
 type Row = Record<string, unknown>
 
@@ -314,5 +314,49 @@ describe('acceptInvitationAction', () => {
 
         await expect(acceptInvitationAction('tok')).resolves.toEqual({ ok: true, workspaceId: WORKSPACE_ID })
         expect(db.writes('workspace_members')).toHaveLength(0)
+    })
+})
+
+describe('joinedWorkspaceForInvitationAction', () => {
+    function signedInAs(email: string) {
+        mocks.getServerSession.mockResolvedValue({ user: { id: ME, workspace_id: WORKSPACE_ID }, session: { id: ME, email } })
+    }
+
+    const acceptedInvite = (overrides: Row = {}) => pendingInvite({ status: 'accepted', ...overrides })
+
+    it('lets in the member the accepted invitation was meant for, whatever the case of the email', async () => {
+        signedInAs('NEW@acme.test')
+        const db = database({ workspace_invitations: [acceptedInvite()], workspace_members: [member(ME)] })
+
+        await expect(joinedWorkspaceForInvitationAction('tok')).resolves.toBe(WORKSPACE_ID)
+        expect(db.chains.filter(chain => writeMethodOf(chain))).toHaveLength(0)
+    })
+
+    it('keeps a revoked invitation closed', async () => {
+        signedInAs('new@acme.test')
+        database({ workspace_invitations: [pendingInvite({ status: 'revoked' })], workspace_members: [member(ME)] })
+
+        await expect(joinedWorkspaceForInvitationAction('tok')).resolves.toBeNull()
+    })
+
+    it('keeps the invitation closed to a member the owner removed since', async () => {
+        signedInAs('new@acme.test')
+        database({ workspace_invitations: [acceptedInvite()], workspace_members: [] })
+
+        await expect(joinedWorkspaceForInvitationAction('tok')).resolves.toBeNull()
+    })
+
+    it('keeps the invitation closed to another account', async () => {
+        signedInAs('someone@else.test')
+        database({ workspace_invitations: [acceptedInvite()], workspace_members: [member(ME)] })
+
+        await expect(joinedWorkspaceForInvitationAction('tok')).resolves.toBeNull()
+    })
+
+    it('keeps the invitation closed to a visitor who is not signed in', async () => {
+        mocks.getServerSession.mockResolvedValue({ user: null, session: null })
+        database({ workspace_invitations: [acceptedInvite()], workspace_members: [member(ME)] })
+
+        await expect(joinedWorkspaceForInvitationAction('tok')).resolves.toBeNull()
     })
 })

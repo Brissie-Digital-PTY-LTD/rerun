@@ -1,114 +1,114 @@
 ---
 name: create-agent-template
-description: Créer, à partir d'un sujet (« un agent qui fait des carrousels TikTok », « copier des pubs », « trouver des leads »), un coworker Rerun de qualité lead magnet et son draft de template privé — interview courte par blocs avec défauts recommandés (apps du catalogue de services, paid data, computer use, niveau de cadrage du process, profondeur de l'install), build complet via le MCP Rerun (SOUL, INSTALL.md court, skill, schedule), banc d'essai de vrais runs sur les situations où des clients ont décroché (Skip, « I need 10 », défi ChatGPT, refus sans motif) contre un coworker témoin, capture en draft seulement si le banc est vert. Utiliser dès qu'on veut créer / générer / préparer une template d'agent, un agent pour la marketplace, un agent lead magnet, ou transformer une idée d'agent en template Rerun.
+description: Create, from a topic ("an agent that makes TikTok carousels" / « un agent qui fait des carrousels TikTok », "copy ads" / « copier des pubs », "find leads" / « trouver des leads »), a lead-magnet-quality Rerun coworker and its private template draft, with a short interview in blocks with recommended defaults (apps from the service catalog, paid data, computer use, how tightly the process is framed, install depth), a full build through the Rerun MCP (SOUL, short INSTALL.md, skill, schedule), a test bench of real runs on the situations where customers dropped off (Skip, "I need 10", ChatGPT challenge, refusal with no reason) against a control coworker, and a capture as a draft only if the bench is green. Use whenever someone wants to create / generate / prepare an agent template, an agent for the marketplace, a lead magnet agent, or turn an agent idea into a Rerun template.
 ---
 
-# Créer une template d'agent Rerun (lead magnet)
+# Create a Rerun agent template (lead magnet)
 
-On me donne un sujet. J'en fais **un coworker qui livre un vrai résultat dès la première conversation**, puis un **draft de template privé**, qui ne part en capture qu'après un **banc d'essai vert**. Je pose peu de questions, toujours avec ma recommandation, et je laisse à l'agent la liberté de s'adapter à chaque propriétaire.
+I am given a topic. I turn it into **a coworker that delivers a real result from the first conversation**, then a **private template draft**, which only goes to capture after a **green test bench**. I ask few questions, always with my recommendation, and I leave the agent free to adapt to each owner.
 
-Le skill est en français ; **tout ce que j'écris dans Rerun est en anglais** (SOUL, INSTALL.md, skill, schedule, page de la template). L'agent répond de toute façon dans la langue de son utilisateur.
+I talk to the user in their language; **everything I write in Rerun is in English** (SOUL, INSTALL.md, skill, schedule, template page). The agent replies in its user's language anyway.
 
-## Les trois règles d'or
+## The three golden rules
 
-1. **Le moins de texte possible, au bon endroit.** L'engine injecte déjà dans chaque system prompt l'ordre de l'install, l'usage du catalogue, du paid data, du computer use, de la mémoire, la langue. Je n'écris **que ce qui est propre au job**. Tout ce que je répète dilue le reste. Voir `references/capabilities.md` § « Ce que l'engine dit déjà ».
-2. **Des défauts, pas des règles.** Je décris ce qu'un excellent livrable a en commun, pas une procédure figée. Aucun seuil, score, schéma, fournisseur ou politique inventé. Test d'ouverture avant chaque écriture : *« si le propriétaire demande une variante raisonnable (autre réseau, autre format, autre ton), l'agent peut-il la faire sans contredire ses instructions ? »* Si non, je desserre.
-3. **Résultat d'abord, et un vrai.** Le premier message d'un nouveau propriétaire contient un livrable concret, construit sur ses données ou sur des données publiques réelles (son site, son compte public, sa niche, le paid data), jamais sur des chiffres d'exemple : un client prend un exemple réaliste pour une analyse de son compte. Ce premier livrable contient déjà ce que le SOUL promet (volumes, positions, prix, demande) ; un « first pass » qui annonce la vérification pour plus tard est un échec. Toute question ou app qui ne change pas ce livrable attend, et une question passée (Skip) se remplace par une hypothèse annoncée, jamais par un arrêt.
+1. **As little text as possible, in the right place.** The engine already injects into every system prompt the install order, how to use the catalog, paid data, computer use, memory, the language. I write **only what is specific to the job**. Everything I repeat dilutes the rest. See `references/capabilities.md` § "What the engine already says".
+2. **Defaults, not rules.** I describe what an excellent deliverable has in common, not a fixed procedure. No invented threshold, score, schema, provider or policy. Openness test before every write: *"if the owner asks for a reasonable variant (another network, another format, another tone), can the agent do it without contradicting its instructions?"* If not, I loosen.
+3. **Result first, and a real one.** A new owner's first message contains a concrete deliverable, built on their data or on real public data (their site, their public account, their niche, paid data), never on sample numbers: a customer takes a realistic example for an analysis of their own account. That first deliverable already contains what the SOUL promises (volumes, rankings, prices, demand); a "first pass" that announces the checking for later is a failure. Any question or app that does not change this deliverable waits, and a skipped question (Skip) is replaced by a stated assumption, never by a stop.
 
-## Budgets de longueur
+## Length budgets
 
-| Pièce | Budget |
+| Piece | Budget |
 |---|---|
-| `description` de l'agent | 1 phrase, sur le résultat |
-| `SOUL.md` | ≤ 120 mots |
-| `INSTALL.md` | Express ≤ 80 mots · Standard ≤ 150 · Guidée ≤ 250 |
-| Skill d'agent | Guidé ≤ 350 mots · Cadré ≤ 600 |
-| Corps d'un schedule | ≤ 60 mots |
+| Agent `description` | 1 sentence, about the result |
+| `SOUL.md` | ≤ 120 words |
+| `INSTALL.md` | Express ≤ 80 words · Standard ≤ 150 · Guided ≤ 250 |
+| Agent skill | Guided ≤ 350 words · Framed ≤ 600 |
+| Schedule body | ≤ 60 words |
 
-Je compte les mots (`wc -w` sur un fichier dans `.context/`) avant d'envoyer. Au-dessus du budget, je coupe, je ne négocie pas.
+I count the words (`wc -w` on a file in `.context/`) before sending. Over budget, I cut, I don't negotiate.
 
-## Phase 0 — Préflight (sans rien demander)
+## Phase 0: Preflight (without asking anything)
 
-1. Les outils `mcp__rerun__*` doivent exister. Sinon je m'arrête et je donne la commande :
-   `claude mcp add --transport http rerun https://app.rerun.build/api/mcp/account --header "Authorization: Bearer rk_…"` — clé d'un **compte expert** (doc : `apps/docs/api/connect.mdx`).
-2. `list_capture_sources` → la Box sandbox où créer l'agent. La capture n'accepte que les coworkers d'une sandbox de compte expert : je ne crée jamais ailleurs.
-3. `list_templates` et `list_agents` sur cette Box → si un draft ou un agent existe déjà pour ce sujet, je le reprends au lieu d'en créer un second. Je ne touche jamais une template `in_review`, `published`, `unlisted` ou `archived`.
+1. The `mcp__rerun__*` tools must exist. Otherwise I stop and give the command:
+   `claude mcp add --transport http rerun https://app.rerun.build/api/mcp/account --header "Authorization: Bearer rk_…"`, with the key of an **expert account** (docs: `apps/docs/api/connect.mdx`).
+2. `list_capture_sources` → the sandbox Box where the agent is created. Capture only accepts coworkers from an expert account's sandbox: I never create anywhere else.
+3. `list_templates` and `list_agents` on that Box → if a draft or an agent already exists for this topic, I pick it up instead of creating a second one. I never touch a template that is `in_review`, `published`, `unlisted` or `archived`.
 
-## Phase 1 — Recherche silencieuse
+## Phase 1: Silent research
 
-Avant toute question, je prépare mes recommandations (détail : `references/interview.md` § « Pré-calcul ») :
+Before any question, I prepare my recommendations (details: `references/interview.md` § "Pre-computation"):
 
-- je réduis le sujet à **un livrable héros** (l'objet produit : un carrousel de 7 slides, une liste de 50 leads qualifiés, un swipe file de pubs), une **audience** (catégorie de la template), un **déclencheur** probable, et l'endroit où le job **atterrit** (fichier, app, site) ;
-- `search_connectors` **une capacité à la fois** (ce qu'il lit, ce qu'il fait, où il écrit), requêtes courtes, puis `list_connectors` par catégorie avant de conclure qu'il n'y a rien ;
-- je décide si le **paid data** sert (quels groupes) et si le **computer use** sert (un site sans connecteur officiel sur le chemin du livrable) — grille dans `references/capabilities.md` ;
-- je choisis le **propriétaire fictif** du banc : une vraie petite entreprise de la niche, avec son site et son pays, jamais `example.com`.
+- I reduce the topic to **one hero deliverable** (the object produced: a 7-slide carousel, a list of 50 qualified leads, a swipe file of ads), an **audience** (the template's category), a likely **trigger**, and where the job **lands** (file, app, site);
+- `search_connectors` **one capability at a time** (what it reads, what it does, where it writes), short queries, then `list_connectors` by category before concluding there is nothing;
+- I decide whether **paid data** is useful (which groups) and whether **computer use** is useful (a site with no official connector on the deliverable's path), grid in `references/capabilities.md`;
+- I pick the bench's **fictional owner**: a real small business in the niche, with its site and its country, never `example.com`.
 
-## Phase 2 — Interview par blocs
+## Phase 2: Interview in blocks
 
-`AskUserQuestion`, **2 rounds, 3 au maximum, ≤ 4 questions par round, ≤ 12 questions au total.** Chaque question : mon option recommandée en premier, suffixée « (Recommandé) », une description d'une ligne qui dit ce que le choix change. Je ne pose jamais une question dont la réponse ne change rien au build. Banque de questions et formulations : `references/interview.md`.
+`AskUserQuestion`, **2 rounds, 3 at most, ≤ 4 questions per round, ≤ 12 questions in total.** Each question: my recommended option first, suffixed "(Recommended)", a one-line description saying what the choice changes. I never ask a question whose answer changes nothing in the build. Question bank and wording: `references/interview.md`.
 
-- **Round 1 — le job et les deux curseurs** : promesse / livrable · déclencheur · **cadrage du process** (Ouvert / Guidé / Cadré) · **profondeur de l'install** (Express / Standard / Guidée).
-- **Round 2 — les capacités** : apps du catalogue (multiSelect, ou aucune déclarée) · paid data · computer use.
-- **Round 3, seulement si utile** : actions sortantes à faire valider, contrainte métier réelle, prix si payante.
+- **Round 1: the job and the two dials**: promise / deliverable · trigger · **process framing** (Open / Guided / Framed) · **install depth** (Express / Standard / Guided).
+- **Round 2: the capabilities**: catalog apps (multiSelect, or none declared) · paid data · computer use.
+- **Round 3, only if useful**: outgoing actions that need approval, a real business constraint, price if paid.
 
-Puis je montre un **brief d'une demi-page** et j'attends un OK explicite avant d'écrire quoi que ce soit dans Rerun :
+Then I show a **half-page brief** and wait for an explicit OK before writing anything in Rerun:
 
 ```
-Agent : {nom} — {description}
-Livrable héros : {…}            Déclencheur : {…}
-Cadrage : {Ouvert|Guidé|Cadré}  Install : {Express|Standard|Guidée}
-Apps déclarées : {slug → rôle}  Outils coupés : {computer, paidData | aucun}
-Skill : {nom + 1 ligne | aucun} Schedule : {cron + fuseau | aucun}
-Propriétaire du banc : {entreprise réelle, site, pays}
-Banc : {scénarios joués, S6/S7 oui|non} · {N runs} · ≈ {X} $ (plafond 8 $)
-Titre marketplace : {…}         Catégorie : {…}
+Agent: {name}, {description}
+Hero deliverable: {…}           Trigger: {…}
+Framing: {Open|Guided|Framed}   Install: {Express|Standard|Guided}
+Declared apps: {slug → role}    Tools turned off: {computer, paidData | none}
+Skill: {name + 1 line | none}   Schedule: {cron + timezone | none}
+Bench owner: {real business, site, country}
+Bench: {scenarios played, S6/S7 yes|no} · {N runs} · ≈ ${X} (cap $8)
+Marketplace title: {…}          Category: {…}
 ```
 
-## Phase 3 — Build
+## Phase 3: Build
 
-Gabarits et exemples bons / mauvais : `references/writing.md`. Deux exemples complets : `examples/tiktok-carousel.md` (Guidé, Express, computer use) et `examples/lead-finder.md` (Cadré, Standard, paid data, schedule).
+Templates and good / bad examples: `references/writing.md`. Two complete examples: `examples/tiktok-carousel.md` (Guided, Express, computer use) and `examples/lead-finder.md` (Framed, Standard, paid data, schedule).
 
-1. **`create_agent`** dans la Box sandbox :
-   - `name`, `description`, `soul`, `connectors` (slugs validés) ;
-   - `setup: { required: true, prompt: <INSTALL.md> }` — `required: false` seulement si l'agent fait tout son travail avec les messages et fichiers de l'utilisateur, sans aucune préférence durable ni app ;
-   - `tools` : **je ne passe que ce que je coupe** (toutes les familles sont à `true` par défaut) : en pratique `computer` et `paidData` selon l'interview. Je ne coupe jamais `hub` ni `suggestService` : sans eux l'install ne peut rien faire connecter. Je laisse `selfImprovement` par défaut.
-2. **Skill d'agent** selon le cadrage : `upsert_skill` — aucun en Ouvert, un en Guidé ou Cadré, deux au maximum si le sujet contient deux jobs vraiment distincts. Sa `description` est une **condition de déclenchement** (« Use when asked for… »).
-3. **Schedule**, seulement si le déclencheur est récurrent : `upsert_schedule` avec **`enabled: false`** (il ne doit pas tourner dans la sandbox ; `install_complete` l'active chez le propriétaire). Cron et fuseau sont des défauts que l'INSTALL.md fait confirmer.
-4. **Vérification** : `get_agent` (SOUL, setup, tools, skills, schedules) et `list_agent_connectors`. `needs_auth` / `needs_config` est l'état normal d'une app déclarée dans une template ; je ne demande jamais de credential.
+1. **`create_agent`** in the sandbox Box:
+   - `name`, `description`, `soul`, `connectors` (validated slugs);
+   - `setup: { required: true, prompt: <INSTALL.md> }`; `required: false` only if the agent does all its work with the user's messages and files, without any lasting preference or app;
+   - `tools`: **I only pass what I turn off** (every family is `true` by default): in practice `computer` and `paidData` depending on the interview. I never turn off `hub` or `suggestService`: without them the install cannot get anything connected. I leave `selfImprovement` at its default.
+2. **Agent skill** depending on the framing: `upsert_skill`, none in Open, one in Guided or Framed, two at most if the topic contains two truly distinct jobs. Its `description` is a **trigger condition** ("Use when asked for…").
+3. **Schedule**, only if the trigger is recurring: `upsert_schedule` with **`enabled: false`** (it must not run in the sandbox; `install_complete` turns it on at the owner's). Cron and timezone are defaults that the INSTALL.md has the owner confirm.
+4. **Check**: `get_agent` (SOUL, setup, tools, skills, schedules) and `list_agent_connectors`. `needs_auth` / `needs_config` is the normal state of an app declared in a template; I never ask for a credential.
 
-## Phase 4 — Banc d'essai, puis capture
+## Phase 4: Test bench, then capture
 
-Protocole complet, scénarios et grille : `references/benchmark.md`. **Pas de banc vert, pas de capture.**
+Full protocol, scenarios and grid: `references/benchmark.md`. **No green bench, no capture.**
 
-1. **Banc.** Je joue sur la Box sandbox, avec le propriétaire fictif du brief :
-   - **S1** install, chemin heureux : 3 runs sur Rerun Max, 1 sur un modèle d'une autre famille ;
-   - **S2** tout passé (`[skipped]`) · **S3** « I need 3× plus » avec un critère strict · **S4** « What can you do that ChatGPT can't? » · **S5** « Changes needed » sans motif ;
-   - **S6** feu vert explicite et **S7** variante raisonnable quand ils s'appliquent ;
-   - **T**, le témoin : la même demande sur un coworker nu (la `description` comme SOUL, rien d'autre).
-2. **Jugement** run par run sur les tool calls (`get_run` avec `includeToolCalls: true`), avec la grille de `references/benchmark.md`. Je tiens `.context/template-bench/{agent}/bench.md` à jour, coût compris.
-3. **Porte** : S1 4/4, chaque autre scénario joué passe, la template bat le témoin, le coût tient dans le budget annoncé. Rouge → je corrige la pièce en cause (SOUL, INSTALL.md ou skill) avec `update_agent` / `upsert_skill`, puis je rejoue le scénario rouge et un S1. **Trois tours au maximum** ; toujours rouge, je ne capture pas et je passe au compte rendu en `partial`.
-4. **Nettoyage** : `delete_agent` du témoin, `update_agent({ model: null })` sur l'agent.
+1. **Bench.** I play on the sandbox Box, with the brief's fictional owner:
+   - **S1** install, happy path: 3 runs on Rerun Max, 1 on a model from another family;
+   - **S2** everything skipped (`[skipped]`) · **S3** "I need 3× more" with a strict criterion · **S4** "What can you do that ChatGPT can't?" · **S5** "Changes needed" with no reason;
+   - **S6** explicit go-ahead and **S7** reasonable variant when they apply;
+   - **T**, the control: the same request on a bare coworker (the `description` as SOUL, nothing else).
+2. **Judgment** run by run on the tool calls (`get_run` with `includeToolCalls: true`), with the grid from `references/benchmark.md`. I keep `.context/template-bench/{agent}/bench.md` up to date, cost included.
+3. **Gate**: S1 4/4, every other scenario played passes, the template beats the control, the cost fits in the announced budget. Red → I fix the piece at fault (SOUL, INSTALL.md or skill) with `update_agent` / `upsert_skill`, then I replay the red scenario and one S1. **Three rounds at most**; still red, I don't capture and I move to the report as `partial`.
+4. **Cleanup**: `delete_agent` on the control, `update_agent({ model: null })` on the agent.
 
-**Template** (champs et règles : `references/listing.md`) :
+**Template** (fields and rules: `references/listing.md`):
 
-1. `create_template({ title })` — le slug dérive du titre et ne changera plus : je valide le titre avant.
-2. `update_template` : `tagline`, `longDescription`, `category`, `tags`, `setupMinutes`, `faq` (4 à 6), `metaDescription` (120 à 155 caractères), `pricingModel: "free"`, `priceAmountCents: 0` sauf demande contraire.
-3. `plan_template_capture` → je lis **chaque** avertissement et **chaque** chemin. Le banc a laissé des traces : fichiers dans `workspace/`, tables dans `data/agent.db`. `memory/` est exclu par défaut, **pas** `workspace/` ni `data/agent.db`.
-4. `capture_template_agents` avec le même `setup` que l'agent et un `exclude` couvrant tous les artefacts du banc (sauf un fichier d'exemple que je veux livrer exprès).
-5. `get_template` → je lis `submitChecklist` et `missing`.
+1. `create_template({ title })`. The slug derives from the title and will never change: I validate the title first.
+2. `update_template`: `tagline`, `longDescription`, `category`, `tags`, `setupMinutes`, `faq` (4 to 6), `metaDescription` (120 to 155 characters), `pricingModel: "free"`, `priceAmountCents: 0` unless asked otherwise.
+3. `plan_template_capture` → I read **every** warning and **every** path. The bench left traces: files in `workspace/`, tables in `data/agent.db`. `memory/` is excluded by default, `workspace/` and `data/agent.db` are **not**.
+4. `capture_template_agents` with the same `setup` as the agent and an `exclude` covering every bench artifact (except a sample file I deliberately want to ship).
+5. `get_template` → I read `submitChecklist` and `missing`.
 
-**Je ne soumets jamais** (`submit_template`) dans ce skill.
+**I never submit** (`submit_template`) in this skill.
 
-## Phase 5 — Compte rendu
+## Phase 5: Report
 
-Un résumé court pour l'humain :
+A short summary for the human:
 
-- ce qui a été créé (agent, skill, schedule, draft) et les deux curseurs choisis ;
-- le banc : le tableau scénario × verdict, un extrait du livrable de S1 face au témoin, ce que chaque tour de correction a changé, le coût total ;
-- ce qui manque pour soumettre (en général l'image de couverture) ;
-- la suite proposée, **sans la lancer** : `rerun-image-from-agent-task` → `add_template_image` ; après publication, `template-story <slug>` puis `rerun-x-article`.
+- what was created (agent, skill, schedule, draft) and the two dials chosen;
+- the bench: the scenario × verdict table, an excerpt of the S1 deliverable next to the control, what each fix round changed, the total cost;
+- what is missing to submit (the `get_template` checklist), and the cover image, recommended but not required;
+- the suggested next step, **without launching it**: `rerun-image-from-agent-task` → `add_template_image`; after publication, `template-story <slug>` then `rerun-x-article`.
 
-Puis un record JSON :
+Then a JSON record:
 
 ```json
 {
@@ -128,8 +128,8 @@ Puis un record JSON :
     "scenarios": { "S1": "4/4", "S2": "1/1", "S3": "1/1", "S4": "1/1", "S5": "1/1", "S6": "n/a", "S7": "1/1", "control": "beaten" },
     "notes": "..."
   },
-  "humanFollowUp": ["Add a cover image before submitting"]
+  "humanFollowUp": ["Add a cover image (recommended, not required to submit)"]
 }
 ```
 
-`status` vaut `created`, `reused` ou `partial`. `template` vaut `null` si la capture a échoué ou si le banc est resté rouge, et `humanFollowUp` dit exactement ce qui reste.
+`status` is `created`, `reused` or `partial`. `template` is `null` if the capture failed or if the bench stayed red, and `humanFollowUp` says exactly what remains.

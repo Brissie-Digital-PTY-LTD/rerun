@@ -3,7 +3,7 @@ title: "Configuration"
 description: "Every variable of .env, what it does, and what happens when it is empty."
 ---
 
-Rerun reads its settings from `.env` at the root of your clone. `.env.example` lists every variable with a comment, in the groups below. Four values are required, three are generated for you by `node scripts/self-host-check.mjs`, and the rest are optional.
+Rerun reads its settings from `.env` at the root of your clone. `.env.example` lists every variable with a comment, in the groups below. Four values are required, three are generated for you by `node scripts/self-host-check.mjs`, which also checks that Supabase answers with the schema in place, and the rest are optional.
 
 <Note>
   Variables starting with `NEXT_PUBLIC_` are read by the browser, so they are baked into the app when its image is built. After changing one, run `docker compose up -d --build`. Any other change only needs `docker compose up -d`.

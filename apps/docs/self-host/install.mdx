@@ -41,8 +41,9 @@ Pick one. The first is simpler to keep running, the second is the full open sour
     The project ref is the part before `.supabase.co` in the project URL.
 
     4. In **Authentication > Sign In / Providers**, turn on **Allow anonymous sign-ins** and keep **Confirm email** on. A visitor lands on the board as an anonymous user, and signing up turns that user into an account.
-    5. In **Authentication > Email Templates**, paste the template below into **Magic Link**, **Confirm signup** and **Change Email Address**. Rerun signs people in with a 6-digit code, and Supabase's default templates only carry a link.
-    6. In **Authentication > URL Configuration**, set the **Site URL** to the address people open, the same as `NEXT_PUBLIC_APP_URL` below.
+    5. In **Authentication > Emails > SMTP Settings**, turn on **Custom SMTP** and enter your SMTP server. This step is required: on the Free plan, a project that keeps Supabase's own mailer cannot edit its email templates, so the email arrives without the code. That mailer also sends only 2 emails an hour, and only to the members of your Supabase organization.
+    6. Once SMTP is saved, in **Authentication > Email Templates**, paste the template below into **Magic Link**, **Confirm signup** and **Change Email Address**. Rerun signs people in with a 6-digit code, and Supabase's default templates only carry a link.
+    7. In **Authentication > URL Configuration**, set the **Site URL** to the address people open, the same as `NEXT_PUBLIC_APP_URL` below.
 
     ```html Email template
     <!doctype html>
@@ -57,10 +58,6 @@ Pick one. The first is simpler to keep running, the second is the full open sour
     ```
 
     The same file lives in your clone at `supabase/templates/magic_link.html`. The template says 15 minutes: set **Email OTP Expiration** to `900` seconds in the email provider settings to match, and keep **Email OTP Length** at 6.
-
-    <Warning>
-      Supabase sends these emails with its own mailer, which is only meant for trying things out: it sends a handful of emails an hour, and only to the members of your Supabase organization. Before inviting a team, set up your own SMTP server in **Authentication > Emails > SMTP Settings**.
-    </Warning>
 
     Fill `.env` with what you copied:
 
@@ -204,7 +201,7 @@ ADMIN_EMAILS=you@example.com
 node scripts/self-host-check.mjs
 ```
 
-It generates the three secrets left empty (`RERUN_ENGINE_API_KEY`, `FOREMAN_HUB_TOKEN_SECRET`, `BOARD_IMAGE_SECRET`), checks the required values, and prints the exact command to start. It stops with a plain message on anything only you can fill, and warns when `OPENROUTER_API_KEY` is empty.
+It generates the three secrets left empty (`RERUN_ENGINE_API_KEY`, `FOREMAN_HUB_TOKEN_SECRET`, `BOARD_IMAGE_SECRET`), checks the required values, then asks Supabase whether the schema is in place and `SUPABASE_SECRET_KEY` is the secret key. It stops with a plain message on anything only you can fix, warns when `OPENROUTER_API_KEY` is empty, and prints the exact command to start.
 
 ## 5. Start Rerun
 

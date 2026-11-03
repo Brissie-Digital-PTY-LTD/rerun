@@ -60,43 +60,74 @@ function Solid({ uid, lit, children }: { uid: string; lit: boolean; children: (p
     )
 }
 
-function EyeDefs({ uid, y, tint, light }: { uid: string; y: number; tint: string; light: string }) {
+type EyePaint = Exclude<keyof Paints, 'white'> | 'eye-white'
+
+const INK_ONLY: ReadonlySet<EyePaint> = new Set(['ink'])
+const EYEBALL: ReadonlySet<EyePaint> = new Set(['eye-white', 'pupil'])
+const VISOR: ReadonlySet<EyePaint> = new Set(['glass', 'light'])
+const SHADES: ReadonlySet<EyePaint> = new Set(['glass'])
+const GLASSES: ReadonlySet<EyePaint> = new Set(['ink', 'lens'])
+const HEARTS: ReadonlySet<EyePaint> = new Set(['heart'])
+
+// The gradients one face actually paints with, following the branches of `Eyes`. A page draws a
+// buddy dozens of times, and writing all seven gradients into each one cost a few hundred nodes.
+function eyePaints(style: BuddyEyes, mood: BuddyMood): ReadonlySet<EyePaint> {
+    const keepsFrame = style === 'visor' || style === 'shades' || style === 'glasses'
+    if (mood === 'asleep' || (mood === 'error' && !keepsFrame)) return INK_ONLY
+    switch (style) {
+        case 'googly':
+        case 'cyclops':
+            return EYEBALL
+        case 'visor':
+            return VISOR
+        case 'shades':
+            return SHADES
+        case 'glasses':
+            return GLASSES
+        case 'heart':
+            return HEARTS
+        default:
+            return INK_ONLY
+    }
+}
+
+function EyeDefs({ uid, y, tint, light, paints }: { uid: string; y: number; tint: string; light: string; paints: ReadonlySet<EyePaint> }) {
     const lit = (share: number) => `color-mix(in srgb, ${INK}, ${tint} ${share}%)`
     return (
         <defs>
-            <linearGradient id={`${uid}-ink`} x1="0" y1={y - 3.6} x2="0" y2={y + 3.6} gradientUnits="userSpaceOnUse">
+            {paints.has('ink') && <linearGradient id={`${uid}-ink`} x1="0" y1={y - 3.6} x2="0" y2={y + 3.6} gradientUnits="userSpaceOnUse">
                 <stop offset="0%" style={{ stopColor: `color-mix(in srgb, ${INK}, white 60%)` }} />
                 <stop offset="38%" style={{ stopColor: lit(12) }} />
                 <stop offset="100%" style={{ stopColor: lit(70) }} />
-            </linearGradient>
-            <radialGradient id={`${uid}-eye-white`} cx="40%" cy="30%" r="75%">
+            </linearGradient>}
+            {paints.has('eye-white') && <radialGradient id={`${uid}-eye-white`} cx="40%" cy="30%" r="75%">
                 <stop offset="0%" stopColor="#fff" />
                 <stop offset="55%" stopColor="#f3f4f8" />
                 <stop offset="100%" stopColor="#b3b9c9" />
-            </radialGradient>
-            <radialGradient id={`${uid}-pupil`} cx="38%" cy="30%" r="80%">
+            </radialGradient>}
+            {paints.has('pupil') && <radialGradient id={`${uid}-pupil`} cx="38%" cy="30%" r="80%">
                 <stop offset="0%" stopColor="#4a4d60" />
                 <stop offset="60%" stopColor="#17171d" />
                 <stop offset="100%" stopColor="#050507" />
-            </radialGradient>
-            <linearGradient id={`${uid}-glass`} x1="0" y1="0" x2="0" y2="1">
+            </radialGradient>}
+            {paints.has('glass') && <linearGradient id={`${uid}-glass`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#3b3e50" />
                 <stop offset="50%" stopColor="#17181f" />
                 <stop offset="100%" stopColor="#08080b" />
-            </linearGradient>
-            <linearGradient id={`${uid}-lens`} x1="0" y1="0" x2="0" y2="1">
+            </linearGradient>}
+            {paints.has('lens') && <linearGradient id={`${uid}-lens`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#fff" stopOpacity="0.3" />
                 <stop offset="100%" stopColor="#fff" stopOpacity="0.02" />
-            </linearGradient>
-            <linearGradient id={`${uid}-visor-light`} x1="0" y1="0" x2="0" y2="1">
+            </linearGradient>}
+            {paints.has('light') && <linearGradient id={`${uid}-visor-light`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#fff" />
                 <stop offset="100%" style={{ stopColor: light }} />
-            </linearGradient>
-            <linearGradient id={`${uid}-heart`} x1="0" y1="0" x2="0" y2="1">
+            </linearGradient>}
+            {paints.has('heart') && <linearGradient id={`${uid}-heart`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ffb3cb" />
                 <stop offset="50%" stopColor={HEART} />
                 <stop offset="100%" stopColor="#e0366f" />
-            </linearGradient>
+            </linearGradient>}
             {/* In user space: a pair of flat lines has a bounding box with no height to size the region from. */}
             <filter id={`${uid}-eye-glow`} filterUnits="userSpaceOnUse" x={CENTER - 18} y={y - 12} width={36} height={24}>
                 <feGaussianBlur stdDeviation="1.1" result="blur" />
@@ -326,7 +357,7 @@ export function BuddyFace({ uid, eyes, mouth, mood, depth, light, lit, tint }: B
     const eyeY = depth * (hasMouth ? 0.38 : 0.45)
     return (
         <>
-            {lit && <EyeDefs uid={uid} y={eyeY} tint={tint} light={light} />}
+            {lit && <EyeDefs uid={uid} y={eyeY} tint={tint} light={light} paints={eyePaints(eyes, mood)} />}
             <Eyes style={eyes} mood={mood} y={eyeY} light={light} uid={uid} lit={lit} />
             {hasMouth && mood !== 'asleep' && <Mouth mouth={mouth} mood={mood} y={eyeY + 6.6} />}
         </>

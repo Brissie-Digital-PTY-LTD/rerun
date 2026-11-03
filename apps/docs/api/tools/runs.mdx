@@ -63,13 +63,13 @@ The `trigger` field tells you where the run came from: `chat`, `api`, `schedule:
 
 ## get_run
 
-One execution in full.
+One execution: its status, output, error, token usage and cost.
 
 <ParamField body="agentId" type="string" required />
 <ParamField body="runId" type="string" required />
 
 <ParamField body="includeToolCalls" type="boolean">
-  Also return every tool the coworker called, with its input and its result.
+  Also return every tool the coworker called, with its input and its result. Each `input` and `result` keeps its first 2,000 characters; a longer one ends with `… [truncated] N more chars elided to save context`, and the full payload is not available over the API.
 </ParamField>
 
 ```json Response with includeToolCalls

@@ -5,6 +5,7 @@ import { connectionConfigPath, connectionEnvPath, connectionsDir } from '../conf
 import { readEnvFile } from '../lib/env-file.js'
 import { env } from '../config/env.js'
 import { isCredentialRejected } from './credential-rejections.js'
+import { readCliModels } from './cli-models.js'
 import { readPlanLimits } from './plan-limits.js'
 import type { LoadedConnection } from './types.js'
 
@@ -37,5 +38,12 @@ export function isConnected(connection: LoadedConnection): boolean {
 }
 
 export function toSummary(connection: LoadedConnection): ConnectionSummary {
-    return { id: connection.id, ...connection.config, connected: isConnected(connection), credentialRejected: isCredentialRejected(connection.id), planLimits: readPlanLimits(connection.id) }
+    return {
+        id: connection.id,
+        ...connection.config,
+        connected: isConnected(connection),
+        credentialRejected: isCredentialRejected(connection.id),
+        planLimits: readPlanLimits(connection.id),
+        cliModels: readCliModels(connection.id),
+    }
 }

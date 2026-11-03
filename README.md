@@ -186,8 +186,8 @@ By hand, you need Docker, Node.js 22, and a Supabase project (a free one on [sup
 ```bash
 git clone https://github.com/rerun-build/rerun.git && cd rerun
 cp .env.example .env          # fill the Supabase URL and keys, and an OpenRouter key
-node scripts/self-host-check.mjs
 npx supabase link --project-ref <your-project-ref> && npx supabase db push --include-seed
+node scripts/self-host-check.mjs
 docker compose up -d --build  # then open http://localhost:3000
 ```
 
@@ -232,8 +232,8 @@ in a pnpm monorepo.
 Bug reports, fixes and docs are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: it explains
 how to run Rerun from source and how pull requests flow back into Rerun Cloud.
 
-Self-hosting is documented, not supported: an issue without logs or steps to reproduce is closed
-with a link to the guide. Questions and show-and-tell go to [Discord](https://discord.gg/cJUUgdTg5p).
+Self-hosted installs get community support on GitHub: an issue without logs or steps to reproduce
+is closed with a link to the guide. Questions and show-and-tell go to [Discord](https://discord.gg/cJUUgdTg5p).
 
 If Rerun saves you a few hours, a ⭐ helps a lot.
 

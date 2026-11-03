@@ -183,7 +183,7 @@ export function pendingTakeover(input: Record<string, unknown>): TakeoverRequest
 }
 
 const TAKEOVER_HEADER = 'Browser handed back.'
-const TAKEOVER_TAIL = 'Whatever I did there is saved in your browser profile: open the page again with browser_navigate and continue.'
+const TAKEOVER_TAIL = 'Whatever I did there is saved in your browser profile. The window is closed: open the page again with computer_open_app when you were working on your screen, with browser_navigate otherwise, and check what it shows before you go on.'
 
 // The page the browser was on tells the agent whether the wall was passed, without it having to ask.
 export function serializeTakeoverResult(url: string | null): string {

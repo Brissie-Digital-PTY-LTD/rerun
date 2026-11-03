@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Checks `.env` before the first `docker compose up`: fills the secrets left empty, and stops on
-// what only you can provide, saying where to find it.
+// Checks `.env` before the first `docker compose up`: fills the secrets left empty, stops on what
+// only you can provide, saying where to find it, then asks Supabase whether the schema is in place
+// and the secret key is the right one.
 //
 //   node scripts/self-host-check.mjs
 
@@ -49,7 +50,44 @@ if (problems.length) {
     process.exit(1)
 }
 
+const supabaseProblem = await askSupabase(supabaseUrl, valueOf('SUPABASE_SECRET_KEY'))
+if (supabaseProblem) {
+    console.error(`\nx ${supabaseProblem}\n`)
+    process.exit(1)
+}
+
 console.log(`
-.env is ready. Next:
+.env is ready and Supabase answers. Next:
   docker compose${/localhost:54421/.test(supabaseUrl) ? ' --profile local-supabase' : ''} up -d --build
   open ${appUrl}`)
+
+// The sign-in calls this function with the secret key before it sends any code, so it fails here the
+// same way the sign-in would, with "We could not send your code" and nothing in the logs.
+async function askSupabase(url, secretKey) {
+    let response
+    try {
+        response = await fetch(`${url}/rest/v1/rpc/check_email_exists`, {
+            method: 'POST',
+            headers: { apikey: secretKey, Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'check@rerun.build' }),
+            signal: AbortSignal.timeout(10_000),
+        })
+    } catch {
+        return `Supabase does not answer at ${url}: check NEXT_PUBLIC_SUPABASE_URL, and that Supabase is running`
+    }
+    if (response.ok) return null
+    const body = await response.json().catch(() => ({}))
+    if (body.code === 'PGRST202') return `The database has no Rerun schema yet. Apply it, then run this check again:\n  ${schemaCommand(url)}`
+    const notThisProject = 'SUPABASE_SECRET_KEY is not a key of this Supabase project: copy the secret (service_role) key from Supabase > Project settings > API keys'
+    // An unknown `sb_secret_` key is served as anon by some gateways, so it is refused like the anon key.
+    if (body.code === '42501') return secretKey.startsWith('sb_secret_') ? notThisProject : 'SUPABASE_SECRET_KEY holds the publishable (anon) key: put the secret (service_role) key there, from Supabase > Project settings > API keys'
+    if (response.status === 401 || response.status === 403) return notThisProject
+    return `Supabase answered ${response.status}: ${body.message ?? 'no detail'}`
+}
+
+function schemaCommand(url) {
+    if (/:54421\b/.test(url)) return 'npx supabase db reset   (erases the data of the local stack)'
+    const projectRef = url.match(/^https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1]
+    if (projectRef) return `npx supabase link --project-ref ${projectRef} && npx supabase db push --include-seed`
+    return 'npx supabase db push --include-seed --yes --db-url "postgresql://postgres.rerun:<POSTGRES_PASSWORD>@127.0.0.1:5432/postgres?sslmode=disable"'
+}

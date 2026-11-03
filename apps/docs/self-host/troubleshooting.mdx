@@ -9,6 +9,22 @@ Start with the logs. Most problems say their cause there in one line.
 docker compose logs --since 30m app engine
 ```
 
+## "We could not send your code. Try again."
+
+The sign-in stopped before sending any email: the app could not read the database. Either the schema was never applied, or `SUPABASE_SECRET_KEY` holds the publishable key instead of the secret one. The check says which, and what to run:
+
+```bash
+node scripts/self-host-check.mjs
+```
+
+The app logs name the cause too, on a line starting with `[email-sign-up]`:
+
+```bash
+docker compose logs app | grep email-sign-up
+```
+
+`Could not find the function public.check_email_exists` means the schema is missing, `permission denied` means the wrong key. After fixing `.env`, run `docker compose up -d`.
+
 ## No sign-in code arrives
 
 **With `npx supabase start`**, no email leaves your computer. Every code lands in Mailpit, at [http://localhost:54424](http://localhost:54424).
@@ -17,8 +33,8 @@ docker compose logs --since 30m app engine
 
 **With a project on supabase.com**, check in this order:
 
-1. **The template.** The email must carry the code, `{{ .Token }}`. Supabase's default templates only carry a link, so the email arrives without a code. Paste the [Rerun template](/self-host/install#2-set-up-supabase) into **Magic Link**, **Confirm signup** and **Change Email Address**.
-2. **The mailer.** Supabase's own mailer sends a handful of emails an hour, and only to the members of your Supabase organization. Set up your own SMTP server in **Authentication > Emails > SMTP Settings**.
+1. **The mailer.** Set up your own SMTP server in **Authentication > Emails > SMTP Settings**. On the Free plan, a project that keeps Supabase's own mailer cannot edit its templates, so the email arrives without the code. That mailer also sends only 2 emails an hour, and only to the members of your Supabase organization.
+2. **The template.** Once SMTP is saved, the email must carry the code, `{{ .Token }}`. Supabase's default templates only carry a link. Paste the [Rerun template](/self-host/install#2-set-up-supabase) into **Magic Link**, **Confirm signup** and **Change Email Address**.
 3. **The logs.** **Logs > Auth** in the Supabase dashboard shows each email Supabase tried to send, and why it failed.
 4. **The spam folder**, with the built-in mailer especially.
 

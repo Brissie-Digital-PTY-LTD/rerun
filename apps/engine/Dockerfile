@@ -21,11 +21,11 @@ RUN apt-get update \
 RUN useradd --create-home --shell /bin/bash rerun && mkdir -p /data && chown rerun:rerun /data
 COPY --from=build --chown=rerun:rerun /out /app
 RUN npx --yes patchright@1.63.0 install-deps chromium && rm -rf /var/lib/apt/lists/*
-# The subscription providers drive the official CLIs: Claude Code for a Claude plan, Codex for ChatGPT.
-RUN npm install -g "@openai/codex@^0.159.1"
+# Codex drives a ChatGPT plan, at CODEX_VERSION (src/runtime/codex-cli.ts). Claude Code ships inside
+# the Agent SDK, already in /app.
+RUN npm install -g "@openai/codex@0.166.0"
 USER rerun
 RUN cd /app && npx patchright install --no-shell chromium
-RUN curl -fsSL https://claude.ai/install.sh | bash || echo "Claude CLI not installed: the Claude subscription provider will be unavailable"
 ENV PATH="/home/rerun/.local/bin:${PATH}" \
     NODE_ENV=production \
     RERUN_DATA_DIR=/data \

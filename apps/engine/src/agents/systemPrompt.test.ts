@@ -63,6 +63,22 @@ describe('company brain section', () => {
 })
 
 describe('operating notes', () => {
+    it('checks what a site or a file holds at the source before stating it', async () => {
+        const prompt = await buildSystemPrompt(agent, { source: 'chat' })
+        const section = prompt.slice(prompt.indexOf('<operating_notes>'), prompt.indexOf('</operating_notes>'))
+        expect(section).toContain('a sitemap and robots.txt for a site')
+        expect(section).toContain('a search that returns nothing says nothing about what exists')
+    })
+
+    it('reads a message sent under the user\'s name as its recipient: the link, one ask, their language, no placeholder', async () => {
+        const prompt = await buildSystemPrompt(agent, { source: 'chat' })
+        const section = prompt.slice(prompt.indexOf('<operating_notes>'), prompt.indexOf('</operating_notes>'))
+        expect(section).toContain('is read once as its recipient before it leaves')
+        expect(section).toContain('says what the user offers with the link to it')
+        expect(section).toContain("is in the recipient's language")
+        expect(section).toContain('carries no bracketed placeholder')
+    })
+
     it('tells the agent that nothing outlives its turn', async () => {
         const prompt = await buildSystemPrompt(agent, { source: 'chat' })
         expect(prompt).toContain('Nothing keeps running once your turn ends')
@@ -415,6 +431,13 @@ describe('paid data section', () => {
         expect(section).toContain('companies but no decision-maker')
         expect(section).toContain('complete it with paid_data in the same turn')
         expect(section).not.toContain('offer the paid step')
+    })
+
+    it('closes a capability for the task once a call cost far more than the catalog said or bought nothing usable', async () => {
+        const section = await paidDataSection()
+        expect(section).toContain('billed well above what the catalog said')
+        expect(section).toContain('that capability is closed for the rest of the task')
+        expect(section).toContain('never try it again with other inputs')
     })
 
     it('calls it paid data to the user', async () => {

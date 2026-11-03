@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 
 import { type ToolPartLike, UnderText } from '@/components/chat/MessageView'
 import { isForemanWidgetTool } from '@/lib/foreman/tool-defs'
-import { readAgentPicks } from './agent-picks'
+import { isAgentShortcutTool, shortcutPicks, type AgentPick } from './agent-picks'
 import { AgentPickerCard } from './AgentPickerCard'
 import { CheckoutWidget, TemplatePurchaseWidget } from '@/cloud/billing.client'
 import { ContactTeamWidget } from './ContactTeamWidget'
@@ -18,12 +18,17 @@ import { TemplateChoiceWidget } from './TemplateChoiceWidget'
 // other tool keeps its normal collapsed step.
 export type AnswerWidget = (toolName: string, toolCallId: string, output: unknown) => void
 export type DismissWidget = (toolCallId: string) => void
+// From planAgentShortcuts: the rows a shortcut call draws once its message is folded, null when an
+// earlier call of the same message already draws them.
+export type AgentShortcutPlan = Map<string, AgentPick[] | null>
 
-export function renderForemanWidget(part: ToolPartLike, answer: AnswerWidget, dismiss?: DismissWidget): ReactNode | undefined {
+export function renderForemanWidget(part: ToolPartLike, answer: AnswerWidget, dismiss?: DismissWidget, shortcuts?: AgentShortcutPlan): ReactNode | undefined {
     // Not a widget: it asks nothing and never holds the conversation, it only leaves a shortcut.
-    if (part.toolName === 'show_agents' || part.toolName === 'open_connector_setup') {
+    if (isAgentShortcutTool(part.toolName)) {
         if (part.state === 'output-error') return undefined
-        const picks = part.toolName === 'show_agents' ? readAgentPicks(part.input) : readAgentPicks({ agents: [{ ...(part.input as object), tab: 'services' }] })
+        const planned = shortcuts?.get(part.toolCallId)
+        if (planned === null) return null
+        const picks = planned ?? shortcutPicks(part.toolName, part.input)
         return (
             <UnderText>
                 <AgentPickerCard picks={picks} />

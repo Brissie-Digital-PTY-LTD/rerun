@@ -1,5 +1,5 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 45ed4bd9287395a0a4e35f2f4a1f66da88341516..54f5804b9d98413b29d4eaceb7005d50931bc8b7 100644
+index 45ed4bd9287395a0a4e35f2f4a1f66da88341516..9c6461476f8e48f1841fda87075069e20e528df8 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -2349,6 +2349,7 @@ function mapTool(item) {
@@ -50,8 +50,21 @@ index 45ed4bd9287395a0a4e35f2f4a1f66da88341516..54f5804b9d98413b29d4eaceb7005d50
          },
          raw: last ?? void 0
        });
+@@ -4270,7 +4288,11 @@ var codexErrorInfoSchema = zod.z.union([
+   zod.z.object({ httpConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
+   zod.z.object({ responseStreamConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
+   zod.z.object({ responseStreamDisconnected: codexHttpStatusCodeSchema }).passthrough(),
+-  zod.z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough()
++  zod.z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough(),
++  // rerun patch: Codex adds kinds with its releases (0.166 reports model_not_found). An unknown kind must
++  // not fail the whole notification, or the error and turn/completed are dropped and the run hangs.
++  zod.z.string(),
++  zod.z.object({}).passthrough()
+ ]);
+ var turnSchema = zod.z.object({
+   id: zod.z.string(),
 diff --git a/dist/index.js b/dist/index.js
-index 0e2c370883354cd782ab878f645170a87081c8a2..40c08fbdd99f404cfb6e2eb853d75ef40ea15125 100644
+index 0e2c370883354cd782ab878f645170a87081c8a2..acc67ccb7f202f7996bd612db0b65380be265ff4 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -2341,6 +2341,7 @@ function mapTool(item) {
@@ -102,3 +115,16 @@ index 0e2c370883354cd782ab878f645170a87081c8a2..40c08fbdd99f404cfb6e2eb853d75ef4
          },
          raw: last ?? void 0
        });
+@@ -4262,7 +4280,11 @@ var codexErrorInfoSchema = z.union([
+   z.object({ httpConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
+   z.object({ responseStreamConnectionFailed: codexHttpStatusCodeSchema }).passthrough(),
+   z.object({ responseStreamDisconnected: codexHttpStatusCodeSchema }).passthrough(),
+-  z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough()
++  z.object({ responseTooManyFailedAttempts: codexHttpStatusCodeSchema }).passthrough(),
++  // rerun patch: Codex adds kinds with its releases (0.166 reports model_not_found). An unknown kind must
++  // not fail the whole notification, or the error and turn/completed are dropped and the run hangs.
++  z.string(),
++  z.object({}).passthrough()
+ ]);
+ var turnSchema = z.object({
+   id: z.string(),

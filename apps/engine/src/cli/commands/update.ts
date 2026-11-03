@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readlinkSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,6 +7,7 @@ import { prepareDataDir } from '../../datadir/ladder.js'
 import { desktopEnabled } from '../../config/env.js'
 import { detectLayout, type Layout } from '../../runtime/layout.js'
 import { readLastUpdate, writeLastUpdate } from '../../runtime/last-update.js'
+import { CODEX_VERSION, installedCodexVersion } from '../../runtime/codex-cli.js'
 import { asRoot, canSudo, hasCommand, isRoot, run } from './exec.js'
 import {
     type Artifact,
@@ -114,46 +115,70 @@ export async function installBrowserCommand(): Promise<void> {
     await installBrowser(detectLayout())
 }
 
-// Kept in step with the pin in scripts/install.sh. The subscription providers are only ever as
-// capable as the CLI behind them: GPT-6.1 Sol and Terra need Codex 0.159.1, Haiku 5.5 needs Claude
-// Code 2.1.293.
-const CODEX_PACKAGE = '@openai/codex@^0.159.1'
-
-// install.sh puts both CLIs on the box once, at birth, and nothing moved them since. An engine that
-// self-updates into a catalog naming newer models would offer them against a client that has never
-// heard of them, so the refresh belongs here. Both steps are best-effort: a box that cannot reach
-// npm still gets its engine update, it just keeps the CLI it had.
+// The updater that brings a release in is the previous release's code, so the CLIs are installed by
+// the new release's `update-cli-tools`, and an engine that boots on a Codex other than its pin
+// installs it itself. Codex is best-effort: a box that cannot reach npm still gets its engine
+// update, it keeps the CLI it had and the models it cannot serve stay locked.
 export function updateCliTools(): void {
-    const sudo = !isRoot() && canSudo()
-    try {
-        if (sudo) run('sudo', ['-n', 'npm', 'install', '-g', CODEX_PACKAGE])
-        else run('npm', ['install', '-g', CODEX_PACKAGE])
-    } catch (err) {
-        continuing('codex CLI update', err)
+    const installed = installedCodexVersion()
+    if (installed === CODEX_VERSION) {
+        process.stdout.write(`codex CLI already at ${CODEX_VERSION}\n`)
+    } else {
+        const codexPackage = `@openai/codex@${CODEX_VERSION}`
+        try {
+            if (!isRoot() && canSudo()) run('sudo', ['-n', 'npm', 'install', '-g', codexPackage])
+            else run('npm', ['install', '-g', codexPackage])
+        } catch (err) {
+            continuing('codex CLI update', err)
+        }
     }
+    if (detectLayout().kind !== 'release') return
     try {
-        run('sh', ['-c', 'curl -fsSL https://claude.ai/install.sh | bash'])
-    } catch (err) {
-        continuing('claude CLI update', err)
-    }
-    try {
-        pruneClaudeVersions()
+        for (const path of removeLegacyClaudeCli()) process.stdout.write(`removed ${path}\n`)
     } catch (err) {
         continuing('claude CLI cleanup', err)
     }
 }
 
-// The installer drops each release beside the last one, ~250 MB apiece, and only repoints the
-// launcher. A launcher that does not resolve into the versions folder leaves everything in place.
-export function pruneClaudeVersions(home = homedir()): string[] {
-    const versions = resolve(home, '.local', 'share', 'claude', 'versions')
+// `no-root`: the global npm prefix is root's and the service user cannot sudo into it (install.sh's
+// sudoers only opens systemctl), so the spawn would fail silently at every boot.
+export function updateCliToolsInBackground(): 'spawned' | 'no-root' | false {
+    if (detectLayout().kind !== 'release' || installedCodexVersion() === CODEX_VERSION) return false
+    if (!isRoot() && !canSudo()) return 'no-root'
+    spawn(process.execPath, [CLI_ENTRY, 'update-cli-tools'], { stdio: 'ignore', detached: true }).unref()
+    return 'spawned'
+}
+
+const LEGACY_CLAUDE_LINK = '/usr/local/bin/claude'
+
+// Claude runs on the binary the Agent SDK ships inside each release. The one install.sh used to
+// fetch with claude.ai/install.sh was never on that path, and kept ~250 MB per version it saw.
+// Release layout and Linux only: on a checkout, or on a developer's Mac, the same folder is their
+// own Claude Code.
+export function removeLegacyClaudeCli(home = homedir(), platform = process.platform): string[] {
+    const install = resolve(home, '.local', 'share', 'claude')
     const launcher = resolve(home, '.local', 'bin', 'claude')
-    if (!existsSync(versions) || !existsSync(launcher)) return []
-    const current = realpathSync(launcher)
-    if (dirname(current) !== realpathSync(versions)) return []
-    const stale = readdirSync(versions).filter(name => name !== basename(current))
-    for (const name of stale) rmSync(resolve(versions, name), { recursive: true, force: true })
-    return stale
+    if (platform !== 'linux' || !existsSync(install)) return []
+    const removed: string[] = []
+    if (symlinkTarget(LEGACY_CLAUDE_LINK) === launcher && (isRoot() || canSudo())) {
+        asRoot(['rm', '-f', LEGACY_CLAUDE_LINK])
+        removed.push(LEGACY_CLAUDE_LINK)
+    }
+    if (symlinkTarget(launcher)?.startsWith(`${install}/`)) {
+        rmSync(launcher, { force: true })
+        removed.push(launcher)
+    }
+    rmSync(install, { recursive: true, force: true })
+    removed.push(install)
+    return removed
+}
+
+function symlinkTarget(path: string): string | null {
+    try {
+        return lstatSync(path).isSymbolicLink() ? resolve(dirname(path), readlinkSync(path)) : null
+    } catch {
+        return null
+    }
 }
 
 const DROP_CACHES = '/proc/sys/vm/drop_caches'
@@ -219,8 +244,11 @@ async function updateFromGit(layout: Layout, noRestart: boolean): Promise<void> 
     } catch (err) {
         continuing('chromium install', err)
     }
-
-    updateCliTools()
+    try {
+        run(process.execPath, [CLI_ENTRY, 'update-cli-tools'], { cwd: root })
+    } catch (err) {
+        continuing('CLI tools update', err)
+    }
     if (desktopEnabled()) {
         try {
             run(process.execPath, [CLI_ENTRY, 'install-desktop'], { cwd: root })
@@ -272,7 +300,11 @@ async function updateFromArtifact(layout: Layout, artifact: Artifact, noRestart:
         } catch (err) {
             continuing('chromium install', err)
         }
-        updateCliTools()
+        try {
+            run(process.execPath, [bin, 'update-cli-tools'])
+        } catch (err) {
+            continuing('CLI tools update', err)
+        }
         if (desktopEnabled()) {
             try {
                 run(process.execPath, [bin, 'install-desktop'])

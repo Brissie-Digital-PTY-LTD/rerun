@@ -159,6 +159,21 @@ export async function loadInvitationAction(token: string): Promise<InvitationVie
     return { status: 'ok', email: invite.email, workspaceName: workspace?.name ?? 'a workspace' }
 }
 
+// The page is rendered again after the one that accepted (a refresh racing the sign-in navigation,
+// a reload): whoever it was meant for, already a member, is let in rather than told it was used.
+export async function joinedWorkspaceForInvitationAction(token: string): Promise<number | null> {
+    const { user, session } = await getServerSession()
+    if (!user?.id || !session?.email) return null
+
+    const supabase = createServiceRoleClient()
+    const { data: invite } = await selectMaybeSingle(supabase, 'workspace_invitations', ['workspace_id', 'email', 'status'] as const, { token })
+    if (!invite || invite.status !== 'accepted') return null
+    if (invite.email.toLowerCase() !== session.email.toLowerCase()) return null
+
+    const { data: membership } = await selectMaybeSingle(supabase, 'workspace_members', ['user_id'] as const, { user_id: user.id, workspace_id: invite.workspace_id })
+    return membership ? invite.workspace_id : null
+}
+
 export async function acceptInvitationAction(token: string): Promise<ActionResult<{ workspaceId: number }>> {
     const { user, session } = await getServerSession()
     if (!user?.id || !session?.email) return { ok: false, error: 'You must be signed in to accept an invitation.' }

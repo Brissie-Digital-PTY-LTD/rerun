@@ -1,5 +1,5 @@
 import { accountLabel } from '@/lib/auth/placeholder-email'
-import { acceptInvitationAction, loadInvitationAction } from '@/app/api/_actions/members.actions'
+import { acceptInvitationAction, joinedWorkspaceForInvitationAction, loadInvitationAction } from '@/app/api/_actions/members.actions'
 import { Card } from '@/components/ui/card'
 import { routes } from '@/lib/routes'
 import { WORKSPACE_PARAM } from '@/lib/workspace/workspace-header'
@@ -22,7 +22,11 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
 
     const invite = await loadInvitationAction(token)
     if (invite.status === 'not_found') return <Shell title="Invitation not found" message="This invitation link is invalid." />
-    if (invite.status === 'unavailable') return <Shell title="Invitation unavailable" message="This invitation has already been used or was revoked." />
+    if (invite.status === 'unavailable') {
+        const joinedWorkspaceId = await joinedWorkspaceForInvitationAction(token)
+        if (joinedWorkspaceId !== null) redirect(`${routes.home}?${WORKSPACE_PARAM}=${joinedWorkspaceId}`)
+        return <Shell title="Invitation unavailable" message="This invitation has already been used or was revoked." />
+    }
     if (invite.status === 'expired') return <Shell title="Invitation expired" message="This invitation has expired. Ask the workspace owner to send a new one." />
 
     const { session } = await getServerSession()

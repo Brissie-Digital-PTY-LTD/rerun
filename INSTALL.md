@@ -82,13 +82,15 @@ one computer, never for a server reachable from the internet.
    ```
 
 4. In **Authentication > Sign In / Providers**, turn on **Allow anonymous sign-ins**.
-5. In **Authentication > Email Templates**, paste `supabase/templates/magic_link.html` into
-   **Magic Link**, **Confirm signup** and **Change Email Address**. Rerun signs in with a 6-digit
-   code, and the default templates only carry a link. Set **Email OTP Expiration** to `900`.
-6. In **Authentication > URL Configuration**, set the **Site URL** to `NEXT_PUBLIC_APP_URL`.
-
-Supabase's own mailer only sends a few emails an hour, to members of their Supabase organization.
-Before they invite a team, they set up SMTP in **Authentication > Emails > SMTP Settings**.
+5. In **Authentication > Emails > SMTP Settings**, turn on **Custom SMTP** with their SMTP server.
+   Do not skip it: on the Free plan, a project that keeps Supabase's own mailer cannot edit its
+   templates, so the email arrives without the code, and that mailer sends 2 emails an hour, only
+   to members of their Supabase organization.
+6. Once SMTP is saved, in **Authentication > Email Templates**, paste
+   `supabase/templates/magic_link.html` into **Magic Link**, **Confirm signup** and **Change Email
+   Address**. Rerun signs in with a 6-digit code, and the default templates only carry a link. Set
+   **Email OTP Expiration** to `900`.
+7. In **Authentication > URL Configuration**, set the **Site URL** to `NEXT_PUBLIC_APP_URL`.
 
 ## 5. Fill the rest of `.env`
 
@@ -110,7 +112,9 @@ at their provider.
 node scripts/self-host-check.mjs
 ```
 
-It generates the remaining secrets and prints the exact start command. Run that command. With
+It generates the remaining secrets, asks Supabase whether the schema is in place and the secret
+key is the right one, and prints the exact start command. When it stops, its message says what to
+fix: do that and run it again. Then run the start command. With
 Supabase on this computer it is:
 
 ```bash

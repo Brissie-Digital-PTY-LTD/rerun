@@ -1,11 +1,10 @@
 import { spawn } from 'node:child_process'
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { CONNECTION_TOKEN_KEY } from '@rerun/contracts'
-import { env } from '../config/env.js'
 import { codexHomeDir } from '../config/paths.js'
 import { logger } from '../lib/logger.js'
+import { codexCommand, codexOffPin, parseCodexVersion } from '../runtime/codex-cli.js'
+import { recordCliModels } from './cli-models.js'
 import { ensureCodexAuth, syncCodexAuth } from './codex-auth.js'
 import { planLimitWindowsFromCodex, recordPlanLimits, type CodexRateLimits } from './plan-limits.js'
 import type { LoadedConnection } from './types.js'
@@ -15,27 +14,18 @@ const STALE_AFTER_MS = 5 * 60_000
 
 const INITIALIZE_ID = 1
 const READ_ID = 2
+const MODELS_ID = 3
 
-type Command = { cmd: string; args: string[] }
+export type CodexSession = { rateLimits: CodexRateLimits | null; models: string[]; version: string | null }
 
-// Same ladder as the provider's own resolution, so a reading and a run never use two binaries:
-// the configured path, then the package the provider depends on, then whatever is on PATH.
-function codexCommand(): Command {
-    const { RERUN_CODEX_PATH } = env()
-    if (RERUN_CODEX_PATH) return /\.[cm]?js$/i.test(RERUN_CODEX_PATH) ? { cmd: 'node', args: [RERUN_CODEX_PATH] } : { cmd: RERUN_CODEX_PATH, args: [] }
-    try {
-        const require = createRequire(import.meta.url)
-        const fromProvider = createRequire(require.resolve('ai-sdk-provider-codex-cli'))
-        return { cmd: 'node', args: [join(dirname(fromProvider.resolve('@openai/codex/package.json')), 'bin', 'codex.js')] }
-    } catch {
-        return { cmd: 'codex', args: [] }
-    }
-}
+type ModelList = { data?: { id?: unknown; hidden?: unknown }[]; nextCursor?: unknown }
 
 // The provider drops `account/rateLimits/updated` before anyone can see it and exposes no way to
-// send a request of our own, so the reading takes a short app-server session: handshake, one
-// read, gone. Resolves to null on any failure — a missing gauge is never worth an error.
-export function readCodexRateLimits(connectionId: string): Promise<CodexRateLimits | null> {
+// send a request of our own, so the reading takes a short app-server session: handshake, the plan
+// limits and the model list the account is offered by this binary, gone. Resolves to null on any
+// failure: a missing gauge is never worth an error. A list that never comes back does not cost the
+// gauge that did: the timer settles whatever arrived.
+export function readCodexSession(connectionId: string, timeoutMs = READ_TIMEOUT_MS): Promise<CodexSession | null> {
     return new Promise(resolve => {
         const { cmd, args } = codexCommand()
         const home = codexHomeDir(connectionId)
@@ -45,9 +35,11 @@ export function readCodexRateLimits(connectionId: string): Promise<CodexRateLimi
             cwd: home,
         })
         const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
+        const session: CodexSession = { rateLimits: null, models: [], version: null }
+        let pending = 2
 
         let settled = false
-        const settle = (result: CodexRateLimits | null): void => {
+        const settle = (result: CodexSession | null): void => {
             if (settled) return
             settled = true
             clearTimeout(timer)
@@ -55,7 +47,11 @@ export function readCodexRateLimits(connectionId: string): Promise<CodexRateLimi
             child.kill('SIGTERM')
             resolve(result)
         }
-        const timer = setTimeout(() => settle(null), READ_TIMEOUT_MS)
+        const answered = (): void => {
+            pending -= 1
+            if (pending === 0) settle(session)
+        }
+        const timer = setTimeout(() => settle(session.rateLimits ? session : null), timeoutMs)
         const send = (message: Record<string, unknown>): void => {
             child.stdin.write(`${JSON.stringify(message)}\n`)
         }
@@ -72,10 +68,20 @@ export function readCodexRateLimits(connectionId: string): Promise<CodexRateLimi
             }
             if (message.id === INITIALIZE_ID) {
                 if (message.error) return settle(null)
+                const userAgent = (message.result as { userAgent?: unknown } | undefined)?.userAgent
+                session.version = typeof userAgent === 'string' ? parseCodexVersion(userAgent) : null
                 send({ method: 'initialized' })
                 send({ id: READ_ID, method: 'account/rateLimits/read' })
+                send({ id: MODELS_ID, method: 'model/list', params: {} })
             } else if (message.id === READ_ID) {
-                settle(message.error ? null : ((message.result ?? null) as CodexRateLimits | null))
+                session.rateLimits = message.error ? null : ((message.result ?? null) as CodexRateLimits | null)
+                answered()
+            } else if (message.id === MODELS_ID) {
+                const list = message.error ? undefined : (message.result as ModelList | undefined)
+                // A partial page would read as models the account lacks: no reading beats a wrong one.
+                const data = list?.nextCursor ? [] : (list?.data ?? [])
+                session.models = data.filter(model => typeof model.id === 'string' && model.hidden !== true).map(model => model.id as string)
+                answered()
             }
         })
 
@@ -95,10 +101,11 @@ export function refreshCodexPlanLimits(connection: LoadedConnection | null): Pro
     attemptedAt.set(connection.id, Date.now())
     const task = (async () => {
         await ensureCodexAuth(connection)
-        const response = await readCodexRateLimits(connection.id)
+        const session = await readCodexSession(connection.id)
         // The CLI may have rotated the token while it was up, exactly as it does during a run.
         await syncCodexAuth(connection)
-        recordPlanLimits(connection.id, planLimitWindowsFromCodex(response))
+        recordPlanLimits(connection.id, planLimitWindowsFromCodex(session?.rateLimits ?? null))
+        if (session) recordCliModels(connection.id, session.models, session.version, codexOffPin(session.version))
     })()
         .catch(err => logger.warn({ connection: connection.id, err: (err as Error).message }, 'codex plan limits read failed'))
         .finally(() => inFlight.delete(connection.id))

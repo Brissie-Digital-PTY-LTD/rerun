@@ -2,7 +2,7 @@
 
 Public documentation site, built with [Mintlify](https://mintlify.com) and deployed from this folder of the monorepo.
 
-Mintlify is configured in monorepo mode: the project points at `rerun-build/rerun`, branch `master`, docs directory `/apps/docs`. Every push to `master` that touches this folder redeploys the site.
+Mintlify is configured in monorepo mode on the Rerun Cloud repository, docs directory `/apps/docs`: every push to its production branch that touches this folder redeploys the site. The public repository is a snapshot of it, taken at each release.
 
 ## Local preview
 

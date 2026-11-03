@@ -1,59 +1,59 @@
 ---
 name: loading-skeletons
-description: Dans apps/ui, toute zone de contenu qui charge affiche un skeleton calqué sur son propre layout (jamais un spinner centré, jamais un skeleton passe-partout). Utiliser dès qu'on ajoute un état de chargement, qu'on branche un fetch client, ou qu'on tombe sur un Loader2Icon / Spinner au milieu d'une zone de contenu.
+description: In apps/ui, every content area that is loading shows a skeleton modeled on its own layout (never a centered spinner, never a one-size-fits-all skeleton). Use whenever you add a loading state, wire up a client fetch, or come across a Loader2Icon / Spinner in the middle of a content area.
 ---
 
-# loading-skeletons — un skeleton par surface, calqué sur son layout
+# loading-skeletons: one skeleton per surface, modeled on its layout
 
-Un chargement de **contenu** dans `apps/ui` se rend avec un **skeleton qui a la forme de ce qui va s'afficher**. Pas un spinner centré, pas un `Loader2Icon` nu, pas un « Loading… », et surtout pas le même skeleton générique recollé partout : le but est qu'entre le placeholder et le contenu réel, **rien ne bouge**.
+A **content** load in `apps/ui` renders as a **skeleton shaped like what is about to appear**. Not a centered spinner, not a bare `Loader2Icon`, not a "Loading…", and above all not the same generic skeleton pasted everywhere: the goal is that between the placeholder and the real content, **nothing moves**.
 
-## La règle
+## The rule
 
-> Chaque surface qui charge a **son** skeleton, dont la géométrie est recopiée du composant réel : mêmes classes de conteneur, mêmes hauteurs, mêmes gaps, mêmes bordures. Seule la primitive `Skeleton` est partagée.
+> Each surface that loads has **its own** skeleton, whose geometry is copied from the real component: same container classes, same heights, same gaps, same borders. Only the `Skeleton` primitive is shared.
 
-Le contre-exemple à ne pas reproduire : `SkeletonRows` (des barres `h-4 w-full` empilées) posé sur une liste dont les rows ont une vignette, un titre et un badge. Ça « fait skeleton » sans rien annoncer, et le layout saute à l'arrivée des données. Si tu écris `SkeletonRows`, c'est presque toujours le signe que le skeleton n'a pas été dessiné.
+The counter-example not to reproduce: `SkeletonRows` (stacked `h-4 w-full` bars) placed on a list whose rows have a thumbnail, a title and a badge. It "looks like a skeleton" without announcing anything, and the layout jumps when the data arrives. If you write `SkeletonRows`, it is almost always the sign that the skeleton was not designed.
 
-## Comment on l'écrit
+## How to write it
 
-1. Ouvrir le composant réel et lire son JSX de haut en bas.
-2. Recopier la hiérarchie de conteneurs **telle quelle** (le `border-b border-border px-4 py-3` d'une row, le `grid grid-cols-1 gap-3 sm:grid-cols-2` d'une grille, le `h-28` d'une cover).
-3. Remplacer chaque bout de contenu par un `<Skeleton />` à la bonne hauteur/largeur : `h-3` pour un `text-xs`, `h-3.5` pour un `text-sm`, `h-9` pour un `Input`, `h-8` pour un `Button size="sm"`.
-4. Quand le composant est bâti sur des primitives de layout (`Card` / `CardHeader` / `CardContent`, `ScrollFade`), **réutiliser ces mêmes primitives** dans le skeleton : la géométrie devient exacte gratuitement et reste juste si la primitive évolue.
-5. Varier légèrement les largeurs d'une ligne à l'autre (tableau de widths indexé par `i`) plutôt que des barres identiques.
+1. Open the real component and read its JSX from top to bottom.
+2. Copy the container hierarchy **as is** (the `border-b border-border px-4 py-3` of a row, the `grid grid-cols-1 gap-3 sm:grid-cols-2` of a grid, the `h-28` of a cover).
+3. Replace each piece of content with a `<Skeleton />` at the right height/width: `h-3` for a `text-xs`, `h-3.5` for a `text-sm`, `h-9` for an `Input`, `h-8` for a `Button size="sm"`.
+4. When the component is built on layout primitives (`Card` / `CardHeader` / `CardContent`, `ScrollFade`), **reuse those same primitives** in the skeleton: the geometry becomes exact for free and stays right if the primitive changes.
+5. Vary the widths slightly from one line to the next (an array of widths indexed by `i`) rather than identical bars.
 
-## Où il vit
+## Where it lives
 
-- **Fonction locale en bas du fichier du composant**, c'est le cas par défaut :
-  - `components/agent/AgentPanelMonitoring.tsx` → `MonitoringSkeleton` (la grille 2×`h-32` + 2×`h-56` des `MonitorCard`)
-  - `components/templates/expert/ExpertTemplateList.tsx` → `ExpertTemplateListSkeleton` (vignette `h-9 w-14` + titre + badge, calqué sur `ExpertTemplateRow`)
-  - `components/templates/TemplateLibraryDialog.tsx` → `TemplateCardSkeleton` (cover `h-28`, titre, tagline sur 2 lignes, barre de méta), rendu dans la **même** grille responsive que les vraies cartes
-- **Fichier voisin** quand il est gros : `components/templates/expert/MyTemplateEditorSkeleton.tsx` (les 4 `Card` de l'éditeur + le bloc agents + le footer).
-- **`components/ui/skeleton.tsx`** seulement si **plusieurs** surfaces partagent vraiment la même forme.
+- **A local function at the bottom of the component's file**, this is the default case:
+  - `components/agent/AgentPanelMonitoring.tsx` → `MonitoringSkeleton` (the 2×`h-32` + 2×`h-56` grid of the `MonitorCard`s)
+  - `components/templates/expert/ExpertTemplateList.tsx` → `ExpertTemplateListSkeleton` (`h-9 w-14` thumbnail + title + badge, modeled on `ExpertTemplateRow`)
+  - `components/templates/TemplateLibraryDialog.tsx` → `TemplateCardSkeleton` (`h-28` cover, title, 2-line tagline, meta bar), rendered in the **same** responsive grid as the real cards
+- **A neighboring file** when it is big: `components/templates/expert/MyTemplateEditorSkeleton.tsx` (the editor's 4 `Card`s + the agents block + the footer).
+- **`components/ui/skeleton.tsx`** only if **several** surfaces really share the same shape.
 
-## Le catalogue partagé (à réutiliser si et seulement si la forme colle)
+## The shared catalog (reuse if and only if the shape fits)
 
-| Variante | Forme | Exemple d'appelant |
+| Variant | Shape | Example caller |
 |---|---|---|
-| `Skeleton` | la primitive (`animate-pulse rounded-md bg-accent`) | partout |
-| `SkeletonList` | avatar rond + label + méta à droite | `WorkspaceMembersDialog`, `CaptureSelectStep` |
-| `SkeletonButtonRows` | rows bordées, options `withBadge` / `extraLine` | `AgentPanelScheduled` |
-| `SkeletonServiceRows` | icône `size-8` + label + action, encadré | `AgentPanelServices` |
-| `SkeletonMemoryRows` | badge + 2 lignes de texte | `AgentPanelMemories` |
-| `SkeletonFileTree` | icône `size-4` + nom de largeur variable | `AgentPanelFiles`, `SpacePanelFiles` |
+| `Skeleton` | the primitive (`animate-pulse rounded-md bg-accent`) | everywhere |
+| `SkeletonList` | round avatar + label + meta on the right | `WorkspaceMembersDialog`, `CaptureSelectStep` |
+| `SkeletonButtonRows` | bordered rows, `withBadge` / `extraLine` options | `AgentPanelScheduled` |
+| `SkeletonServiceRows` | `size-8` icon + label + action, framed | `AgentPanelServices` |
+| `SkeletonMemoryRows` | badge + 2 lines of text | `AgentPanelMemories` |
+| `SkeletonFileTree` | `size-4` icon + variable-width name | `AgentPanelFiles`, `SpacePanelFiles` |
 | `SkeletonTable` | header + rows, `rows`/`cols` | `AgentPanelData` |
-| `SkeletonCardGrid` | cartes bordées en grille | `AgentPanelTools` |
-| `SkeletonChat` | bulles user/assistant | `AgentChat` |
-| `SkeletonForm` | label+champ, séparateurs, switches, textarea | `AgentPanelSettings` |
-| `SkeletonRows` | barres plates — **quasi jamais le bon choix** | — |
+| `SkeletonCardGrid` | bordered cards in a grid | `AgentPanelTools` |
+| `SkeletonChat` | user/assistant bubbles | `AgentChat` |
+| `SkeletonForm` | label+field, separators, switches, textarea | `AgentPanelSettings` |
+| `SkeletonRows` | flat bars, **almost never the right choice** | - |
 
-## La frontière : ce qui n'est pas un chargement de contenu
+## The boundary: what is not a content load
 
-- **Un bouton en cours d'action** → `<Button loading>` de `@rerun/ui/primitives` (rend un `DotLoader`). `components/ui/button.tsx` n'est qu'un ré-export, donc le prop est dispo partout. Ne pas fabriquer un `Loader2Icon` à la main dans un bouton.
-  - Piège : `useTransition` donne **un** `pending` partagé. Si plusieurs boutons vivent dans le même composant, garder l'action en cours dans un state (`running === 'submit'`) pour ne faire tourner que le bon. Cf. `components/templates/expert/TemplateSubmitFooter.tsx`.
-- **Un statut inline dans le chat** (`ToolCallBlock`, `CompactionBlock`) → `Spinner`.
-- **Le loading plein écran de l'app** → `AnimatedLogo` + `Shimmer`.
-- Un texte « en cours » dans une dropzone (`Uploading…`) reste du texte.
+- **A button mid-action** → `<Button loading>` from `@rerun/ui/primitives` (renders a `DotLoader`). `components/ui/button.tsx` is only a re-export, so the prop is available everywhere. Do not hand-build a `Loader2Icon` inside a button.
+  - Trap: `useTransition` gives **one** shared `pending`. If several buttons live in the same component, keep the running action in a state (`running === 'submit'`) so only the right one spins. See `components/templates/expert/TemplateSubmitFooter.tsx`.
+- **An inline status in the chat** (`ToolCallBlock`, `CompactionBlock`) → `Spinner`.
+- **The app's full-screen loading** → `AnimatedLogo` + `Shimmer`.
+- An "in progress" text in a dropzone (`Uploading…`) stays text.
 
-## Le test
+## The test
 
-Devtools → réseau **Slow 3G**, ouvrir la surface. Le skeleton doit occuper la même place que le contenu qui le remplace : aucun saut vertical, aucune colonne qui change de largeur, aucun scroll qui bouge.
+Devtools → network **Slow 3G**, open the surface. The skeleton must take up the same space as the content that replaces it: no vertical jump, no column changing width, no scroll moving.

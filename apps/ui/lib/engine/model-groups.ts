@@ -1,4 +1,4 @@
-import { inTierOrder, isHiddenModel, isModelLocked, livePlanWindows, rerunTierDescription } from '@/lib/engine/ai-sources'
+import { cliUnavailableReason, inTierOrder, isHiddenModel, isModelLocked, livePlanWindows, rerunTierDescription } from '@/lib/engine/ai-sources'
 import { modelLabel, modelPower } from '@/lib/engine/models'
 import type { BoxConnection, EngineProvider } from '@/lib/engine/types'
 import { RERUN_CONNECTION_ID, type PlanLimitWindow } from '@rerun/contracts'
@@ -8,8 +8,9 @@ export type ConnectionGroup = {
     label: string
     provider: EngineProvider
     // `description` is set on the Rerun tiers only, which read as two-line rows. `locked` is a model
-    // listed but not included in the plan: picking it opens the plan instead.
-    models: { id: string; label: string; power?: number; description?: string; locked?: boolean }[]
+    // listed but not included in the plan: picking it opens the plan instead. `unavailable` is why the
+    // subscription's CLI cannot run it on this box: the row is disabled and says so.
+    models: { id: string; label: string; power?: number; description?: string; locked?: boolean; unavailable?: string }[]
     // What the connection runs when no model is named, as the engine reads it: the first id of its
     // own list, not the first row shown.
     defaultModel: string
@@ -39,13 +40,16 @@ export function toGroup(connection: BoxConnection, premiumAllowed: boolean): Con
         power: modelPower(id),
         description: rerunTierDescription(connection.id, id),
         locked: isModelLocked(connection.id, id, premiumAllowed),
+        unavailable: cliUnavailableReason(connection, id),
     }))
     // Ids the catalog does not know (a custom router's own): the id is the only label there is.
-    const extra = connection.extraModels.map(id => ({ id, label: id, locked: isModelLocked(connection.id, id, premiumAllowed) }))
+    const extra = connection.extraModels.map(id => ({ id, label: id, locked: isModelLocked(connection.id, id, premiumAllowed), unavailable: cliUnavailableReason(connection, id) }))
     const models = inTierOrder(connection.id, [...catalog, ...extra])
-    // The engine skips what the plan does not run when it picks a connection's default.
+    // The engine skips what the plan does not run, then what the CLI does not serve, when it picks a
+    // connection's default.
     const runnable = [...offered, ...connection.extraModels]
-    const defaultModel = runnable.find(id => !isModelLocked(connection.id, id, premiumAllowed)) ?? runnable[0] ?? ''
+    const runsAsIs = (id: string) => !isModelLocked(connection.id, id, premiumAllowed)
+    const defaultModel = runnable.find(id => runsAsIs(id) && !cliUnavailableReason(connection, id)) ?? runnable.find(runsAsIs) ?? runnable[0] ?? ''
     return { connectionId: connection.id, label: connection.name, provider: connection.provider, models, defaultModel, planWindows: livePlanWindows(connection) }
 }
 

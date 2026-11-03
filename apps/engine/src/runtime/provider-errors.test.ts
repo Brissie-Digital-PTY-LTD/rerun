@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { APICallError, LoadAPIKeyError, RetryError } from 'ai'
-import { classifyFinishReason, classifyProviderError, isFailedFinish, ProviderRefusedError, refusalReason, RUN_ERROR_CODES, STREAM_CUT_RAW_REASON, upstreamReason } from './provider-errors.js'
+import { classifyFinishReason, classifyProviderError, errorMessageOf, isFailedFinish, ProviderRefusedError, refusalReason, RUN_ERROR_CODES, STREAM_CUT_RAW_REASON, upstreamReason } from './provider-errors.js'
 import { RERUN_BUDGET_ERROR_CODE } from './budget-latch.js'
 
 const apiError = (init: { statusCode?: number; message?: string; data?: unknown; isRetryable?: boolean; responseBody?: string }) =>
@@ -13,6 +13,11 @@ const apiError = (init: { statusCode?: number; message?: string; data?: unknown;
         isRetryable: init.isRetryable,
         responseBody: init.responseBody,
     })
+
+// What `@ai-sdk/openai` hands over when the Responses stream carries an error event.
+const openAiStreamError = (code: string, message: string) => ({ type: 'error', sequence_number: 2, error: { type: 'invalid_request_error', code, message, param: null } })
+
+const MODEL_NOT_FOUND = 'The model `gpt-6-sol` does not exist or you do not have access to it.'
 
 const SCHEMA_REFUSAL = 'tools.0.custom.input_schema: input_schema does not support oneOf, allOf, or anyOf at the top level'
 
@@ -117,6 +122,25 @@ describe('classifyProviderError', () => {
         expect(classifyProviderError('openai', apiError({ statusCode: 400 }))).toBe(RUN_ERROR_CODES.refused)
         expect(classifyProviderError('rerun', openRouterRefusal(JSON.stringify({ message: 'prompt is too long: 210000 tokens > 200000 maximum' })))).toBe(RUN_ERROR_CODES.contextWindow)
         expect(classifyProviderError('google', apiError({ statusCode: 400, message: 'Invalid API key' }))).toBe(RUN_ERROR_CODES.unauthorized)
+    })
+
+    it('reads an error event of the OpenAI Responses stream', () => {
+        expect(classifyProviderError('openai', openAiStreamError('model_not_found', MODEL_NOT_FOUND))).toBe(RUN_ERROR_CODES.usageLimit)
+    })
+})
+
+describe('errorMessageOf', () => {
+    it('keeps the sentence of an error event of the OpenAI Responses stream', () => {
+        expect(errorMessageOf(openAiStreamError('model_not_found', MODEL_NOT_FOUND))).toBe(MODEL_NOT_FOUND)
+        expect(errorMessageOf({ message: 'You exceeded your current quota.' })).toBe('You exceeded your current quota.')
+    })
+
+    it('keeps the class name of an Error, which the chat strips', () => {
+        expect(errorMessageOf(apiError({ message: 'Payment Required' }))).toBe('AI_APICallError: Payment Required')
+    })
+
+    it('never stores "[object Object]" for an object it cannot read', () => {
+        expect(errorMessageOf({ code: 'server_error' })).toBe('{"code":"server_error"}')
     })
 })
 

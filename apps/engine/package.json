@@ -25,7 +25,7 @@
         "@ai-sdk/openai": "^3.0.67",
         "@hono/node-server": "^1.19.14",
         "@libsql/client": "^0.17.3",
-        "@modelcontextprotocol/sdk": "^1.29.0",
+        "@modelcontextprotocol/sdk": "^1.32.2",
         "@rerun/contracts": "workspace:*",
         "ai": "^6.0.194",
         "ai-sdk-provider-claude-code": "^3.5.3",
@@ -33,14 +33,14 @@
         "croner": "^10.0.1",
         "drizzle-orm": "^0.45.2",
         "gray-matter": "^4.0.3",
-        "hono": "^4.12.23",
-        "nanoid": "^5.1.11",
+        "hono": "^4.13.16",
+        "nanoid": "^5.1.16",
         "patchright": "^1.63.0",
         "pino": "^10.3.1",
-        "sharp": "^0.35.1",
+        "sharp": "^0.35.5",
         "tar": "^7.5.22",
         "ws": "^8.21.0",
-        "zod": "^4.4.3"
+        "zod": "^4.6.7"
     },
     "devDependencies": {
         "@types/node": "^20.11.17",

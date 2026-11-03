@@ -83,6 +83,11 @@ export const foremanIndustryResultSchema = z.object({ industry: templateCategory
 export const foremanTrialResultSchema = z.object({ entitled: z.boolean() })
 export type ForemanTrialResult = z.infer<typeof foremanTrialResultSchema>
 
+// GET /api/v1/foreman/files: whether the engine's foreman takes files in its own workspace. A box
+// that predates it refuses every upload, so the app offers no attachment there.
+export const foremanEngineFilesSchema = z.object({ supported: z.boolean() })
+export type ForemanEngineFiles = z.infer<typeof foremanEngineFilesSchema>
+
 // POST /api/v1/foreman/lead: the install of the coworker the build put first, or the conversation of
 // the one already started.
 export const foremanLeadRequestSchema = z.object({ agentId: z.string().min(1) })

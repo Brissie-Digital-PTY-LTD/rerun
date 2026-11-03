@@ -6,7 +6,8 @@ import { prepareDataDir } from '../../datadir/ladder.js'
 import { ensureForeman } from '../../agents/foreman.js'
 import { startScheduler } from '../../runtime/scheduler.js'
 import { reconcileInterruptedRuns } from '../../runtime/reconcile.js'
-import { installBrowserInBackground, installDesktopInBackground } from './update.js'
+import { installBrowserInBackground, installDesktopInBackground, updateCliToolsInBackground } from './update.js'
+import { CODEX_VERSION } from '../../runtime/codex-cli.js'
 import { listConnections } from '../../connections/registry.js'
 import { refreshStaleCodexPlanLimits } from '../../connections/codex-plan-limits.js'
 import { env } from '../../config/env.js'
@@ -24,6 +25,9 @@ export async function runCommand(): Promise<void> {
     await reconcileInterruptedRuns()
     if (await installBrowserInBackground()) logger.info('chromium missing: installing it in the background')
     if (installDesktopInBackground()) logger.info('desktop missing: installing it in the background')
+    const cliTools = updateCliToolsInBackground()
+    if (cliTools === 'spawned') logger.info({ codex: CODEX_VERSION }, 'codex CLI off its pin: installing it in the background')
+    if (cliTools === 'no-root') logger.warn({ codex: CODEX_VERSION }, 'codex CLI off its pin and the service user cannot sudo: run `sudo rerun update-cli-tools`')
     void listConnections()
         .then(refreshStaleCodexPlanLimits)
         .catch(err => logger.warn({ err: String(err) }, 'codex plan limits boot read skipped'))

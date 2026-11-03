@@ -145,7 +145,7 @@ the data-dir migrates itself on start.
   localhost:3000` block (automatic certificates).
 
 Docker: `docker build -f apps/engine/Dockerfile .` from the repository root builds an image with
-Chromium, the desktop packages and the Claude and Codex CLIs. Its data-dir is `/data`.
+Chromium, the desktop packages and the Codex CLI. Its data-dir is `/data`.
 
 ## Configuration
 

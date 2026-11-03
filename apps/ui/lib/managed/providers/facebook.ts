@@ -6,7 +6,7 @@ const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`
 const GRAPH_VIDEO_BASE = `https://graph-video.facebook.com/${GRAPH_VERSION}`
 const MAX_PAGE_SIZE = 100
 
-// The Facebook Login for Business configuration on the Rerun app: Pages as assets, the eight
+// The Facebook Login for Business configuration on the Rerun app: Pages as assets, the seven
 // Pages permissions, and a system-user token that never expires. The permissions live in the
 // configuration, so the authorize URL carries config_id instead of a scope.
 const LOGIN_CONFIG_ID = '1664481615043702'
@@ -97,78 +97,6 @@ const tools: ManagedTool[] = [
             graph(await pageToken(token, requireStr(args, 'pageId')), 'GET', `/${id(args, 'pageId')}`, {
                 fields: 'id,name,about,description,category,link,website,phone,emails,location,followers_count,fan_count,picture',
             }),
-    },
-    {
-        name: 'facebook_update_page',
-        description: "Update a Page's public details: about, description, general info, phone, emails and website. Only the fields passed change. Show the user the new values and wait for approval first.",
-        inputSchema: {
-            type: 'object',
-            properties: {
-                pageId: PAGE_ID,
-                about: { type: 'string', description: 'Short About text.' },
-                description: { type: 'string', description: 'Long description of the Page.' },
-                generalInfo: { type: 'string', description: 'General information about the Page.' },
-                phone: { type: 'string', description: 'Phone number.' },
-                emails: { type: 'array', items: { type: 'string' }, description: 'Contact email addresses. Replaces the current list.' },
-                website: { type: 'string', description: 'Website URL.' },
-            },
-            required: ['pageId'],
-        },
-        execute: async (args, token) => {
-            const emails = strList(args, 'emails')
-            const fields = {
-                about: str(args, 'about'),
-                description: str(args, 'description'),
-                general_info: str(args, 'generalInfo'),
-                phone: str(args, 'phone'),
-                emails: emails ? JSON.stringify(emails) : undefined,
-                website: str(args, 'website'),
-            }
-            if (Object.values(fields).every(value => value === undefined)) throw new Error('Pass at least one field to update')
-            return graph(await pageToken(token, requireStr(args, 'pageId')), 'POST', `/${id(args, 'pageId')}`, fields)
-        },
-    },
-    {
-        name: 'facebook_list_page_people',
-        description: 'List the people who have access to the Page and their tasks (MANAGE, CREATE_CONTENT, MODERATE, ADVERTISE, ANALYZE…): business users, who can be changed with facebook_assign_page_tasks, and other people.',
-        inputSchema: { type: 'object', properties: { pageId: PAGE_ID }, required: ['pageId'] },
-        execute: async (args, token) => {
-            const accessToken = await pageToken(token, requireStr(args, 'pageId'))
-            const page = await graph(accessToken, 'GET', `/${id(args, 'pageId')}`, { fields: 'business' })
-            const businessId = (page.business as { id?: string } | undefined)?.id
-            if (!businessId) throw new Error('This Page is not owned by a business portfolio, so its access is managed on Facebook directly.')
-            // The roles edge is gone for Pages on the new Pages experience: its failure must not hide the business users.
-            const [businessUsers, otherPeople] = await Promise.all([graph(accessToken, 'GET', `/${id(args, 'pageId')}/assigned_users`, { business: businessId, fields: 'id,name,tasks', limit: MAX_PAGE_SIZE }), graph(accessToken, 'GET', `/${id(args, 'pageId')}/roles`, { fields: 'id,name,tasks', limit: MAX_PAGE_SIZE }).catch(() => ({ data: [] }))])
-            return { business: page.business, businessUsers: businessUsers.data ?? [], otherPeople: otherPeople.data ?? [] }
-        },
-    },
-    {
-        name: 'facebook_assign_page_tasks',
-        description: "Give a business user access to the Page with the listed tasks, or change their tasks. The user must belong to the Page's business portfolio. MANAGE grants full control of the Page: always confirm the person and the tasks with the user first.",
-        inputSchema: {
-            type: 'object',
-            properties: {
-                pageId: PAGE_ID,
-                userId: { type: 'string', description: 'The business user id, as listed by facebook_list_page_people.' },
-                tasks: {
-                    type: 'array',
-                    items: { type: 'string', enum: ['MANAGE', 'CREATE_CONTENT', 'MODERATE', 'MESSAGING', 'ADVERTISE', 'ANALYZE'] },
-                    description: 'The tasks the user gets on the Page. Replaces their current tasks.',
-                },
-            },
-            required: ['pageId', 'userId', 'tasks'],
-        },
-        execute: async (args, token) => {
-            const tasks = strList(args, 'tasks') ?? []
-            if (!tasks.length) throw new Error('tasks must name at least one task')
-            return graph(await pageToken(token, requireStr(args, 'pageId')), 'POST', `/${id(args, 'pageId')}/assigned_users`, { user: requireStr(args, 'userId'), tasks: JSON.stringify(tasks) })
-        },
-    },
-    {
-        name: 'facebook_remove_page_access',
-        description: "Remove a business user's access to the Page. Confirm the person with the user first.",
-        inputSchema: { type: 'object', properties: { pageId: PAGE_ID, userId: { type: 'string', description: 'The business user id, as listed by facebook_list_page_people.' } }, required: ['pageId', 'userId'] },
-        execute: async (args, token) => graph(await pageToken(token, requireStr(args, 'pageId')), 'DELETE', `/${id(args, 'pageId')}/assigned_users`, { user: requireStr(args, 'userId') }),
     },
     {
         name: 'facebook_get_page_insights',

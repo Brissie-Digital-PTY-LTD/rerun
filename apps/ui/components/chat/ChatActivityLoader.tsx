@@ -26,7 +26,7 @@ export function ChatActivityLoader({ agentId, message, indicator }: ChatActivity
                 construction : sans ça il est raboté net au ras du contour, à gauche comme en haut.
                 Rien d'autre ne déborde ici, le `px-3` de la pile absorbe le reste. */}
             <MessageContent className="overflow-visible">
-                <div className="flex items-center gap-2 py-1">
+                <div className="flex h-8 items-center gap-2">
                     {indicator ?? <DotSpinner variant="light" size="xs" />}
                     {activity ? (
                         <TextShimmer className="text-sm">{activity}</TextShimmer>

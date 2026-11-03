@@ -35,13 +35,15 @@ export function BuddyArt({ uid, id, mood, look, plain, geometry = BUDDY_GEOMETRY
 
     return (
         <>
-            <defs>
-                <linearGradient id={`${uid}-sweep`} x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#fff" stopOpacity="0" />
-                    <stop offset="50%" stopColor="#fff" stopOpacity="0.32" />
-                    <stop offset="100%" stopColor="#fff" stopOpacity="0" />
-                </linearGradient>
-            </defs>
+            {mood === 'working' && (
+                <defs>
+                    <linearGradient id={`${uid}-sweep`} x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#fff" stopOpacity="0" />
+                        <stop offset="50%" stopColor="#fff" stopOpacity="0.32" />
+                        <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+                    </linearGradient>
+                </defs>
+            )}
             <RoundedBox
                 uid={uid}
                 geometry={geometry}

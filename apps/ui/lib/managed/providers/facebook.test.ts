@@ -113,21 +113,6 @@ describe('facebook tools', () => {
         expect(calls[1].body.get('is_hidden')).toBe('true')
     })
 
-    it('updates only the Page fields it is given', async () => {
-        const calls = stubGraph(call => pageTokenOr(call, { success: true }))
-        await tool('facebook_update_page').execute({ pageId: 'p1', about: 'Bakery in Lyon', emails: ['hi@x.fr'] }, 't')
-        expect(calls[1].method).toBe('POST')
-        expect(calls[1].url.pathname.endsWith('/p1')).toBe(true)
-        expect(calls[1].body.get('about')).toBe('Bakery in Lyon')
-        expect(calls[1].body.get('emails')).toBe('["hi@x.fr"]')
-        expect(calls[1].body.has('website')).toBe(false)
-    })
-
-    it('refuses a Page update with nothing to change', async () => {
-        stubGraph(call => pageTokenOr(call, {}))
-        await expect(tool('facebook_update_page').execute({ pageId: 'p1' }, 't')).rejects.toThrow('at least one field')
-    })
-
     it('adds each photo to the album', async () => {
         let photo = 0
         const calls = stubGraph(call => pageTokenOr(call, call.url.pathname.endsWith('/photos') ? { id: `ph${++photo}` } : {}))
@@ -136,45 +121,6 @@ describe('facebook tools', () => {
         expect(uploads.map(c => c.body.get('url'))).toEqual(['https://x/a.jpg', 'https://x/b.jpg'])
         expect(uploads[0].body.get('caption')).toBe('Spring')
         expect(result).toEqual({ albumId: 'al1', photoIds: ['ph1', 'ph2'] })
-    })
-
-    it('lists business users and other people with access to the Page', async () => {
-        const calls = stubGraph(call => pageTokenOr(call, call.url.searchParams.get('fields') === 'business' ? { business: { id: 'b1', name: 'Acme' } } : { data: [{ id: call.url.pathname.endsWith('/assigned_users') ? 'bu1' : 'u1', tasks: ['MODERATE'] }] }))
-        await expect(tool('facebook_list_page_people').execute({ pageId: 'p1' }, 't')).resolves.toEqual({
-            business: { id: 'b1', name: 'Acme' },
-            businessUsers: [{ id: 'bu1', tasks: ['MODERATE'] }],
-            otherPeople: [{ id: 'u1', tasks: ['MODERATE'] }],
-        })
-        expect(calls.find(c => c.url.pathname.endsWith('/assigned_users'))?.url.searchParams.get('business')).toBe('b1')
-    })
-
-    it('still lists the business users when the roles edge is refused', async () => {
-        stubGraph(call => {
-            if (call.url.searchParams.get('fields') === 'business') return pageTokenOr(call, { business: { id: 'b1' } })
-            if (call.url.pathname.endsWith('/roles')) return { error: { message: 'Unsupported get request', code: 100 } }
-            return pageTokenOr(call, { data: [{ id: 'bu1', tasks: ['MANAGE'] }] })
-        })
-        await expect(tool('facebook_list_page_people').execute({ pageId: 'p1' }, 't')).resolves.toMatchObject({ businessUsers: [{ id: 'bu1' }], otherPeople: [] })
-    })
-
-    it('explains that a Page without a business portfolio has no business users', async () => {
-        stubGraph(call => pageTokenOr(call, { id: 'p1' }))
-        await expect(tool('facebook_list_page_people').execute({ pageId: 'p1' }, 't')).rejects.toThrow('not owned by a business portfolio')
-    })
-
-    it('assigns Page tasks as a JSON list', async () => {
-        const calls = stubGraph(call => pageTokenOr(call, { success: true }))
-        await tool('facebook_assign_page_tasks').execute({ pageId: 'p1', userId: 'bu1', tasks: ['CREATE_CONTENT', 'MODERATE'] }, 't')
-        expect(calls[1].url.pathname.endsWith('/p1/assigned_users')).toBe(true)
-        expect(calls[1].body.get('user')).toBe('bu1')
-        expect(calls[1].body.get('tasks')).toBe('["CREATE_CONTENT","MODERATE"]')
-    })
-
-    it('removes Page access by user id', async () => {
-        const calls = stubGraph(call => pageTokenOr(call, { success: true }))
-        await tool('facebook_remove_page_access').execute({ pageId: 'p1', userId: 'bu1' }, 't')
-        expect(calls[1].method).toBe('DELETE')
-        expect(calls[1].url.searchParams.get('user')).toBe('bu1')
     })
 
     it('uploads videos through the video host', async () => {

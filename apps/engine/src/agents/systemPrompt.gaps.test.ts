@@ -180,6 +180,13 @@ describe('buildSystemPrompt guided setup', () => {
         expect(prompt).toContain('The work you deliver (posts, emails, drafts, reports) follows the same language')
     })
 
+    it('writes a text meant for someone else in that person\'s language, whatever the user writes in', async () => {
+        const prompt = await buildSystemPrompt(agentWith())
+        const section = prompt.slice(prompt.indexOf('<language>'), prompt.indexOf('</language>'))
+        expect(section).toContain("A text written for someone else (a prospect, a candidate, a customer) is in that person's language")
+        expect(section).toContain('whatever language the user writes to you in')
+    })
+
     it('counts paid_data among what works without any connection, only for a coworker that has it', async () => {
         const setupOf = (prompt: string) => prompt.slice(prompt.indexOf('<setup>'), prompt.indexOf('</setup>'))
         const withPaidData = agentWith({ setup: { required: true, completedAt: null } }, { install: '1. Connect Gmail.' })

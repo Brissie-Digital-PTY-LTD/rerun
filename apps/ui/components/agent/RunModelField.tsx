@@ -3,11 +3,13 @@
 import { Field } from '@/components/ui/field'
 import { ModelTierRow } from '@/components/agent/ModelTierRow'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { useAvailableModels, type ConnectionGroup } from '@/hooks/useAvailableModels'
 import { PREMIUM_MODEL_BILLING_TRIGGER, modelName } from '@/lib/engine/ai-sources'
 import { modelLabel } from '@/lib/engine/models'
 import { ProviderIcon } from '@/lib/engine/provider-icons'
 import type { EngineProvider } from '@/lib/engine/types'
+import { cn } from '@/lib/utils'
 import { useBillingStore } from '@/stores/billing.store'
 import { useCallback, useMemo, useState } from 'react'
 
@@ -95,9 +97,15 @@ export function RunModelField({ id, value, onChange, availableGroups, helperText
                                 {group.label}
                             </SelectLabel>
                             {group.models.map(m => (
-                                <SelectItem key={m.id} value={encode({ connectionId: group.connectionId, model: m.id })} className={m.description || m.locked ? '*:[span]:last:flex-1' : undefined}>
-                                    {m.description || m.locked ? <ModelTierRow label={m.label} description={m.description} power={m.power} locked={m.locked} /> : m.label}
-                                </SelectItem>
+                                <TooltipDisabledReason key={m.id} reason={m.unavailable} side="right" className="flex w-full">
+                                    <SelectItem
+                                        value={encode({ connectionId: group.connectionId, model: m.id })}
+                                        disabled={!!m.unavailable}
+                                        className={cn('flex-1', (m.description || m.locked) && '*:[span]:last:flex-1')}
+                                    >
+                                        {m.description || m.locked ? <ModelTierRow label={m.label} description={m.description} power={m.power} locked={m.locked} /> : m.label}
+                                    </SelectItem>
+                                </TooltipDisabledReason>
                             ))}
                         </SelectGroup>
                     ))}

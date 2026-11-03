@@ -1,15 +1,15 @@
-# Écrire l'agent : SOUL, INSTALL.md, skill, schedule
+# Writing the agent: SOUL, INSTALL.md, skill, schedule
 
-Tout est en anglais. Chaque pièce a un rôle unique ; une phrase qui pourrait aller dans deux pièces va dans **une seule**.
+Everything is in English. Each piece has a single role; a sentence that could go in two pieces goes in **only one**.
 
-| Pièce | Toujours chargée ? | Son rôle | N'y met jamais |
+| Piece | Always loaded? | Its role | Never put in it |
 |---|---|---|---|
-| `SOUL.md` | oui, à chaque run | qui il est, ce qu'il possède, la barre de qualité | une procédure, des outils, l'install |
-| `INSTALL.md` | une fois, à l'install | ce que *ce* job doit montrer, apprendre, connecter, tester | les étapes génériques de l'engine |
-| Skill d'agent | à la demande | la méthode d'un pro du domaine | l'identité, l'install |
-| Schedule | à chaque déclenchement | quoi faire cette fois-ci | la méthode (elle est dans le skill) |
+| `SOUL.md` | yes, on every run | who it is, what it owns, the quality bar | a procedure, tools, the install |
+| `INSTALL.md` | once, at install | what *this* job must show, learn, connect, test | the engine's generic steps |
+| Agent skill | on demand | the method of a professional in the field | the identity, the install |
+| Schedule | on every trigger | what to do this time | the method (it is in the skill) |
 
-## SOUL.md (≤ 120 mots)
+## SOUL.md (≤ 120 words)
 
 ```markdown
 # {Agent name}
@@ -23,21 +23,21 @@ You are {Agent name}, a coworker that {outcome owned, broad enough to cover reas
 Adapt to each user's brand, audience and tools; when they want it done differently, do it their way.
 ```
 
-**Bon** (Guidé, carrousel) :
+**Good** (Guided, carousel):
 > You are Carousel Studio, a coworker that turns an idea, a link or a product into scroll-stopping TikTok and Instagram carousels.
 > A great carousel earns the second swipe: a hook slide that names a pain or a promise, one idea per slide, and a last slide that tells the viewer what to do next. Every slide is readable on a phone in under three seconds.
 > Show the finished slides and caption and wait for the user's go-ahead before anything is posted under their name.
 > Adapt to each user's brand, audience and tools; when they want it done differently, do it their way.
 
-**Mauvais — trop vague** : « You are a helpful AI that creates content. » → aucune barre de qualité, l'agent livre du générique.
+**Bad, too vague**: "You are a helpful AI that creates content." → no quality bar, the agent delivers something generic.
 
-**Mauvais — trop fermé** : « Always produce exactly 7 slides in 1080×1350, Montserrat Bold 64 px, 3 hashtags, post at 6 pm. » → seuils inventés ; le propriétaire qui veut 10 slides ou LinkedIn est contredit.
+**Bad, too closed**: "Always produce exactly 7 slides in 1080×1350, Montserrat Bold 64 px, 3 hashtags, post at 6 pm." → invented thresholds; the owner who wants 10 slides or LinkedIn is contradicted.
 
-**Mauvais — redondant** : « First introduce yourself, then use suggest_service to connect TikTok, save preferences with memory_write… » → déjà dans le system prompt, et à la mauvaise place.
+**Bad, redundant**: "First introduce yourself, then use suggest_service to connect TikTok, save preferences with memory_write…" → already in the system prompt, and in the wrong place.
 
 ## INSTALL.md
 
-Un seul gabarit, rempli selon la profondeur. Pas de titre, pas de liste numérotée, pas d'étapes génériques (l'engine impose déjà : se présenter, résultat d'abord, apps ensuite, test, `install_complete`).
+A single template, filled in according to the depth. No title, no numbered list, no generic steps (the engine already enforces: introduce itself, result first, apps after, test, `install_complete`).
 
 ```markdown
 First result: {the concrete deliverable to show before anything is connected, and the real data it is built from: their website, a public handle, a niche they name, public paid data}.
@@ -47,35 +47,35 @@ Real test: {one small, safe run on their real data: read, draft, preview — nev
 Done when: {what must work before install_complete}.
 ```
 
-Selon la profondeur :
+Depending on the depth:
 
-- **Express (≤ 80 mots)** — `Learn` contient au plus une question, souvent posée *dans* le premier résultat (« Ask for their handle or website if they have not given it »). `Apps` peut dire : « Offer {App} only when they want to {post / send}. » `Real test` peut se confondre avec le premier résultat.
-- **Standard (≤ 150 mots)** — 2 ou 3 préférences, une app clé, un test réel distinct.
-- **Guidée (≤ 250 mots)** — jusqu'à 5 points, confirmation de la cadence et du fuseau du schedule, ce qui doit être validé avant toute action sortante, test réel sur un vrai cas.
+- **Express (≤ 80 words)**: `Learn` contains at most one question, often asked *within* the first result ("Ask for their handle or website if they have not given it"). `Apps` can say: "Offer {App} only when they want to {post / send}." `Real test` can merge with the first result.
+- **Standard (≤ 150 words)**: 2 or 3 preferences, one key app, a separate real test.
+- **Guided (≤ 250 words)**: up to 5 points, confirmation of the schedule's cadence and timezone, what must be approved before any outgoing action, a real test on a real case.
 
-**Bon (Express, carrousel)** :
+**Good (Express, carousel)**:
 > First result: ask for their TikTok handle, website or niche, then make a full carousel — slides rendered as images, caption and hashtags — on a topic their audience cares about.
 > Learn along the way: their brand colours and tone, from what they share or their site.
 > Apps: none needed to start. When they want it posted, offer to do it on TikTok from your computer, signed in to their account.
 > Done when: they have one carousel they would post.
 
-**Mauvais — chiffres d'exemple** (Paid Acquisition, 24/10/2026) :
+**Bad, sample numbers** (Paid Acquisition, 10/24/2026):
 > First result: show a wasted spend review on sample numbers, labelled as such.
-> → le client a lu 280 € « gaspillés » et a demandé 18 minutes plus tard « are they real? ». Sans accès à son compte, le premier résultat est ce que les données publiques permettent de vrai (ses pubs dans la bibliothèque Meta, les volumes et CPC de ses requêtes), plus ce que l'accès débloquera.
+> → the customer read €280 "wasted" and asked 18 minutes later "are they real?". Without access to their account, the first result is what public data makes real (their ads in the Meta library, the volumes and CPC of their queries), plus what access will unlock.
 
-**Mauvais — l'INSTALL.md contredit le SOUL** (Product Radar, 22/10/2026) : SOUL « for each product you check five things », INSTALL « Find 3 candidate products and show the full sheet of the best one » → l'agent a livré deux candidats « I haven't checked yet ». Le premier résultat applique la barre du SOUL à tout ce qu'il montre : « Find 3 products that pass, each with its checked demand, and show the full sheet of the best one. »
+**Bad, the INSTALL.md contradicts the SOUL** (Product Radar, 10/22/2026): SOUL "for each product you check five things", INSTALL "Find 3 candidate products and show the full sheet of the best one" → the agent delivered two "I haven't checked yet" candidates. The first result applies the SOUL's bar to everything it shows: "Find 3 products that pass, each with its checked demand, and show the full sheet of the best one."
 
-**Mauvais** :
+**Bad**:
 > 1. Introduce yourself. 2. Ask for their name, company, industry, audience, tone, colours, fonts, posting frequency, goals and competitors. 3. Connect TikTok, Instagram, Canva and Google Drive. 4. …
-> → dix questions avant le moindre résultat, quatre apps dont trois inutiles au premier livrable, étapes que l'engine impose déjà.
+> → ten questions before the slightest result, four apps of which three are useless for the first deliverable, steps the engine already enforces.
 
-## Skill d'agent
+## Agent skill
 
-Créé avec `upsert_skill` : `name`, `description`, `body`, éventuellement `files` (`references/…`). Format engine : un `SKILL.md` avec frontmatter `name` + `description`, puis le corps.
+Created with `upsert_skill`: `name`, `description`, `body`, optionally `files` (`references/…`). Engine format: a `SKILL.md` with frontmatter `name` + `description`, then the body.
 
-**`description` = condition de déclenchement** : « Use when asked to make a carousel, or when turning a post, a link or a product into slides. » Jamais « About carousels ».
+**`description` = trigger condition**: "Use when asked to make a carousel, or when turning a post, a link or a product into slides." Never "About carousels".
 
-### Guidé (≤ 350 mots) — une méthode, pas une séquence
+### Guided (≤ 350 words): a method, not a sequence
 
 ```markdown
 # {Skill name}
@@ -89,14 +89,14 @@ Créé avec `upsert_skill` : `name`, `description`, `body`, éventuellement `fil
 ## Pitfalls
 {2–4 bullets: the mistakes that make the deliverable look amateur.}
 
-Quand le job peut tomber sur « rien ne passe » (leads avec intention, produits qui tiennent la marge), le skill dit quoi livrer alors : ce qui passe, puis les plus proches avec ce qui leur manque, et la route qui élargirait la recherche. Sans cette ligne l'agent rend « zero ».
-Quand le skill termine par une validation (« approve or change? »), il dit aussi quoi faire d'un refus sans motif : livrer une v2 sur l'hypothèse la plus probable, pas redemander quoi changer.
+When the job can run into "nothing passes" (leads with intent, products that hold the margin), the skill says what to deliver then: what passes, then the closest ones with what they lack, and the route that would widen the search. Without this line the agent returns "zero".
+When the skill ends with an approval ("approve or change?"), it also says what to do with a refusal with no reason: deliver a v2 on the most likely assumption, not ask again what to change.
 
 ## Delivering
 {1–3 bullets: how the result reaches the user — a table view, a published file, images, a draft in their app.}
 ```
 
-### Cadré (≤ 600 mots) — des étapes et un format, avec une porte de sortie
+### Framed (≤ 600 words): steps and a format, with a way out
 
 ```markdown
 # {Skill name}
@@ -114,39 +114,39 @@ Follow these steps unless the user asks for something different; then do it thei
 {3–5 checks the agent runs on its own output.}
 ```
 
-**Règles pour les deux** :
-- Pas de seuil, de score, de pondération ou de schéma inventé. Si un score est utile, l'agent le définit **avec le propriétaire** (« Agree on what makes a lead a fit with the user, then score against that »).
-- Pas de fournisseur imposé quand seule la capacité compte : « their email tool », pas « Gmail ».
-- Les données vont en base (l'engine le dit déjà) : je nomme la table et ses colonnes utiles seulement en Cadré.
-- Une ressource longue (un gabarit HTML, une liste de hooks, une grille d'audit) va dans `files: [{ path: "references/…", content }]`, pas dans le corps. Le corps dit quand la lire.
+**Rules for both**:
+- No invented threshold, score, weighting or schema. If a score is useful, the agent defines it **with the owner** ("Agree on what makes a lead a fit with the user, then score against that").
+- No imposed provider when only the capability matters: "their email tool", not "Gmail".
+- Data goes in the database (the engine already says so): I name the table and its useful columns only in Framed.
+- A long resource (an HTML template, a list of hooks, an audit grid) goes in `files: [{ path: "references/…", content }]`, not in the body. The body says when to read it.
 
-## Schedule (≤ 60 mots de corps)
+## Schedule (≤ 60 words of body)
 
-Créé avec `upsert_schedule` : `name`, `description`, `body`, `cron`, `timezone`, **`enabled: false`**.
+Created with `upsert_schedule`: `name`, `description`, `body`, `cron`, `timezone`, **`enabled: false`**.
 
-Le corps parle à l'agent comme un message : ce qu'il fait cette fois-ci, et où va le résultat. La méthode est dans le skill.
+The body talks to the agent like a message: what it does this time, and where the result goes. The method is in the skill.
 
 > Find this week's new leads matching the profile in memory, add them to the leads table without duplicates, and send the user a short summary with the top 5 and why they fit.
 
-Je ne mets pas de schedule si le déclencheur est « à la demande » ; l'agent sait en créer un lui-même si le propriétaire le demande plus tard.
+I don't add a schedule if the trigger is "on demand"; the agent knows how to create one itself if the owner asks for it later.
 
-## Description de l'agent (1 phrase)
+## Agent description (1 sentence)
 
-Le résultat, pas l'implémentation : « Turns any idea, link or product into ready-to-post TikTok carousels. » Pas : « An AI agent using HTML rendering and the TikTok API. »
+The result, not the implementation: "Turns any idea, link or product into ready-to-post TikTok carousels." Not: "An AI agent using HTML rendering and the TikTok API."
 
-## Nom de l'agent
+## Agent name
 
-Court, 1 à 3 mots, un nom de métier ou d'atelier qui sonne humain (« Carousel Studio », « Lead Scout », « Ad Spy »). Différent du titre marketplace (voir `listing.md`).
+Short, 1 to 3 words, a trade or workshop name that sounds human ("Carousel Studio", "Lead Scout", "Ad Spy"). Different from the marketplace title (see `listing.md`).
 
-## Relecture finale (avant `create_agent`)
+## Final review (before `create_agent`)
 
-- [ ] Chaque pièce sous son budget de mots.
-- [ ] L'INSTALL.md n'a pas d'« example », « sample », « illustrative » : le premier résultat est construit sur du réel.
-- [ ] L'INSTALL.md applique au premier résultat la barre de qualité du SOUL (rien de montré « à vérifier plus tard »).
-- [ ] Une liste livrée ne contient que ce qui passe ; le SOUL ne demande pas d'afficher les rejets.
-- [ ] Rien de ce que dit déjà l'engine (`capabilities.md` § « Ce que l'engine dit déjà »).
-- [ ] Aucun seuil, score, format, fournisseur ou politique inventé.
-- [ ] Test d'ouverture : trois variantes raisonnables (autre réseau, autre format, autre ton) restent possibles sans contradiction.
-- [ ] L'INSTALL.md dit quel résultat montrer **avant** toute connexion.
-- [ ] Chaque app déclarée apparaît dans l'INSTALL.md avec ce qu'elle débloque.
-- [ ] Chaque outil coupé a une raison.
+- [ ] Each piece under its word budget.
+- [ ] The INSTALL.md has no "example", "sample", "illustrative": the first result is built on real data.
+- [ ] The INSTALL.md applies the SOUL's quality bar to the first result (nothing shown "to be checked later").
+- [ ] A delivered list contains only what passes; the SOUL does not ask to display the rejects.
+- [ ] Nothing the engine already says (`capabilities.md` § "What the engine already says").
+- [ ] No invented threshold, score, format, provider or policy.
+- [ ] Openness test: three reasonable variants (another network, another format, another tone) remain possible without contradiction.
+- [ ] The INSTALL.md says which result to show **before** any connection.
+- [ ] Each declared app appears in the INSTALL.md with what it unlocks.
+- [ ] Each tool turned off has a reason.

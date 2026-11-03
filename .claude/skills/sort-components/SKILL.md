@@ -1,61 +1,61 @@
 ---
 name: sort-components
-description: Garder apps/ui/components rangé par feature (agent/, space/, chat/, dialogs/, layout/, ui/). Utiliser pour placer un nouveau composant au bon endroit, ou quand la racine de components/ se remet à déborder de fichiers à plat et qu'il faut re-trier.
+description: Keep apps/ui/components organized by feature (agent/, space/, chat/, dialogs/, layout/, ui/). Use to place a new component in the right spot, or when the root of components/ starts overflowing with flat files again and needs re-sorting.
 ---
 
-# sort-components — ranger les composants UI par feature
+# sort-components: organize UI components by feature
 
-Les composants de `apps/ui/components/` doivent **toujours** être rangés dans un sous-dossier par **domaine fonctionnel**, jamais laissés à plat à la racine. Cette racine s'était retrouvée avec 56 fichiers à plat ; on l'a réorganisée. Ce skill sert à **maintenir** cette organisation : placer correctement un nouveau composant, ou re-trier quand ça redéborde.
+The components in `apps/ui/components/` must **always** be placed in a subfolder by **functional domain**, never left flat at the root. That root had ended up with 56 flat files; it was reorganized. This skill is for **maintaining** that organization: placing a new component correctly, or re-sorting when it overflows again.
 
-## Structure canonique
+## Canonical structure
 
 ```
 apps/ui/components/
-  agent/        Panneau agent + tous ses onglets (chat, files, skills, tools, mcp,
-                scheduled, settings, memories, data) + formulaires/modèles liés à l'agent
-  space/        Panneau space + fichiers de space
-  chat/         Sessions (tabs, history) + blocs de message (ToolCall, Reasoning,
+  agent/        Agent panel + all its tabs (chat, files, skills, tools, mcp,
+                scheduled, settings, memories, data) + agent-related forms/templates
+  space/        Space panel + space files
+  chat/         Sessions (tabs, history) + message blocks (ToolCall, Reasoning,
                 Approval, attachments, mentions)
-  dialogs/      Modales de création / suppression / onboarding
-  layout/       Shell de page : HomeContent, IsoBoard, Toolbar, Logo
-  ui/           Primitives bas-niveau (button, input, dialog, card…) + placeholders génériques
-  ai-elements/  Composants de conversation (prompt-input, message, conversation, reasoning…)
-  services/     Install / config / liste de services
-  auth/         Décor de la page auth
+  dialogs/      Create / delete / onboarding modals
+  layout/       Page shell: HomeContent, IsoBoard, Toolbar, Logo
+  ui/           Low-level primitives (button, input, dialog, card…) + generic placeholders
+  ai-elements/  Conversation components (prompt-input, message, conversation, reasoning…)
+  services/     Service install / config / list
+  auth/         Auth page decor
 ```
 
-## Règle de placement (nouveau composant)
+## Placement rule (new component)
 
-1. **Est-ce une primitive générique** (réutilisable, sans logique métier : bouton, input, placeholder) ? → `ui/`.
-2. **Est-ce de la conversation pure** (rendu de message, input de prompt) ? → `ai-elements/`.
-3. Sinon, range par **feature** : ça concerne un agent → `agent/` ; un space → `space/` ; les sessions/blocs de chat → `chat/` ; une modale → `dialogs/` ; le shell global → `layout/`.
-4. Dans le doute entre feature et type, **la feature gagne** (on regroupe par domaine, pas par nature technique).
+1. **Is it a generic primitive** (reusable, no business logic: button, input, placeholder)? → `ui/`.
+2. **Is it pure conversation** (message rendering, prompt input)? → `ai-elements/`.
+3. Otherwise, sort by **feature**: it concerns an agent → `agent/`; a space → `space/`; chat sessions/blocks → `chat/`; a modal → `dialogs/`; the global shell → `layout/`.
+4. When in doubt between feature and type, **the feature wins** (group by domain, not by technical nature).
 
-> Ne JAMAIS créer un fichier `.tsx` directement à la racine de `components/`.
+> NEVER create a `.tsx` file directly at the root of `components/`.
 
-## Conventions d'import
+## Import conventions
 
-- Imports inter-fichiers en **alias absolu** : `@/components/<dossier>/<Fichier>` (le repo a `@/*` → `./*` dans [tsconfig.json](apps/ui/tsconfig.json)). Pas de `./Foo` / `../Foo` relatifs fragiles.
-- Les primitives `ui/` et `ai-elements/` s'importent aussi en absolu (`@/components/ui/button`).
+- Cross-file imports with the **absolute alias**: `@/components/<folder>/<File>` (the repo has `@/*` → `./*` in [tsconfig.json](apps/ui/tsconfig.json)). No fragile relative `./Foo` / `../Foo`.
+- The `ui/` and `ai-elements/` primitives are imported with the absolute alias too (`@/components/ui/button`).
 
-## Re-trier quand la racine déborde
+## Re-sorting when the root overflows
 
-Quand des fichiers réapparaissent à plat dans `components/` :
+When files show up flat in `components/` again:
 
-1. **Cartographier** : `ls apps/ui/components/*.tsx` → lister les fichiers à plat.
-2. **Affecter** chaque fichier à son dossier feature selon la règle ci-dessus.
-3. **Déplacer avec `git mv`** (préserve l'historique) vers le bon sous-dossier.
-4. **Réécrire les imports** vers chaque fichier déplacé en alias absolu `@/components/<dossier>/<Fichier>`. Penser à :
-   - les **imports relatifs** `./Foo` / `../Foo` entre voisins,
-   - les **imports relatifs vers les sous-dossiers existants** (`./ui/...`, `./services/...`) qui cassent dès que le fichier change de niveau,
-   - les **références externes** depuis `apps/ui/app/`.
-   - Repérer le tout : `grep -rnE "@/components/|from ['\"]\.{1,2}/" apps/ui --include="*.tsx" --include="*.ts"`.
-5. Supprimer les sous-dossiers vides.
+1. **Map**: `ls apps/ui/components/*.tsx` → list the flat files.
+2. **Assign** each file to its feature folder according to the rule above.
+3. **Move with `git mv`** (preserves history) into the right subfolder.
+4. **Rewrite the imports** to each moved file with the absolute alias `@/components/<folder>/<File>`. Remember:
+   - the **relative imports** `./Foo` / `../Foo` between neighbors,
+   - the **relative imports into existing subfolders** (`./ui/...`, `./services/...`) that break as soon as the file changes level,
+   - the **external references** from `apps/ui/app/`.
+   - Spot all of it: `grep -rnE "@/components/|from ['\"]\.{1,2}/" apps/ui --include="*.tsx" --include="*.ts"`.
+5. Delete the empty subfolders.
 
-Pour un re-tri massif, un petit script Python (mapping basename→dossier, `git mv`, puis regex de réécriture des imports en triant les bases **du plus long au plus court** pour ne pas remplacer `AgentPanel` dans `AgentPanelChat`) est plus sûr qu'à la main.
+For a massive re-sort, a small Python script (basename→folder mapping, `git mv`, then an import-rewriting regex that sorts the bases **from longest to shortest** so `AgentPanel` is not replaced inside `AgentPanelChat`) is safer than doing it by hand.
 
-## Vérification
+## Verification
 
-- `cd apps/ui && npx tsc --noEmit` → **exit 0** prouve que tous les imports résolvent (c'est le contrôle décisif).
-- `npm run lint` → aucune nouvelle erreur de résolution de module (`import/no-unresolved`). Ignorer les erreurs de code-quality préexistantes (`no-explicit-any`, hooks).
-- `git status --short` → les fichiers apparaissent en **renames** (`R`), pas en delete+add : l'historique est préservé.
+- `cd apps/ui && npx tsc --noEmit` → **exit 0** proves that every import resolves (this is the decisive check).
+- `npm run lint` → no new module resolution error (`import/no-unresolved`). Ignore the pre-existing code-quality errors (`no-explicit-any`, hooks).
+- `git status --short` → the files show up as **renames** (`R`), not delete+add: history is preserved.

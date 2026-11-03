@@ -515,7 +515,7 @@ export const FOREMAN_CLIENT_TOOL_DEFS = [
     {
         name: 'open_connector_setup',
         description:
-            'Leave under your message a row that leads to the Apps tab of a coworker, where the user connects a service themselves. This is the only way to finish a connector that needs a secret or an OAuth popup: attach_connector declares the app, but it cannot hold a credential. Call it right after attach_connector when the connector came back unauthorized, then tell them in one line to connect the app from that row. Nothing opens until they click, and never ask for the credential yourself.',
+            'Leave under your message a row that leads to the Apps tab of a coworker, where the user connects a service themselves. This is the only way to finish a connector that needs a secret or an OAuth popup: attach_connector declares the app, but it cannot hold a credential. Call it right after attach_connector when the connector came back unauthorized, then tell them in one line to connect the app from that row. It counts as the Apps row of that coworker: do not add it again with show_agents. Nothing opens until they click, and never ask for the credential yourself.',
         inputSchema: {
             type: 'object',
             properties: {

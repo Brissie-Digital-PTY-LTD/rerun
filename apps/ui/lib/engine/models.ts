@@ -71,7 +71,8 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
         apiKeyUrl: 'https://docs.claude.com/en/docs/claude-code/setup',
         // Claude Code's own picker, id for id. `[1m]` is how the CLI names the 1M-context variant of
         // a model whose default window is smaller; Fable, Opus 5/5.5, Sonnet 5.5 and Haiku 5.5 are 1M
-        // natively and take none. Haiku 5.5 needs Claude Code 2.1.293, which `rerun update` installs.
+        // natively and take none. Haiku 5.5 needs Claude Code 2.1.293: the binary is the one the Agent SDK
+        // ships inside the engine release.
         models: [
             model('claude-opus-5-5', 5),
             model('claude-fable-5-1', 6),
@@ -94,7 +95,8 @@ export const ENGINE_MODEL_CATALOG: CatalogProvider[] = [
         keyName: 'CODEX_OAUTH_TOKEN',
         section: 'subscription',
         apiKeyUrl: 'https://developers.openai.com/codex/cli',
-        // `gpt-6.1-sol` and `gpt-6.1-terra` need Codex CLI 0.159.1, which `rerun update` now installs.
+        // `gpt-6.1-sol` and `gpt-6.1-terra` need Codex CLI 0.159.1. A model the box's Codex does not
+        // list for the account is locked (`cliModels`), whether the binary or the plan lacks it.
         // `gpt-5.5` left Codex for ChatGPT sign-ins on 2026-10-14. GPT-6.1 Sol is still rolling out
         // plan by plan, so `gpt-6-sol` stays first: the backend can answer 400 "not supported when
         // using Codex with a ChatGPT account" on a plan that does not have it yet.

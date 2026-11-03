@@ -1,4 +1,5 @@
-import { DEFAULT_PROVIDER_MODEL, RERUN_CONNECTION_ID, RERUN_MODEL, type AgentConfig, type Provider } from '@rerun/contracts'
+import { DEFAULT_PROVIDER_MODEL, RERUN_CONNECTION_ID, RERUN_MODEL, cliServesModel, type AgentConfig, type Provider } from '@rerun/contracts'
+import { readCliModels } from '../connections/cli-models.js'
 import { readBoxDefault } from '../connections/default.js'
 import { allowedModel } from '../connections/plan.js'
 import { findConnection, listConnections } from '../connections/registry.js'
@@ -21,11 +22,14 @@ export function isUsable(connection: LoadedConnection | null, model: string | nu
 
 // What the connection would run if no model were named. Its own first entry rather than the
 // provider default, because the box owner curated that list on purpose. On a trial, the first one
-// the plan runs as is, so the default a box adopts on connect is never a model it cannot run.
+// the plan runs as is, and the first one the subscription's CLI serves, so the default a box adopts
+// on connect is never a model it cannot run.
 export function defaultModelOf(connection: LoadedConnection): string {
     const { provider, models, extraModels } = connection.config
     const offered = [...models, ...extraModels]
-    return offered.find(model => allowedModel(provider, model) === model) ?? offered[0] ?? DEFAULT_PROVIDER_MODEL[provider]
+    const runsAsIs = (model: string): boolean => allowedModel(provider, model) === model
+    const cliModels = readCliModels(connection.id)
+    return offered.find(model => runsAsIs(model) && cliServesModel(provider, cliModels, model)) ?? offered.find(runsAsIs) ?? offered[0] ?? DEFAULT_PROVIDER_MODEL[provider]
 }
 
 function pick(connection: LoadedConnection, model: string): RunModel {

@@ -2,7 +2,7 @@ import { rerunCreditTotalMicros, type RerunCreditColumns } from '@/cloud/billing
 import { catalogFor, modelLabel, modelPower, type CatalogModel } from '@/lib/engine/models'
 import type { BoxConnection, BoxDefault } from '@/lib/engine/types'
 import { shortUntil } from '@/lib/time'
-import { PROVIDER_LABELS, RERUN_CONNECTION_ID, RERUN_MODEL, RERUN_MODELS, RERUN_TIERS, canonicalModelId, isPremiumModel, type PlanLimitWindow, type Provider, type RerunTier } from '@rerun/contracts'
+import { PROVIDER_LABELS, RERUN_CONNECTION_ID, RERUN_MODEL, RERUN_MODELS, RERUN_TIERS, canonicalModelId, cliServesModel, isPremiumModel, type PlanLimitWindow, type Provider, type RerunTier } from '@rerun/contracts'
 
 // The AI providers dialog sorts every connection by who pays for it: the credit included with
 // Rerun, the user's own subscription, or the user's own API key.
@@ -137,6 +137,14 @@ export function modelName(connectionId: string, model: string) {
 export function isModelLocked(connectionId: string, model: string, premiumAllowed: boolean): boolean {
     if (premiumAllowed) return false
     return (connectionId === RERUN_CONNECTION_ID && model === RERUN_MODELS.smart) || isPremiumModel(model)
+}
+
+// A model the subscription's own CLI does not list on this box. Upgrading the Rerun plan would not
+// bring it, so the row is disabled rather than routed to billing. Undefined when the CLI serves it,
+// when it has not been asked yet, or for Claude, whose list is its picker rather than the account.
+export function cliUnavailableReason(connection: Pick<BoxConnection, 'provider' | 'cliModels'>, model: string): string | undefined {
+    if (cliServesModel(connection.provider, connection.cliModels, model)) return undefined
+    return connection.cliModels?.outdated ? 'Codex CLI outdated on this box' : 'Not in your ChatGPT plan'
 }
 
 // What the billing dialog is told opened it, for the funnel.

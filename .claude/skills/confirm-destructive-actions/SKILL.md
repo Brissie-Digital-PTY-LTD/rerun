@@ -1,19 +1,19 @@
 ---
 name: confirm-destructive-actions
-description: Une opération risquée (suppression, purge, révocation, redémarrage, paiement, écrasement d'une saisie) se confirme par une dialog — ConfirmDialog, ou un AlertDialog dédié quand la copie dépend de l'état — jamais par un clic nu. Utiliser dès qu'on ajoute un bouton destructif ou qu'on écrit une dialog de confirmation.
+description: A risky operation (deletion, purge, revocation, restart, payment, overwriting user input) is confirmed through a dialog (ConfirmDialog, or a dedicated AlertDialog when the copy depends on state), never by a bare click. Use whenever you add a destructive button or write a confirmation dialog.
 ---
 
-# confirm-destructive-actions — confirmer par une dialog
+# confirm-destructive-actions: confirm through a dialog
 
-## La règle
+## The rule
 
-> Une opération risquée se confirme par **une dialog, et une seule**.
+> A risky operation is confirmed through **one dialog, and only one**.
 
-Risqué = irréversible ou à large rayon : supprimer, purger, révoquer, retirer un membre, redémarrer/scaler un engine, payer, écraser un texte que l'utilisateur a saisi.
+Risky = irreversible or wide blast radius: delete, purge, revoke, remove a member, restart/scale an engine, pay, overwrite text the user typed.
 
-## Quoi utiliser
+## What to use
 
-**`ConfirmDialog`** (`apps/ui/components/dialogs/ConfirmDialog.tsx`) est le défaut. Titre + description + Cancel/Confirm, rien à câbler.
+**`ConfirmDialog`** (`apps/ui/components/dialogs/ConfirmDialog.tsx`) is the default. Title + description + Cancel/Confirm, nothing to wire up.
 
 ```tsx
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
@@ -27,47 +27,47 @@ import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 </ConfirmDialog>
 ```
 
-Props utiles : `confirmLabel` (défaut `Delete`), `cancelLabel`, `confirmVariant` (défaut `destructive` — passer `default` pour une action non destructive comme un reset), `pending`.
+Useful props: `confirmLabel` (default `Delete`), `cancelLabel`, `confirmVariant` (default `destructive`; pass `default` for a non-destructive action such as a reset), `pending`.
 
-**Mode contrôlé obligatoire** quand le trigger vit dans un calque qui se ferme sur interact-outside (`Popover`, `DropdownMenu`) : monter la dialog **en dehors** du calque.
+**Controlled mode is required** when the trigger lives in a layer that closes on interact-outside (`Popover`, `DropdownMenu`): mount the dialog **outside** the layer.
 
 ```tsx
 const [confirming, setConfirming] = useState(false)
 
 <DropdownMenuItem onSelect={() => setConfirming(true)}>Delete</DropdownMenuItem>
-{/* hors du DropdownMenu */}
+{/* outside the DropdownMenu */}
 <ConfirmDialog open={confirming} onOpenChange={setConfirming} title="…" onConfirm={remove} />
 ```
 
-**Un `AlertDialog` écrit à la main** seulement quand la copie ou le contenu dépendent de l'état : une description qui liste ce qui va bouger, un champ « tape le nom pour confirmer » (`DeleteSpaceDialog`, `DeleteAgentDialog`), plusieurs dialogs partageant un même state d'admin (`PoolAdmin`).
+**A hand-written `AlertDialog`** only when the copy or the content depend on state: a description that lists what is about to change, a "type the name to confirm" field (`DeleteSpaceDialog`, `DeleteAgentDialog`), several dialogs sharing the same admin state (`PoolAdmin`).
 
-**Bouton icône seul** (poubelle sans libellé) : toujours une dialog. Voir `PanelDeleteButton` (`apps/ui/components/ui/panel-editor.tsx`), qui l'encapsule déjà.
+**Icon-only button** (trash can with no label): always a dialog. See `PanelDeleteButton` (`apps/ui/components/ui/panel-editor.tsx`), which already wraps it.
 
-**Pas de dialog** quand l'écran *est* la confirmation : une page dédiée qui explique l'action et propose une sortie à côté du bouton (`apps/landing/app/community/experts/unsubscribe/ExpertOptOut.tsx`). Ne pas empiler une dialog par-dessus.
+**No dialog** when the screen *is* the confirmation: a dedicated page that explains the action and offers a way out next to the button (`apps/landing/app/community/experts/unsubscribe/ExpertOptOut.tsx`). Do not stack a dialog on top of it.
 
 ## Anti-patterns
 
 ```tsx
-// ❌ suppression au premier clic, sans confirmation
+// ❌ deleted on the first click, without confirmation
 <Button variant="destructive" onClick={destroy}>Delete</Button>
 
 // ❌ window.confirm()
 if (confirm('Sure?')) destroy()
 ```
 
-## Détails qui comptent
+## Details that matter
 
-1. **Garder la dialog ouverte pendant l'action** : `event.preventDefault()` dans le `onClick` de l'`AlertDialogAction`, puis fermer soi-même une fois l'action revenue. Sans ça la dialog se ferme immédiatement et le `pointer-events` du body peut rester coincé au démontage (cf. `RevokeApiKeyDialog`, `WorkspaceDetailDialog`).
-2. **La description dit ce qui se passe**, pas « Êtes-vous sûr ? ». Nommer la cible, ce qui est détruit, ce qui est déplacé, et si c'est irréversible (`DeleteConnectionButton` annonce ce qui retombe sur le modèle par défaut de la Box).
-3. **Copie** : anglais partout, **sauf le back-office `/admin`** qui est en français. Pas d'em dash.
-4. **Le libellé de confirm reprend le verbe** : Delete / Purge / Revoke / Remove / Supprimer / Forcer. Jamais « OK ».
-5. Les footers `AlertDialogContent size="sm"` sont en grille 2 colonnes sur `max-w-xs` : un libellé long y est tronqué.
+1. **Keep the dialog open during the action**: `event.preventDefault()` in the `onClick` of the `AlertDialogAction`, then close it yourself once the action has returned. Without this the dialog closes immediately and the body's `pointer-events` can stay stuck on unmount (see `RevokeApiKeyDialog`, `WorkspaceDetailDialog`).
+2. **The description says what happens**, not "Are you sure?". Name the target, what is destroyed, what is moved, and whether it is irreversible (`DeleteConnectionButton` states what falls back to the Box's default model).
+3. **Copy**: English everywhere, **except the `/admin` back-office**, which is in French. No em dash.
+4. **The confirm label repeats the verb**: Delete / Purge / Revoke / Remove / Supprimer / Forcer. Never "OK".
+5. `AlertDialogContent size="sm"` footers are a 2-column grid on `max-w-xs`: a long label gets truncated there.
 
-## Vérification
+## Verification
 
 ```bash
-# boutons destructifs qui déclenchent directement, à inspecter un par un
+# destructive buttons that fire directly, to inspect one by one
 rg -n 'variant="destructive"' apps/ui --glob '!**/admin/buttons/**' -A3 | rg -n "onClick"
 ```
 
-`cd apps/ui && pnpm ts-check` doit rester à 0. Prettier n'est pas uniforme sur `apps/ui` : formater à la main les lignes touchées, jamais `--write` sur un fichier entier.
+`cd apps/ui && pnpm ts-check` must stay at 0. Prettier is not uniform across `apps/ui`: format the touched lines by hand, never `--write` on a whole file.

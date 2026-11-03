@@ -5,6 +5,7 @@ import { vi } from 'vitest'
 
 process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-cli-update-'))
 process.env.RERUN_API_KEY = ''
+process.env.RERUN_CODEX_PATH = '/usr/bin/codex'
 
 const FAKE_HOME = mkdtempSync(resolve(tmpdir(), 'rerun-cli-update-home-'))
 const RELEASE_ROOT = mkdtempSync(resolve(tmpdir(), 'rerun-cli-update-root-'))
@@ -25,6 +26,7 @@ const state = vi.hoisted(() => ({
     spawned: [] as Array<{ line: string; options: unknown }>,
     cwds: [] as (string | undefined)[],
     failing: [] as string[],
+    outputs: {} as Record<string, string>,
     procPresent: false,
     chromium: 'installed' as 'installed' | 'missing' | 'no-path' | 'throws',
     layout: null as FakeLayout | null,
@@ -46,12 +48,13 @@ vi.mock('../../runtime/layout.js', async importOriginal => ({
 }))
 
 vi.mock('node:child_process', () => ({
-    execFileSync: (command: string, args: string[], options?: { cwd?: string }) => {
+    execFileSync: (command: string, args: string[], options?: { cwd?: string; encoding?: string }) => {
         const line = `${command} ${args.join(' ')}`
         state.calls.push(line)
         state.cwds.push(options?.cwd)
         if (state.failing.some(prefix => line.startsWith(prefix))) throw new Error(`${command} exited with 1`)
-        return Buffer.from('')
+        const output = state.outputs[line] ?? ''
+        return options?.encoding ? output : Buffer.from(output)
     },
     spawn: (command: string, args: string[], options: unknown) => {
         state.spawned.push({ line: `${command} ${args.join(' ')}`, options })
@@ -69,7 +72,7 @@ vi.mock('node:fs', async importOriginal => {
     return { ...real, existsSync, default: { ...real, existsSync } }
 })
 
-// updateCliTools prunes the Claude releases under the home it runs in: never the developer's own.
+// updateCliTools removes the Claude install under the home it runs in: never the developer's own.
 vi.mock('node:os', async importOriginal => {
     const real = await importOriginal<typeof import('node:os')>()
     return { ...real, homedir: () => FAKE_HOME, default: { ...real, homedir: () => FAKE_HOME } }
@@ -132,15 +135,17 @@ vi.mock('./release.js', async importOriginal => ({
 }))
 
 const { afterEach, beforeEach, describe, expect, it } = await import('vitest')
-const { installBrowser, installBrowserCommand, installBrowserInBackground, installDesktop, installDesktopInBackground, installLayoutCommand, pruneClaudeVersions, rollbackCommand, updateCliTools, updateCommand } = await import('./update.js')
+const { installBrowser, installBrowserCommand, installBrowserInBackground, installDesktop, installDesktopInBackground, installLayoutCommand, removeLegacyClaudeCli, rollbackCommand, updateCliTools, updateCliToolsInBackground, updateCommand } = await import('./update.js')
+const { CODEX_VERSION } = await import('../../runtime/codex-cli.js')
 const { readLastUpdate, writeLastUpdate } = await import('../../runtime/last-update.js')
 const { lastUpdatePath } = await import('../../config/paths.js')
 
 const INSTALL_BROWSER = `${process.execPath} ${resolve(import.meta.dirname, '../bin.js')} install-browser`
 const INSTALL_DESKTOP = `${process.execPath} ${resolve(import.meta.dirname, '../bin.js')} install-desktop`
 const DESKTOP_APT = 'env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openbox x11vnc xdotool thunar xfce4-terminal adwaita-icon-theme tint2 hsetroot curl maim'
-const CODEX = '@openai/codex@^0.159.1'
-const CLAUDE_INSTALL = 'sh -c curl -fsSL https://claude.ai/install.sh | bash'
+const UPDATE_CLI_TOOLS = `${process.execPath} ${resolve(import.meta.dirname, '../bin.js')} update-cli-tools`
+const CODEX = `@openai/codex@${CODEX_VERSION}`
+const CODEX_VERSION_CHECK = '/usr/bin/codex --version'
 const RETURN_MEMORY = `sync; echo 3 > ${DROP_CACHES}; echo 1 > /proc/sys/vm/compact_memory`
 
 const SHA = 'f'.repeat(64)
@@ -164,6 +169,7 @@ beforeEach(() => {
     state.spawned = []
     state.cwds = []
     state.failing = []
+    state.outputs = {}
     state.procPresent = false
     state.chromium = 'installed'
     state.layout = null
@@ -200,16 +206,14 @@ describe('updateCommand from a git checkout', () => {
             'pnpm --filter rerun-engine... install --prod=false --frozen-lockfile',
             'pnpm --filter rerun-engine... build',
             INSTALL_BROWSER,
-            'sudo -n true',
-            `sudo -n npm install -g ${CODEX}`,
-            CLAUDE_INSTALL,
+            UPDATE_CLI_TOOLS,
             INSTALL_DESKTOP,
             '<prepareDataDir>',
             'command -v systemctl',
             'command -v sudo',
             'sudo systemctl restart rerun',
         ])
-        expect(state.cwds.slice(0, 4)).toEqual([ROOT, ROOT, ROOT, ROOT])
+        expect(state.cwds.slice(0, 5)).toEqual([ROOT, ROOT, ROOT, ROOT, ROOT])
         expect(out).toContain('migrated data dir')
         expect(out).toContain('restarted rerun')
         expect(out).toContain('\n$ git pull --ff-only\n')
@@ -257,7 +261,6 @@ describe('updateCommand from a git checkout', () => {
     it('restarts directly as root', async () => {
         asUser(0)
         await updateCommand([])
-        expect(state.calls).toContain(`npm install -g ${CODEX}`)
         expect(state.calls).not.toContain('sudo -n true')
         expect(state.calls).not.toContain('command -v sudo')
         expect(state.calls.at(-1)).toBe('systemctl restart rerun')
@@ -266,7 +269,6 @@ describe('updateCommand from a git checkout', () => {
     it('restarts directly when sudo is not installed', async () => {
         state.failing = ['command -v sudo', 'sudo -n true']
         await updateCommand([])
-        expect(state.calls).toContain(`npm install -g ${CODEX}`)
         expect(state.calls.at(-1)).toBe('systemctl restart rerun')
     })
 
@@ -302,9 +304,7 @@ describe('updateCommand from an artifact', () => {
         `<verify ${TMP}>`,
         `${process.execPath} ${NEW_BIN} migrate`,
         `${process.execPath} ${NEW_BIN} install-browser`,
-        'sudo -n true',
-        `sudo -n npm install -g ${CODEX}`,
-        CLAUDE_INSTALL,
+        `${process.execPath} ${NEW_BIN} update-cli-tools`,
         `${process.execPath} ${NEW_BIN} install-desktop`,
         `<switchCurrent ${RELEASE_ROOT} ${TARGET}>`,
         `<installLayout ${RELEASE_ROOT}>`,
@@ -646,57 +646,126 @@ describe('installDesktop', () => {
     })
 })
 
+const CLAUDE_INSTALL_DIR = resolve(FAKE_HOME, '.local', 'share', 'claude')
 const CLAUDE_LAUNCHER = resolve(FAKE_HOME, '.local', 'bin', 'claude')
 
-function seedClaudeVersions(names: string[]): string {
+function seedClaudeInstall(): void {
     rmSync(resolve(FAKE_HOME, '.local'), { recursive: true, force: true })
-    const versions = resolve(FAKE_HOME, '.local', 'share', 'claude', 'versions')
+    const versions = resolve(CLAUDE_INSTALL_DIR, 'versions')
     mkdirSync(versions, { recursive: true })
     mkdirSync(dirname(CLAUDE_LAUNCHER), { recursive: true })
-    for (const name of names) writeFileSync(resolve(versions, name), '')
-    return versions
+    writeFileSync(resolve(versions, '2.1.294'), '')
+    symlinkSync(resolve(versions, '2.1.294'), CLAUDE_LAUNCHER)
 }
 
-describe('pruneClaudeVersions', () => {
-    it('keeps every release when the launcher does not resolve into the versions folder', () => {
-        const versions = seedClaudeVersions(['2.1.289', '2.1.291'])
-        writeFileSync(CLAUDE_LAUNCHER, '')
-        expect(pruneClaudeVersions()).toEqual([])
-        expect(readdirSync(versions)).toEqual(['2.1.289', '2.1.291'])
+describe('removeLegacyClaudeCli', () => {
+    it('removes the install and the launcher that points into it', () => {
+        seedClaudeInstall()
+        expect(removeLegacyClaudeCli(undefined, 'linux')).toEqual([CLAUDE_LAUNCHER, CLAUDE_INSTALL_DIR])
+        expect(existsSync(CLAUDE_INSTALL_DIR)).toBe(false)
+        expect(existsSync(resolve(FAKE_HOME, '.local', 'bin'))).toBe(true)
+        expect(readdirSync(resolve(FAKE_HOME, '.local', 'bin'))).toEqual([])
     })
 
-    it('keeps every release when there is no launcher', () => {
-        const versions = seedClaudeVersions(['2.1.289', '2.1.291'])
-        expect(pruneClaudeVersions()).toEqual([])
-        expect(readdirSync(versions)).toEqual(['2.1.289', '2.1.291'])
+    it('leaves a launcher of its own in place', () => {
+        seedClaudeInstall()
+        rmSync(CLAUDE_LAUNCHER)
+        writeFileSync(CLAUDE_LAUNCHER, '')
+        expect(removeLegacyClaudeCli(undefined, 'linux')).toEqual([CLAUDE_INSTALL_DIR])
+        expect(existsSync(CLAUDE_LAUNCHER)).toBe(true)
+    })
+
+    it('does nothing on a box that never had it', () => {
+        rmSync(resolve(FAKE_HOME, '.local'), { recursive: true, force: true })
+        expect(removeLegacyClaudeCli(undefined, 'linux')).toEqual([])
+    })
+
+    it("leaves a developer's own Claude Code alone on macOS", () => {
+        seedClaudeInstall()
+        expect(removeLegacyClaudeCli(undefined, 'darwin')).toEqual([])
+        expect(existsSync(CLAUDE_INSTALL_DIR)).toBe(true)
+        expect(existsSync(CLAUDE_LAUNCHER)).toBe(true)
     })
 })
 
 describe('updateCliTools', () => {
-    it('updates Codex without sudo when none is available', () => {
+    it('installs the pinned Codex through sudo when the installed one is another version', () => {
+        state.outputs[CODEX_VERSION_CHECK] = 'codex-cli 0.159.3\n'
+        updateCliTools()
+        expect(state.calls).toEqual([CODEX_VERSION_CHECK, 'sudo -n true', `sudo -n npm install -g ${CODEX}`])
+    })
+
+    it('installs without sudo when none is available', () => {
         state.failing = ['sudo -n true']
         updateCliTools()
-        expect(state.calls).toEqual(['sudo -n true', `npm install -g ${CODEX}`, CLAUDE_INSTALL])
+        expect(state.calls).toEqual([CODEX_VERSION_CHECK, 'sudo -n true', `npm install -g ${CODEX}`])
     })
 
-    it('carries on past a failing Codex update and a failing Claude update', () => {
-        state.failing = ['sudo -n npm', 'sh -c curl']
+    it('leaves Codex alone when it is already at the pin', () => {
+        state.outputs[CODEX_VERSION_CHECK] = `codex-cli ${CODEX_VERSION}\n`
         updateCliTools()
-        expect(state.calls).toEqual(['sudo -n true', `sudo -n npm install -g ${CODEX}`, CLAUDE_INSTALL])
+        expect(state.calls).toEqual([CODEX_VERSION_CHECK])
+        expect(out).toContain(`codex CLI already at ${CODEX_VERSION}`)
+    })
+
+    it('carries on past a failing Codex install', () => {
+        state.failing = ['sudo -n npm']
+        updateCliTools()
         expect(out).toContain('codex CLI update failed (continuing): sudo exited with 1')
-        expect(out).toContain('claude CLI update failed (continuing): sh exited with 1')
     })
 
-    it('leaves only the Claude release the launcher points at', () => {
-        const versions = seedClaudeVersions(['2.1.289', '2.1.291', '2.1.294'])
-        symlinkSync(resolve(versions, '2.1.294'), CLAUDE_LAUNCHER)
+    it('removes the Claude install the SDK binary replaced on a release', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+        state.layout = RELEASE_LAYOUT
+        seedClaudeInstall()
         updateCliTools()
-        expect(readdirSync(versions)).toEqual(['2.1.294'])
+        expect(existsSync(CLAUDE_INSTALL_DIR)).toBe(false)
+        expect(out).toContain(`removed ${CLAUDE_INSTALL_DIR}`)
     })
 
-    it('does not stop the update when both CLIs fail', async () => {
-        state.failing = ['sudo -n npm', 'sh -c curl']
+    it("leaves a checkout's own Claude Code alone", () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+        seedClaudeInstall()
+        updateCliTools()
+        expect(existsSync(CLAUDE_INSTALL_DIR)).toBe(true)
+        expect(out).not.toContain('removed')
+    })
+
+    it('does not stop the update when the CLI tools step fails', async () => {
+        state.failing = [UPDATE_CLI_TOOLS]
         await updateCommand(['--no-restart'])
+        expect(out).toContain(`CLI tools update failed (continuing): ${process.execPath} exited with 1`)
         expect(state.calls).toContain('<prepareDataDir>')
+    })
+})
+
+describe('updateCliToolsInBackground', () => {
+    it('installs the pin in the background on a release whose Codex is off it', () => {
+        state.layout = RELEASE_LAYOUT
+        state.outputs[CODEX_VERSION_CHECK] = 'codex-cli 0.159.3'
+        expect(updateCliToolsInBackground()).toBe('spawned')
+        expect(state.spawned).toEqual([{ line: UPDATE_CLI_TOOLS, options: { stdio: 'ignore', detached: true } }])
+    })
+
+    it('reports a box whose service user cannot sudo instead of spawning a doomed install', () => {
+        state.layout = RELEASE_LAYOUT
+        state.outputs[CODEX_VERSION_CHECK] = 'codex-cli 0.159.3'
+        state.failing = ['sudo -n true']
+        expect(updateCliToolsInBackground()).toBe('no-root')
+        expect(state.spawned).toEqual([])
+    })
+
+    it('stays still when Codex is at the pin', () => {
+        state.layout = RELEASE_LAYOUT
+        state.outputs[CODEX_VERSION_CHECK] = `codex-cli ${CODEX_VERSION}`
+        expect(updateCliToolsInBackground()).toBe(false)
+        expect(state.spawned).toEqual([])
+    })
+
+    it('never touches the global npm of a checkout or an image', () => {
+        expect(updateCliToolsInBackground()).toBe(false)
+        state.layout = { kind: 'image', root: '/app', packageDir: '/app' }
+        expect(updateCliToolsInBackground()).toBe(false)
+        expect(state.spawned).toEqual([])
     })
 })

@@ -4,7 +4,19 @@ import { resolve } from 'node:path'
 
 process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-cxroutes-'))
 
-const { beforeEach, describe, expect, it } = await import('vitest')
+const { beforeEach, describe, expect, it, vi } = await import('vitest')
+
+// The Codex app-server session the connect waits for, answered from what the test posed.
+const codexCli = vi.hoisted(() => ({ models: [] as string[] }))
+vi.mock('../../connections/codex-plan-limits.js', async () => {
+    const { recordCliModels } = await import('../../connections/cli-models.js')
+    return {
+        refreshCodexPlanLimits: async (connection: { id: string } | null) => {
+            if (connection) recordCliModels(connection.id, codexCli.models, '0.166.0', false)
+        },
+        refreshStaleCodexPlanLimits: () => {},
+    }
+})
 const { mkdir, readFile, rm, writeFile } = await import('node:fs/promises')
 const { DEFAULT_CONNECTION_MODELS, RERUN_CONNECTION_ID } = await import('@rerun/contracts')
 const { connectionRoutes } = await import('./connections.js')
@@ -53,6 +65,7 @@ async function writeScheduleFile(agentId: string, slug: string, front: Record<st
 }
 
 beforeEach(async () => {
+    codexCli.models = []
     unloadConnection(RERUN_CONNECTION_ID)
     await clearBoxDefault()
     await rm(connectionsDir(), { recursive: true, force: true })
@@ -216,6 +229,23 @@ describe('box default model', () => {
         const res = await post('/', { name: provider, provider, models: DEFAULT_CONNECTION_MODELS[provider], keys })
         const created = (await res.json()) as Summary
         expect(await readBoxDefault()).toEqual({ connectionId: created.id, model })
+    })
+
+    // The reading is taken against the credential that just arrived, before the default is written:
+    // a box must never adopt a model the account's Codex refuses, and nothing rewrites a star later.
+    it("adopts the first model the account's Codex serves", async () => {
+        codexCli.models = ['gpt-6-luna', 'gpt-5.6-sol']
+        const res = await post('/', { name: 'codex', provider: 'codex', models: DEFAULT_CONNECTION_MODELS.codex, keys: { CODEX_OAUTH_TOKEN: 'codex-secret' } })
+        const created = (await res.json()) as Summary
+        expect(await readBoxDefault()).toEqual({ connectionId: created.id, model: 'gpt-6-luna' })
+    })
+
+    it('reads the Codex models again when the credential arrives after the connection', async () => {
+        const created = (await (await post('/', { name: 'codex', provider: 'codex', models: DEFAULT_CONNECTION_MODELS.codex })).json()) as Summary
+        expect(await readBoxDefault()).toBeNull()
+        codexCli.models = ['gpt-6-luna']
+        await patch(`/${created.id}/keys`, { set: { CODEX_OAUTH_TOKEN: 'codex-secret' } })
+        expect(await readBoxDefault()).toEqual({ connectionId: created.id, model: 'gpt-6-luna' })
     })
 
     it('leaves a default already set alone', async () => {

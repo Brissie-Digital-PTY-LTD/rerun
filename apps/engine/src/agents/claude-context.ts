@@ -1,8 +1,10 @@
 import type { ContextOccupancy } from '@rerun/contracts'
 import type { ClaudeCodeSettings, Query } from 'ai-sdk-provider-claude-code'
+import { cliModelsFresh, recordCliModels } from '../connections/cli-models.js'
 import { planLimitWindowsFromClaude, recordPlanLimits, type ClaudePlanUsage } from '../connections/plan-limits.js'
 
 const CONTEXT_USAGE_TIMEOUT_MS = 3000
+const CLI_MODELS_MAX_AGE_MS = 30 * 60_000
 
 export type ClaudeContextCapture = {
     read: () => ContextOccupancy | undefined
@@ -58,6 +60,20 @@ export function claudeContextCapture(connectionId?: string): ClaudeContextCaptur
         recordPlanLimits(connectionId, planLimitWindowsFromClaude(usage))
     }
 
+    // Read off the initialization the run waits for anyway, never awaited by it. The binary is the one
+    // the Agent SDK ships with this release, so it is never off its pin: what it leaves out is the
+    // account's doing.
+    const captureCliModels = async (live: Query): Promise<void> => {
+        if (!connectionId || cliModelsFresh(connectionId, CLI_MODELS_MAX_AGE_MS)) return
+        try {
+            const init = await live.initializationResult()
+            const models = init.models.flatMap(model => [model.value, model.resolvedModel].filter((id): id is string => typeof id === 'string'))
+            recordCliModels(connectionId, models, init.claude_code_version ?? null, false)
+        } catch {
+            // A query that ended first: the next run reads it.
+        }
+    }
+
     const stopHook = async (): Promise<{ continue: boolean }> => {
         if (query) await Promise.all([captureOccupancy(query), capturePlanLimits(query)])
         return { continue: true }
@@ -68,6 +84,7 @@ export function claudeContextCapture(connectionId?: string): ClaudeContextCaptur
         settings: {
             onQueryCreated: q => {
                 query = q
+                void captureCliModels(q)
             },
             hooks: { Stop: [{ hooks: [stopHook] }] },
         },

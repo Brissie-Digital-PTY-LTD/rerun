@@ -6,7 +6,7 @@ description: "Author a marketplace template from coworkers that already work, wi
 These twelve tools turn coworkers running in your sandbox into a marketplace listing other people install in one click. See [Create a template](/templates/create) for the same workflow in the app.
 
 <Warning>
-  **Expert accounts only.** Every tool on this page requires the key to belong to the sandbox of an expert account. The gate says so on the first call. All 50 tools are advertised to every key, so a client will offer these even when your account cannot use them. See [the Expert Program](/templates/expert-program).
+  **Expert accounts only.** Every tool on this page requires the key to belong to the sandbox of an expert account. The gate says so on the first call. All 53 tools are advertised to every key, so a client will offer these even when your account cannot use them. See [the Expert Program](/templates/expert-program).
 </Warning>
 
 Two rules every tool here shares. Publication is never the caller's decision: you write a draft and hand it over. And a template can only be built from sandbox coworkers, because capturing from a working workspace would publish a client's memory files.
@@ -95,7 +95,7 @@ Writes the editorial page of a draft. Only the fields you pass change.
 </ParamField>
 
 <ParamField body="metaDescription" type="string">
-  Search snippet, about 200 characters.
+  Search snippet, 120 to 155 characters. Required in that range before the template can be submitted.
 </ParamField>
 
 <ParamField body="pricingModel" type="string">
@@ -116,7 +116,7 @@ Hands a draft to the Rerun team for review.
 
 <ParamField body="templateId" type="string" required />
 
-It enforces the list `get_template` returns: a title, a tagline, a description, at least one image, at least one captured coworker, and for a paid template a Stripe account that can actually receive payouts. It names what is missing instead of half-submitting. It also refuses on a credential found anywhere in the copy.
+It enforces the list `get_template` returns: a title, a tagline, a description, a meta description of 120 to 155 characters, at least one captured coworker, an install answer for every coworker, and for a paid template a Stripe account that can actually receive payouts. No image is required: the cards draw the board of the captured coworkers. It names what is missing instead of half-submitting. It also refuses on a credential found anywhere in the copy.
 
 Once it succeeds the template is frozen: still private, no longer editable. `withdraw_template` is the only way back to a draft.
 
@@ -188,7 +188,7 @@ Captures coworkers from the sandbox into the template: prompt, skills, scheduled
   The answer to "does this coworker need to be configured after install?", which a template cannot be submitted without. `required` is mandatory. `prompt` is required when `required` is `true`, and is addressed to the coworker, not to the user.
 </ParamField>
 
-Paths marked excluded by default (memory, credential folders, the coworker database) are left out unless you name them in `keep`. Do not keep a memory folder without the account owner asking for it.
+Paths marked excluded by default (memory, credential folders) are left out unless you name them in `keep`. Do not keep a memory folder without the account owner asking for it. The coworker database, `data/agent.db`, is not excluded by default: its tables ship with their rows, so clear the test rows first or name it in `exclude`.
 
 Re-capturing a coworker already in the template updates its entry in place, and the editorial copy written about it survives. Read the `warnings` that come back: they name literal credentials the engine had to strip.
 

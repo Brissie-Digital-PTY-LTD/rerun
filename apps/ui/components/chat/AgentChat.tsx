@@ -811,7 +811,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     const runOnScreen = useMemo(() => runUsesScreen(messages), [messages])
     // The live screen stands in for the activity loader while the run works on it.
     const screenShown = (showLoader && runOnScreen) || !!takeoverAsk
-    const activityLoader = showLoader && !stepGroupShowsActivity(messages.at(-1)) ? <ChatActivityLoader agentId={agentId} message={messages.at(-1)} indicator={<AgentBuddy agentId={agentId} mood="working" size={20} facing="right" />} /> : null
+    const activityLoader = showLoader && !stepGroupShowsActivity(messages.at(-1)) ? <ChatActivityLoader agentId={agentId} message={messages.at(-1)} indicator={<AgentBuddy agentId={agentId} mood="working" size={24} facing="right" />} /> : null
 
     return (
         <div ref={chatRootRef} data-chat-scrolled={active && scrollEdges.top > 0 ? '' : undefined} className="relative flex flex-1 flex-col overflow-hidden">
