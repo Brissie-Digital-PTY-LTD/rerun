@@ -92,7 +92,7 @@ export function planSkillFileRemovals(paths: string[]): string[] {
     for (const target of paths.map(normalizeSkillFilePath).filter(Boolean)) {
         const resolved = posix.normalize(target)
         if (resolved === SKILL_ENTRY) throw new Error(`${SKILL_ENTRY} holds the skill body. Rewrite it with the body argument, or delete the whole skill.`)
-        if (resolved === '.' || resolved === '..' || resolved.startsWith('../')) throw new Error(`"${target}" is not a file of the skill. Name a reference file, e.g. references/old.md, or delete the whole skill.`)
+        if (resolved === '.' || resolved === '..' || resolved.startsWith('../') || posix.isAbsolute(resolved)) throw new Error(`"${target}" is not a file of the skill. Name a reference file, e.g. references/old.md, or delete the whole skill.`)
         targets.push(resolved)
     }
     return targets

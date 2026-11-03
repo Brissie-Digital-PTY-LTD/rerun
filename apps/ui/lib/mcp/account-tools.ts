@@ -206,7 +206,7 @@ const AGENT_TOOL_DEFS = [
     {
         name: 'upsert_skill',
         description:
-            'Create a skill, or replace it when one with the same name already exists. `description` is what makes the coworker decide to load the skill, so state when to use it. `body` is the markdown procedure. `files` adds or replaces reference documents the skill body can point to, which keeps the body short; a file already on the skill and not listed again is kept, and `removeFiles` is how one goes away. The whole skill is written in one atomic swap: if the call fails, nothing changed. Pass `slug` (from list_skills) to update a skill whose name you are also changing — without it, a new name creates a second skill. A skill an app installed is refused, by slug or by a name that lands on it: reconfigure the app instead.',
+            'Create a skill, or replace it when one with the same name already exists. `description` is what makes the coworker decide to load the skill, so state when to use it. `body` is the markdown procedure. `files` adds or replaces reference documents the skill body can point to, which keeps the body short; a file already on the skill and not listed again is kept, and `removeFiles` is how one goes away. The body and `files` are written in one atomic swap; `removeFiles` runs after it, so a failed deletion leaves that file behind. Pass `slug` (from list_skills) to update a skill whose name you are also changing — without it, a new name creates a second skill. A skill an app installed is refused, by slug or by a name that lands on it: reconfigure the app instead.',
         inputSchema: {
             type: 'object',
             properties: {

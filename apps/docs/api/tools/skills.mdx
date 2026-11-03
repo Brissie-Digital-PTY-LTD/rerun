@@ -89,7 +89,7 @@ Creates a skill, or replaces the one with the same name.
 }
 ```
 
-The whole skill is written in one atomic swap. If the call fails, nothing changed. `removeFiles` is applied after that swap, so a deletion that fails leaves the file in place rather than the skill half-written.
+The body and `files` are written in one atomic swap: if that write fails, nothing changed. `removeFiles` is checked before the write and applied after it, so a deletion that fails leaves the new body written and that file still in place.
 
 A skill an app installed is refused, whether you name its `slug` or pass a `name` that lands on it. The error names the app that owns it.
 

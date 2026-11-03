@@ -135,7 +135,7 @@ describe('removeSkillFiles', () => {
     it('refuses the skill folder itself and anything above it before deleting anything', async () => {
         const { calls } = mockEngine(() => ({ body: {} }))
 
-        for (const path of ['.', '..', 'references/..', '../other-skill/SKILL.md']) {
+        for (const path of ['.', '..', 'references/..', '../other-skill/SKILL.md', '//etc', '//skills/weekly-report']) {
             await expect(removeSkillFiles(conn, 'agent-1', 'weekly-report', ['references/a.md', path])).rejects.toThrow('not a file of the skill')
         }
         expect(calls).toHaveLength(0)
