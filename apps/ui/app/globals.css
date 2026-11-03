@@ -247,6 +247,11 @@ html:not(.dark) .progress-fill {
   margin-bottom: 0.25rem;
 }
 
+/* Unlayered like the heading margins above, which Streamdown's `[&>*:first-child]:mt-0` utility cannot override. */
+[data-streamdown^="heading-"]:first-child {
+  margin-top: 0;
+}
+
 [data-streamdown="strong"] {
   font-weight: 700;
 }
