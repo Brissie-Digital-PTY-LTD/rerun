@@ -6,8 +6,11 @@ process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-sqlite-ladder-
 
 const { describe, expect, it } = await import('vitest')
 const { createClient } = await import('@libsql/client')
+const { mkdir, writeFile } = await import('node:fs/promises')
+const { workspaceDir } = await import('../config/paths.js')
 const { migrateSqlite, sqliteVersion } = await import('./ladder.js')
 const { SYSTEM_DB_MIGRATIONS, SYSTEM_DB_VERSION, migrateSystemDb } = await import('./systemDb.js')
+const { backfillPaidSources } = await import('../paid-data/backfill.js')
 const { SHARED_DB_MIGRATIONS } = await import('./sharedDb.js')
 const { BRAIN_DB_MIGRATIONS } = await import('./brainDb.js')
 
@@ -96,6 +99,10 @@ describe('sqlite ladders', () => {
             [
               3,
               "step-cache-cost",
+            ],
+            [
+              4,
+              "paid-sources",
             ],
           ]
         `)
@@ -192,6 +199,54 @@ describe('system.db v2 to v3', () => {
         expect(await columns(client, 'run_steps')).toEqual(expect.arrayContaining(['cache_write_tokens', 'cost_micros']))
         const step = await client.execute("SELECT input_tokens, cache_write_tokens, cost_micros FROM run_steps WHERE id = 'st1'")
         expect(step.rows[0]).toMatchObject({ input_tokens: 38000, cache_write_tokens: null, cost_micros: null })
+    })
+})
+
+describe('system.db v3 to v4', () => {
+    const toolCall = (id: string, toolName: string, input: unknown, result: unknown, createdAt: string) => ({
+        sql: "INSERT INTO tool_calls (id, run_id, agent_id, session_id, step_number, tool_call_id, tool_name, input_json, result_json, created_at) VALUES (?, 'r1', 'scout', 's1', 1, ?, ?, ?, ?, ?)",
+        args: [id, `call-${id}`, toolName, JSON.stringify(input), JSON.stringify(result), createdAt],
+    })
+
+    it('creates the index, then a first backfill reads the paid calls already made from their result or from the answer saved in the workspace', async () => {
+        const client = freshFile('v3-system')
+        await migrateSqlite(client, SYSTEM_DB_MIGRATIONS.slice(0, 3), 'v3-system.db')
+        const saved = '.rerun/paid-data/google.serp.maps-2026-10-20-treg-1.json'
+        const workspace = workspaceDir('scout')
+        await mkdir(resolve(workspace, '.rerun/paid-data'), { recursive: true })
+        await writeFile(resolve(workspace, saved), JSON.stringify({ capability: 'google.serp.maps', output: { places: [{ title: 'Boulangerie Dupont', website: 'https://boulangerie-dupont.fr' }] } }))
+        await client.batch([
+            toolCall('1', 'mcp__rerun__paid_data', { capability: 'people.email.find', params: { full_name: 'Jane Doe' } }, { type: 'json', value: { status: 'found', servedBy: 'hunter', result: { output: { email: 'jane@acme.com' }, verification: { verdict: 'valid' } } } }, '2026-10-20T09:00:00.000Z'),
+            toolCall('2', 'paid_data', { capability: 'google.serp.maps', params: { q: 'boulangerie' } }, { saved, status: 'found', outline: { output: {} } }, '2026-10-20T10:00:00.000Z'),
+            toolCall('3', 'paid_data', { capability: 'people.email.find', params: { full_name: 'John Roe' } }, { status: 'nothing_found', result: { output: { email: null } } }, '2026-10-20T11:00:00.000Z'),
+            toolCall('4', 'shell_exec', { command: 'echo hi@acme.com' }, { stdout: 'hi@acme.com' }, '2026-10-20T12:00:00.000Z'),
+        ])
+
+        await migrateSystemDb(client, 'v3-system.db')
+        await SYSTEM_DB_MIGRATIONS[3].up(client)
+        expect(await sqliteVersion(client)).toBe(SYSTEM_DB_VERSION)
+        expect((await client.execute('SELECT count(*) AS n FROM paid_calls')).rows[0].n).toBe(0)
+
+        await backfillPaidSources(client)
+        const marker = await client.execute("SELECT value FROM system_meta WHERE key = 'paid_backfill'")
+        expect(marker.rows).toHaveLength(1)
+
+        // A second pass finds the marker and reads nothing: a call written since would stay out of it.
+        await client.execute("DELETE FROM paid_keys WHERE key = 'n:boulangerie dupont'")
+        await backfillPaidSources(client)
+        expect((await client.execute("SELECT count(*) AS n FROM paid_keys WHERE key = 'n:boulangerie dupont'")).rows[0].n).toBe(0)
+        await client.execute("INSERT INTO paid_keys (key, call_id, item, field) VALUES ('n:boulangerie dupont', 'call-2', 0, 'title')")
+        const calls = await client.execute('SELECT call_id, capability, served_by FROM paid_calls ORDER BY call_id')
+        expect(calls.rows.map(row => ({ ...row }))).toEqual([
+            { call_id: 'call-1', capability: 'people.email.find', served_by: 'hunter' },
+            { call_id: 'call-2', capability: 'google.serp.maps', served_by: null },
+        ])
+        const keys = await client.execute('SELECT key, call_id, verdict FROM paid_keys ORDER BY key')
+        expect(keys.rows.map(row => ({ ...row }))).toEqual([
+            { key: 'd:boulangerie-dupont.fr', call_id: 'call-2', verdict: null },
+            { key: 'e:jane@acme.com', call_id: 'call-1', verdict: 'valid' },
+            { key: 'n:boulangerie dupont', call_id: 'call-2', verdict: null },
+        ])
     })
 })
 

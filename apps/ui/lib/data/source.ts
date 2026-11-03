@@ -1,6 +1,6 @@
-import { deleteTableViewAction, listTableViewsAction, readTableGroupsAction, saveTableViewAction, updateTableRowAction } from '@/app/api/_actions/data-views.actions'
+import { deleteTableViewAction, listTableViewsAction, readTableGroupsAction, readTableSourcesAction, saveTableViewAction, updateTableRowAction } from '@/app/api/_actions/data-views.actions'
 import type { EngineDbRows, EngineDbTable } from '@/lib/engine/types'
-import type { EngineDbGroup, RowFilter, TableView, TableViewInput } from '@rerun/contracts'
+import type { EngineDbGroup, RowFilter, TableSourcesRequest, TableSourcesResult, TableView, TableViewInput } from '@rerun/contracts'
 
 export type DataScope = { kind: 'agent'; agentId: string } | { kind: 'shared' }
 
@@ -32,6 +32,8 @@ export type DataSource = {
     deleteView: (table: string, id: string) => Promise<Result>
     readGroups: (table: string, params: DataGroupParams) => Promise<Result<{ groups: EngineDbGroup[] }>>
     updateRow: (table: string, rowid: number | string, values: Record<string, SqlValue>) => Promise<Result<{ row: Record<string, unknown> }>>
+    /** Where each row's paid data came from. Null when the engine cannot tell, absent where it never can. */
+    readSources?: (table: string, rows: TableSourcesRequest['rows']) => Promise<TableSourcesResult | null>
     /** Turns a workspace file path stored in a cell into a URL, for images. Agent databases only. */
     fileUrl?: (path: string) => string | null
     unreachableMessage: string
@@ -39,12 +41,13 @@ export type DataSource = {
     emptyDescription: string
 }
 
-export function viewActions(scope: DataScope): Pick<DataSource, 'listViews' | 'saveView' | 'deleteView' | 'readGroups' | 'updateRow'> {
+export function viewActions(scope: DataScope): Pick<DataSource, 'listViews' | 'saveView' | 'deleteView' | 'readGroups' | 'updateRow' | 'readSources'> {
     return {
         listViews: table => listTableViewsAction(scope, table),
         saveView: (table, input, id) => saveTableViewAction(scope, table, input, id),
         deleteView: (table, id) => deleteTableViewAction(scope, table, id),
         readGroups: (table, params) => readTableGroupsAction(scope, table, params),
         updateRow: (table, rowid, values) => updateTableRowAction(scope, table, rowid, values),
+        readSources: (_table, rows) => readTableSourcesAction(scope, rows),
     }
 }

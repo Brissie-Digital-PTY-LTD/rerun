@@ -5,7 +5,7 @@ import { getAgentChatTarget } from '@/app/api/_services/chat.service'
 import * as engine from '@/lib/engine/client'
 import type { DataScope } from '@/lib/data/source'
 import type { EngineConnection } from '@/lib/engine/types'
-import type { EngineDbGroup, TableView, TableViewInput } from '@rerun/contracts'
+import type { EngineDbGroup, TableSourcesRequest, TableSourcesResult, TableView, TableViewInput } from '@rerun/contracts'
 
 type ActionResult<T = object> = ({ success: true } & T) | { success: false; error: string }
 
@@ -75,5 +75,16 @@ export async function updateTableRowAction(scope: DataScope, table: string, rowi
         return { success: true, row: await engine.updateDbTableRow(conn, base, table, rowid, values) }
     } catch (err) {
         return { success: false, error: describe(err, 'Could not save the row.') }
+    }
+}
+
+// Null on any failure, a 404 from an engine that predates the route included: the provenance of the
+// rows is a hint over the table, never a reason to show an error.
+export async function readTableSourcesAction(scope: DataScope, rows: TableSourcesRequest['rows']): Promise<TableSourcesResult | null> {
+    try {
+        const { conn, base } = await resolve(scope)
+        return await engine.readTableSources(conn, base, rows)
+    } catch {
+        return null
     }
 }

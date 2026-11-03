@@ -12,7 +12,10 @@ import {
     engineRowUpdateResultSchema,
     engineTableViewSchema,
     engineTableViewsSchema,
+    tableSourcesResultSchema,
     type EngineDbGroup,
+    type TableSourcesRequest,
+    type TableSourcesResult,
     type RowFilter,
     type TableView,
     type TableViewInput,
@@ -340,6 +343,12 @@ export async function readDbTableGroups(conn: EngineConnection, base: string, ta
 export async function updateDbTableRow(conn: EngineConnection, base: string, table: string, rowid: number | string, values: Record<string, string | number | boolean | null>): Promise<Record<string, unknown>> {
     const path = `${base}/tables/${encodeURIComponent(table)}/rows/${encodeURIComponent(String(rowid))}`
     return request(conn, path, { method: 'PATCH', body: JSON.stringify({ values }) }, d => engineRowUpdateResultSchema.parse(d).row)
+}
+
+// Where each row's paid data came from. The engine matches the values themselves, so the table the
+// rows were read from does not travel.
+export async function readTableSources(conn: EngineConnection, base: string, rows: TableSourcesRequest['rows']): Promise<TableSourcesResult> {
+    return request(conn, `${base}/sources`, { method: 'POST', body: JSON.stringify({ rows }) }, d => tableSourcesResultSchema.parse(d))
 }
 
 // A view is how the app draws a table: a layout over chosen columns, shared by everyone who opens

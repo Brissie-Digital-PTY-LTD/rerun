@@ -34,13 +34,13 @@ describe('renameAgent', () => {
         eq.mockResolvedValue({ error: null })
         update.mockReturnValue({ eq })
         vi.mocked(createServiceRoleClient).mockReturnValue({ from: () => ({ update }) } as never)
-        vi.mocked(selectSingle).mockResolvedValue({ data: { workspace_id: 7, space_id: 'box', engine_agent_id: 'eng1' } } as never)
+        vi.mocked(selectSingle).mockResolvedValue({ data: { workspace_id: 7, space_id: 'box', engine_agent_id: 'eng1', handle: 'scout' } } as never)
     })
 
     it('moves the handle with the name, on both sides', async () => {
         siblings([{ id: 'a1', handle: 'scout' }])
 
-        await expect(renameAgent('a1', 'Ranger')).resolves.toEqual({ name: 'Ranger', handle: 'ranger' })
+        await expect(renameAgent('a1', 'Ranger')).resolves.toEqual({ name: 'Ranger', handle: 'ranger', handleChanged: true })
         expect(update).toHaveBeenCalledWith({ name: 'Ranger', handle: 'ranger' })
         expect(patchAgent).toHaveBeenCalledWith('conn', 'eng1', { name: 'ranger', displayName: 'Ranger' })
         expect(vi.mocked(patchAgent).mock.invocationCallOrder[0]).toBeLessThan(update.mock.invocationCallOrder[0])
@@ -57,7 +57,7 @@ describe('renameAgent', () => {
     it('keeps its own handle when only the case changes', async () => {
         siblings([{ id: 'a1', handle: 'scout' }])
 
-        await expect(renameAgent('a1', 'SCOUT')).resolves.toEqual({ name: 'SCOUT', handle: 'scout' })
+        await expect(renameAgent('a1', 'SCOUT')).resolves.toEqual({ name: 'SCOUT', handle: 'scout', handleChanged: false })
     })
 
     it('takes a suffix when another coworker already answers to the name', async () => {
@@ -66,7 +66,7 @@ describe('renameAgent', () => {
             { id: 'a2', handle: 'ranger' },
         ])
 
-        await expect(renameAgent('a1', 'Ranger')).resolves.toEqual({ name: 'Ranger', handle: 'ranger_2' })
+        await expect(renameAgent('a1', 'Ranger')).resolves.toEqual({ name: 'Ranger', handle: 'ranger_2', handleChanged: true })
     })
 })
 

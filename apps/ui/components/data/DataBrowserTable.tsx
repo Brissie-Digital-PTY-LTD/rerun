@@ -2,9 +2,12 @@
 
 import { EditableCell } from '@/components/data/EditableCell'
 import { KIND_ICONS } from '@/components/data/FriendlyCell'
+import { EmailVerdictBadge } from '@/components/data/sources/EmailVerdictBadge'
+import { RowSourcesCell } from '@/components/data/sources/RowSourcesCell'
+import type { RowSources } from '@/components/data/sources/table-sources'
 import { Checkbox } from '@/components/ui/checkbox'
 import { columnLabel, isNumericKind, rowCurrency, type FriendlyColumn } from '@/lib/data/friendly-columns'
-import { ArrowDownIcon, ArrowUpIcon } from '@/lib/icons'
+import { ArrowDownIcon, ArrowUpIcon, DatabaseIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import type { CellContext } from '@rerun/ui/chat'
 import { type Table } from '@tanstack/react-table'
@@ -29,9 +32,28 @@ type DataBrowserTableProps = {
     formats?: Record<string, string>
     cellContext: CellContext
     onEditCell: (row: DbRow, column: string, text: string) => Promise<boolean>
+    /** Where each row's paid data came from, when the database can tell. */
+    sourcesOf?: (row: DbRow) => RowSources | null
+    /** Adds the Sources column at the end. It is not a column of the table: never sorted, never saved in a view. */
+    showSources?: boolean
+    onOpenSources?: (row: DbRow) => void
 }
 
-export function DataBrowserTable({ table, friendly, canSelectRows, allPageSelected, selectedRowIds, onToggleRow, onToggleAllPage, formats = {}, cellContext, onEditCell }: DataBrowserTableProps) {
+export function DataBrowserTable({
+    table,
+    friendly,
+    canSelectRows,
+    allPageSelected,
+    selectedRowIds,
+    onToggleRow,
+    onToggleAllPage,
+    formats = {},
+    cellContext,
+    onEditCell,
+    sourcesOf,
+    showSources = false,
+    onOpenSources,
+}: DataBrowserTableProps) {
     const selecting = selectedRowIds.size > 0
     const columnOf = (id: string): FriendlyColumn => friendly.get(id) ?? { key: id, label: columnLabel(id), kind: 'text' }
     const gutter = 'w-8 min-w-8 border-b border-border/70 pl-3 pr-1'
@@ -76,6 +98,14 @@ export function DataBrowserTable({ table, friendly, canSelectRows, allPageSelect
                                 </th>
                             )
                         })}
+                        {showSources && (
+                            <th className="h-9 w-0 border-b border-l border-border border-l-border/70 px-2 text-left font-normal whitespace-nowrap text-muted-foreground">
+                                <span className="inline-flex items-center gap-1.5">
+                                    <DatabaseIcon className="size-3.5 shrink-0 opacity-70" />
+                                    Sources
+                                </span>
+                            </th>
+                        )}
                     </tr>
                 ))}
             </thead>
@@ -84,6 +114,7 @@ export function DataBrowserTable({ table, friendly, canSelectRows, allPageSelect
                     const key = rowKey(row.original)
                     const checked = key !== null && selectedRowIds.has(key)
                     const currency = rowCurrency(row.original)
+                    const sources = sourcesOf?.(row.original) ?? null
                     return (
                         <tr key={row.id} className={cn('group', checked ? 'bg-accent/50' : 'hover:bg-accent/40')}>
                             {canSelectRows && (
@@ -102,13 +133,26 @@ export function DataBrowserTable({ table, friendly, canSelectRows, allPageSelect
                             )}
                             {row.getVisibleCells().map((cell, index) => {
                                 const column = columnOf(cell.column.id)
-                                const shared = { value: cell.getValue(), column, format: formats[column.key], context: cellContext, currency }
+                                const verdict = sources?.cells[column.key]?.verdict
+                                const shared = {
+                                    value: cell.getValue(),
+                                    column,
+                                    format: formats[column.key],
+                                    context: cellContext,
+                                    currency,
+                                    adornment: verdict && <EmailVerdictBadge status={verdict} className="shrink-0" />,
+                                }
                                 return (
                                     <td key={cell.id} className={index === 0 ? cn('h-9 max-w-64 border-b border-border/70 px-2', firstColumnPadding) : 'h-9 max-w-72 border-b border-l border-border/70 px-2'}>
                                         <EditableCell {...shared} onCommit={key !== null ? text => onEditCell(row.original, column.key, text) : undefined} />
                                     </td>
                                 )
                             })}
+                            {showSources && (
+                                <td className="h-9 border-b border-l border-border/70 px-2">
+                                    {sources && onOpenSources && <RowSourcesCell sources={sources.sources} onOpen={() => onOpenSources(row.original)} />}
+                                </td>
+                            )}
                         </tr>
                     )
                 })}

@@ -7,6 +7,9 @@ import { DataBrowserPagination } from '@/components/data/DataBrowserPagination'
 import { DataBrowserTable, rowKey, type DbRow } from '@/components/data/DataBrowserTable'
 import { DataBrowserToolbar } from '@/components/data/DataBrowserToolbar'
 import { DataViewBar } from '@/components/data/DataViewBar'
+import { LeadSourcesSheet } from '@/components/data/sources/LeadSourcesSheet'
+import { showsSourcesColumn } from '@/components/data/sources/table-sources'
+import { useTableSources } from '@/components/data/sources/useTableSources'
 import { ViewBoard } from '@/components/data/views/ViewBoard'
 import { ViewGallery } from '@/components/data/views/ViewGallery'
 import { ViewList } from '@/components/data/views/ViewList'
@@ -42,6 +45,8 @@ type DataBrowserProps = {
 
 type ViewDialog = { open: boolean; view?: TableView; layout?: CardLayout }
 
+const NO_ROWS: DbRow[] = []
+
 export function DataBrowser({ source, initial, onInitialConsumed, onExpand, table: pinnedTable, onTableDropped }: DataBrowserProps) {
     const [requested] = useState(() => initial ?? null)
     const requestedTableRef = useRef(requested?.table ?? null)
@@ -73,6 +78,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
     // The kind of each column is read from the first page of a table and view, then kept, so a
     // column does not change looks from one page to the next.
     const [kindSample, setKindSample] = useState<{ key: string; rows: DbRow[] } | null>(null)
+    const [openRow, setOpenRow] = useState<DbRow | null>(null)
 
     // Kept out of loadTables' deps: callers pass this callback inline, and a fresh identity on every
     // render would make the effect below refetch forever.
@@ -121,6 +127,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
         setQuery('')
         setSelectedRowIds(new Set())
         setActionError(null)
+        setOpenRow(null)
     }, [selected])
 
     useEffect(() => {
@@ -217,6 +224,18 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
     const allPageSelected = pageKeys.length > 0 && pageKeys.every(k => selectedRowIds.has(k))
 
     const cellContext: CellContext = { tones: activeView?.tones, fileUrl: source.fileUrl }
+
+    const { sourcesOf, pending: sourcesPending } = useTableSources(source, selected, rows)
+    // A row opened from the board is not on the page the table read, so it is asked about alone.
+    const openRowOffPage = openRow !== null && !rows.includes(openRow)
+    const openRowAlone = useMemo(() => (openRow && openRowOffPage ? [openRow] : NO_ROWS), [openRow, openRowOffPage])
+    const { sourcesOf: sourcesOfOpenRow } = useTableSources(source, selected, openRowAlone)
+    const sourcesShown = showsSourcesColumn(rows, sourcesOf)
+    // While the next page is being traced, the column stays put rather than blinking out and back.
+    const [sourcesColumn, setSourcesColumn] = useState({ table: selected, shown: false })
+    if (!sourcesPending && (sourcesColumn.table !== selected || sourcesColumn.shown !== sourcesShown)) setSourcesColumn({ table: selected, shown: sourcesShown })
+    const showSources = sourcesShown || (sourcesPending && sourcesColumn.table === selected && sourcesColumn.shown)
+    const sheetColumns = useMemo(() => gridColumns(friendly, viewOrder), [friendly, viewOrder])
 
     const table = useReactTable({
         data: rows,
@@ -455,15 +474,15 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
             {actionError && <div className="mx-4 mt-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive @3xl:mx-12">{actionError}</div>}
             <div className={cn('min-h-0 flex-1 overflow-auto', !boardView && '@3xl:px-12')}>
                 {boardView && selected ? (
-                    <ViewBoard source={source} table={selected} view={boardView} query={query} refreshKey={refreshKey} context={cellContext} />
+                    <ViewBoard source={source} table={selected} view={boardView} query={query} refreshKey={refreshKey} context={cellContext} onOpenRow={setOpenRow} />
                 ) : (loadingRows && !data) || activeId === null ? (
                     <SkeletonGrid />
                 ) : rows.length === 0 ? (
                     <EmptyState className="h-full" icon={DatabaseIcon} title="No rows" description={search ? 'No row matches this search.' : 'This table is empty.'} />
                 ) : activeView?.layout === 'list' ? (
-                    <ViewList view={activeView} rows={rows} context={cellContext} />
+                    <ViewList view={activeView} rows={rows} context={cellContext} onOpenRow={setOpenRow} />
                 ) : activeView?.layout === 'gallery' ? (
-                    <ViewGallery view={activeView} rows={rows} context={cellContext} />
+                    <ViewGallery view={activeView} rows={rows} context={cellContext} onOpenRow={setOpenRow} />
                 ) : (
                     <DataBrowserTable
                         table={table}
@@ -476,6 +495,9 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
                         formats={activeView?.formats}
                         cellContext={cellContext}
                         onEditCell={editCell}
+                        sourcesOf={sourcesOf}
+                        showSources={showSources}
+                        onOpenSources={setOpenRow}
                     />
                 )}
             </div>
@@ -505,6 +527,13 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
                     onSaved={onViewSaved}
                 />
             )}
+            <LeadSourcesSheet
+                row={openRow}
+                onOpenChange={open => !open && setOpenRow(null)}
+                columns={sheetColumns}
+                sources={openRowOffPage ? sourcesOfOpenRow(openRow) : sourcesOf(openRow)}
+                tones={activeView?.tones}
+            />
             <PurgeTableDialog open={purgeDialogOpen} onOpenChange={setPurgeDialogOpen} onConfirm={confirmPurgeTable} table={selected ?? ''} />
             <DeleteTableDialog open={tableDialogOpen} onOpenChange={setTableDialogOpen} onConfirm={confirmDropTable} table={selected ?? ''} />
         </div>

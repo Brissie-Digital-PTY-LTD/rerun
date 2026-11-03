@@ -17,6 +17,7 @@ import { CompactionStep, type CompactionData } from '@/components/chat/Compactio
 import { ExpandableMessage } from '@/components/chat/ExpandableMessage'
 import { MessageBubbles } from '@/components/chat/MessageBubbles'
 import { MessageTimeTooltip } from '@/components/chat/MessageTimeTooltip'
+import { PaidSourcesPill } from '@/components/chat/PaidSourcesPill'
 import { USER_BUBBLE_INK, USER_BUBBLE_SHAPE } from '@/components/chat/bubble-styles'
 import { ReasoningStep } from '@/components/chat/ReasoningBlock'
 import { ScheduledRunBlock } from '@/components/chat/ScheduledRunBlock'
@@ -47,7 +48,7 @@ import { parseTriggerPayload } from '@/lib/triggers/trigger-payload'
 import { parseScheduledRun } from '@/lib/schedules/scheduled-run'
 import { parseVoiceMessage } from '@/lib/voice/marker'
 import { cn } from '@/lib/utils'
-import { QUICK_REPLIES_TOOL, fileCardSchema, quickRepliesOf, skillProposalIdOf, tableCardSchema, toolActivityOf, type MessageFeedbackRating } from '@rerun/contracts'
+import { QUICK_REPLIES_TOOL, fileCardSchema, quickRepliesOf, skillProposalIdOf, tableCardSchema, toolActivityOf, type MessageFeedbackRating, type PaidTurnSources } from '@rerun/contracts'
 import type { UIMessage } from 'ai'
 import { BrainIcon, CheckIcon, CopyIcon, FoldVerticalIcon, RefreshCcwIcon, ThumbsDownIcon, ThumbsUpIcon } from '@/lib/icons'
 import { Fragment, isValidElement, memo, type ReactNode, useState } from 'react'
@@ -159,6 +160,8 @@ export type MessageViewProps = {
     assistantLayout?: (steps: AssistantStep[]) => ReactNode
     // When the message was written, shown on hover of its bubble.
     createdAt?: string
+    // Where the paid data of the turn came from, on the turn's last assistant message only.
+    paidSources?: PaidTurnSources
 }
 
 export type ToolPartLike = { toolName: string; toolCallId: string; state: string; input?: unknown; output?: unknown; errorText?: string }
@@ -169,7 +172,7 @@ export function UnderText({ children }: { children: ReactNode }) {
     return children
 }
 
-function MessageViewInner({ message, isActive = false, isLastAssistant = false, agentId, pendingHitlToolCallId, pendingMcpSignIn, hitlCall, pendingAlertToolCallId, activeRunId, onStopTask: stopTaskOverride, onSendMessage, showQuickReplies = false, onRegenerate, onRateMessage, feedbackRating = null, rawUrlFor, readFile, sharedFiles, skillProposals, decidingProposalId, onDecideProposal, pinnedProposalIds, renderToolPart, installing, mentions, assistantLayout, createdAt }: MessageViewProps) {
+function MessageViewInner({ message, isActive = false, isLastAssistant = false, agentId, pendingHitlToolCallId, pendingMcpSignIn, hitlCall, pendingAlertToolCallId, activeRunId, onStopTask: stopTaskOverride, onSendMessage, showQuickReplies = false, onRegenerate, onRateMessage, feedbackRating = null, rawUrlFor, readFile, sharedFiles, skillProposals, decidingProposalId, onDecideProposal, pinnedProposalIds, renderToolPart, installing, mentions, assistantLayout, createdAt, paidSources }: MessageViewProps) {
     const toolDisplay = useToolDisplay(agentId)
     const sources = message.role === 'assistant' ? messageSources(message) : []
     const install = message.role === 'user' ? parseInstallMessage(messageText(message)) : null
@@ -367,7 +370,8 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
     const inkBubble = message.role === 'user'
     // The SDK pushes the assistant message before its first token, so its empty shell would
     // eat one of the conversation gaps and open a band above the loader.
-    if (assistantSteps && assistantSteps.length === 0 && sources.length === 0) return null
+    const showPaidSources = !!paidSources && !isActive
+    if (assistantSteps && assistantSteps.length === 0 && sources.length === 0 && !showPaidSources) return null
 
     // Not the user speaking, so no bubble: a divider across the thread marks where the install, the
     // routine or the webhook began.
@@ -404,6 +408,7 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
                     </SourcesContent>
                 </Sources>
             )}
+            {showPaidSources && <PaidSourcesPill sources={paidSources} />}
             {quickReplies.length > 0 && (
                 <Suggestions className="animate-in fade-in duration-300">
                     {quickReplies.map(reply => (

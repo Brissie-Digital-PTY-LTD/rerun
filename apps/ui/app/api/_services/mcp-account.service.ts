@@ -325,17 +325,24 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         case 'get_agent': {
             const agentId = requireString(args.agentId, 'agentId')
             const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, workspaceId)
+            // A part that cannot be read still answers empty, so one failing route does not hide the
+            // rest of the agent, but it is named in `unavailable`: an empty list has to mean empty.
+            const unavailable: string[] = []
+            const unreadable = (part: string) => () => {
+                unavailable.push(part)
+                return []
+            }
             const [detail, aiConnections, skills, schedules, triggers, connectors] = await Promise.all([
                 engineGetAgent(conn, engineAgentId),
                 engineListConnections(conn)
                     .then(list => list.connections)
-                    .catch(() => []),
-                engineListSkills(conn, engineAgentId).catch(() => []),
-                engineListSchedules(conn, engineAgentId).catch(() => []),
-                engineListTriggers(conn, engineAgentId).catch(() => []),
+                    .catch(unreadable('runsOn')),
+                engineListSkills(conn, engineAgentId).catch(unreadable('skills')),
+                engineListSchedules(conn, engineAgentId).catch(unreadable('schedules')),
+                engineListTriggers(conn, engineAgentId).catch(unreadable('triggers')),
                 listInstalledServices(agentId, workspaceId)
                     .then(result => result.services)
-                    .catch(() => []),
+                    .catch(unreadable('connectors')),
             ])
 
             return {
@@ -362,6 +369,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
                 // list_triggers to get it deliberately.
                 triggers: triggers.map(trigger => ({ slug: trigger.slug, name: trigger.name, methods: trigger.methods, enabled: trigger.enabled, lastFiredAt: trigger.lastFiredAt })),
                 connectors: connectors.map(connectorView),
+                ...(unavailable.length > 0 ? { unavailable } : {}),
             }
         }
 
@@ -442,9 +450,11 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
             }
 
             const identity = rehandled ?? renamed
+            const handleMoved = Boolean(rehandled) || Boolean(renamed?.handleChanged)
+            const identityUpdated = [...(renamed ? ['name'] : []), ...(handleMoved ? ['handle'] : [])]
             return {
                 agentId,
-                updated: [...Object.keys(patch), ...(moved ? ['spaceId'] : [])],
+                updated: [...identityUpdated, ...Object.keys(patch), ...(moved ? ['spaceId'] : [])],
                 ...(moved?.ok ? { spaceId: requestedSpaceId, position: moved.position } : {}),
                 ...(identity ? { name: identity.name, handle: identity.handle } : {}),
                 ...(patched && checked ? { runsOn: projectRunsOn(patched, checked.connections) } : {}),

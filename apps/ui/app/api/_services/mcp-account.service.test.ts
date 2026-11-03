@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createSchedule, createTrigger, importSkill, patchAgent, updateSchedule, updateTrigger } from '@/lib/engine/client'
+import { createSchedule, createTrigger, getAgent, importSkill, listConnections, listSchedules, listSkills, listTriggers, patchAgent, updateSchedule, updateTrigger } from '@/lib/engine/client'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { fakeSupabase, type FakeSupabase, type SupabaseCall } from '@/test/supabase-fake'
 
 import type { ServiceManifest } from '@/lib/services/manifest'
 import type { InstalledService } from '@/lib/services/types'
 
-import { createAgent, deleteAgent, renameAgent } from './agent.service'
+import { changeAgentHandle, createAgent, deleteAgent, renameAgent } from './agent.service'
 import { LOCKED_WRITE_ERROR } from './agent-content.service'
 import { declareService } from './agent-setup.service'
 import { resolveAgentTarget } from './chat.service'
@@ -185,6 +185,78 @@ describe('dispatchAccountTool', () => {
             await expect(dispatchAccountTool(WORKSPACE_ID, 'detach_connector', { agentId: 'agent-own', slug: 'gmail', confirm: true })).resolves.toEqual({ key: 'gmail', detached: true })
 
             expect(uninstallService).toHaveBeenCalledWith('agent-own', 'gmail', WORKSPACE_ID)
+        })
+    })
+
+    describe('agent identity and reads', () => {
+        const conn = { url: 'https://engine.test', apiKey: 'key' }
+
+        beforeEach(() => {
+            vi.mocked(resolveAgentTarget).mockResolvedValue({ conn, engineAgentId: 'engine-own', contentLocked: false } as never)
+        })
+
+        it('lists the identity fields a rename wrote in updated', async () => {
+            vi.mocked(renameAgent).mockResolvedValue({ name: 'Worker B', handle: 'worker_b', handleChanged: true })
+
+            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', name: 'Worker B' })).resolves.toMatchObject({
+                updated: ['name', 'handle'],
+                name: 'Worker B',
+                handle: 'worker_b',
+            })
+        })
+
+        it('leaves handle out of updated when the rename re-derives the same one', async () => {
+            vi.mocked(renameAgent).mockResolvedValue({ name: 'Worker A!', handle: 'worker_a', handleChanged: false })
+
+            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', name: 'Worker A!' })).resolves.toMatchObject({
+                updated: ['name'],
+                name: 'Worker A!',
+                handle: 'worker_a',
+            })
+        })
+
+        it('refuses upsert_skill naming the same reference file in files and removeFiles, whatever the spelling', async () => {
+            await expect(
+                dispatchAccountTool(WORKSPACE_ID, 'upsert_skill', { agentId: 'agent-own', name: 'Fixture', body: 'Body', files: [{ path: 'references/a.md', content: 'x' }], removeFiles: ['references/../references/a.md'] }),
+            ).rejects.toThrow('in both files and removeFiles')
+
+            expect(importSkill).not.toHaveBeenCalled()
+        })
+
+        it('lists the handle a handle change wrote in updated', async () => {
+            vi.mocked(changeAgentHandle).mockResolvedValue({ name: 'Worker A', handle: 'custom_key' })
+
+            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', handle: 'custom_key' })).resolves.toMatchObject({ updated: ['handle'], handle: 'custom_key' })
+        })
+
+        it('keeps listing only the config fields of an update that leaves the identity alone', async () => {
+            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', description: 'Finds leads' })).resolves.toMatchObject({ updated: ['description'] })
+
+            expect(renameAgent).not.toHaveBeenCalled()
+            expect(changeAgentHandle).not.toHaveBeenCalled()
+        })
+
+        it('names a part get_agent could not read instead of passing it off as empty', async () => {
+            vi.mocked(getAgent).mockResolvedValue({ config: { name: 'scout', displayName: 'Scout', setup: { required: false, completedAt: null }, mcpServers: [] }, soul: 'You are Scout.' } as never)
+            vi.mocked(listConnections).mockResolvedValue({ connections: [] } as never)
+            vi.mocked(listSkills).mockResolvedValue([])
+            vi.mocked(listTriggers).mockResolvedValue([])
+            vi.mocked(listInstalledServices).mockResolvedValue({ services: [] } as never)
+
+            vi.mocked(listSchedules).mockRejectedValueOnce(new Error('engine GET schedules failed: 500'))
+            const failed = await dispatchAccountTool(WORKSPACE_ID, 'get_agent', { agentId: 'agent-own' })
+            expect(failed).toMatchObject({ schedules: [], unavailable: ['schedules'] })
+
+            vi.mocked(listSchedules).mockResolvedValueOnce([])
+            const empty = await dispatchAccountTool(WORKSPACE_ID, 'get_agent', { agentId: 'agent-own' })
+            expect(empty).toMatchObject({ schedules: [] })
+            expect(empty).not.toHaveProperty('unavailable')
+        })
+
+        it('refuses upsert_skill removing the skill folder itself before the body is written', async () => {
+            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_skill', { agentId: 'agent-own', name: 'Fixture', body: 'Changed body', removeFiles: ['.'] })).rejects.toThrow('not a file of the skill')
+
+            expect(importSkill).not.toHaveBeenCalled()
         })
     })
 

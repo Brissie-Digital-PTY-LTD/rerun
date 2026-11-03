@@ -81,7 +81,7 @@ const AGENT_TOOL_DEFS = [
     {
         name: 'get_agent',
         description:
-            'Full picture of one coworker in a single call: its SOUL (the system prompt that defines who it is), what it runs on (`runsOn`: the AI connection, provider and model it resolves to, and whether it follows the workspace default), enabled tool families, custom MCP servers, its guided-setup answer with the install instructions behind it, plus the list of its skills, scheduled tasks and apps. Skills and scheduled tasks are summarised here — use get_skill and list_schedules for their full text. Read this before changing anything.',
+            'Full picture of one coworker in a single call: its SOUL (the system prompt that defines who it is), what it runs on (`runsOn`: the AI connection, provider and model it resolves to, and whether it follows the workspace default), enabled tool families, custom MCP servers, its guided-setup answer with the install instructions behind it, plus the list of its skills, scheduled tasks and apps. Skills and scheduled tasks are summarised here — use get_skill and list_schedules for their full text. A part the Box could not read comes back empty (`runsOn` keeps its provider and model but loses `connectionName`) and is named in `unavailable` (e.g. ["schedules"]): only a list absent from it is really empty. Read this before changing anything.',
         inputSchema: {
             type: 'object',
             properties: { agentId: { type: 'string' } },

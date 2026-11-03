@@ -4,6 +4,7 @@ import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql'
 import { agentDataDir, systemDbPath } from '../config/paths.js'
 import { sessions, messages, runs, runSteps, toolCalls, compactionCheckpoints, skillProposals } from './schema.js'
 import { latestVersion, migrateSqlite, type SqliteMigration } from './ladder.js'
+import { scheduleBackfillPaidSources } from '../paid-data/backfill.js'
 
 const schema = { sessions, messages, runs, runSteps, toolCalls, compactionCheckpoints, skillProposals }
 
@@ -192,6 +193,36 @@ const MESSAGE_AUTHOR_COLUMNS = ['author_id TEXT', 'author_name TEXT']
 // turn reused the one before it, which the run row cannot say.
 const RUN_STEP_CACHE_COST_COLUMNS = ['cache_write_tokens INTEGER', 'cost_micros INTEGER']
 
+// Every paid data call indexed by the values it returned, so a table cell can be traced back to the
+// call it came from. `fields_json` keeps the item's fields and the link to show for it. `system_meta`
+// holds the one-off markers of the file, such as the end of the paid calls backfill.
+const PAID_SOURCES_DDL = `
+CREATE TABLE IF NOT EXISTS system_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paid_calls (
+    call_id TEXT PRIMARY KEY,
+    at TEXT NOT NULL,
+    capability TEXT NOT NULL,
+    served_by TEXT
+);
+CREATE TABLE IF NOT EXISTS paid_items (
+    call_id TEXT NOT NULL,
+    item INTEGER NOT NULL,
+    fields_json TEXT NOT NULL,
+    PRIMARY KEY (call_id, item)
+);
+CREATE TABLE IF NOT EXISTS paid_keys (
+    key TEXT NOT NULL,
+    call_id TEXT NOT NULL,
+    item INTEGER NOT NULL,
+    field TEXT NOT NULL,
+    verdict TEXT,
+    PRIMARY KEY (key, call_id, item, field)
+);
+`
+
 // A schema change is a new step at the end, never an edit to a shipped one: see `db/ladder.ts`.
 export const SYSTEM_DB_MIGRATIONS: SqliteMigration[] = [
     {
@@ -219,6 +250,13 @@ export const SYSTEM_DB_MIGRATIONS: SqliteMigration[] = [
             await ensureColumns(client, 'run_steps', RUN_STEP_CACHE_COST_COLUMNS)
         },
     },
+    {
+        version: 4,
+        id: 'paid-sources',
+        up: async client => {
+            await client.executeMultiple(PAID_SOURCES_DDL)
+        },
+    },
 ]
 
 export const SYSTEM_DB_VERSION = latestVersion(SYSTEM_DB_MIGRATIONS)
@@ -233,6 +271,7 @@ async function open(id: string): Promise<SystemDb> {
     await migrateSystemDb(client, systemDbPath(id))
     const entry: SystemDb = { client, db: drizzle(client, { schema }) }
     pool.set(id, entry)
+    scheduleBackfillPaidSources(client, id)
     return entry
 }
 

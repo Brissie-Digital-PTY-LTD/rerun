@@ -5,7 +5,7 @@ import { isNumericKind, type FriendlyColumn } from '@/lib/data/friendly-columns'
 import { cellInputText } from '@/lib/data/views'
 import { cn } from '@/lib/utils'
 import { formatCell, type CellContext } from '@rerun/ui/chat'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 type EditableCellProps = {
     value: unknown
@@ -16,9 +16,11 @@ type EditableCellProps = {
     currency?: string
     /** Absent when the row cannot be written back, e.g. a table without rowid. */
     onCommit?: (text: string) => Promise<boolean>
+    /** Shown after the value, outside its truncation, e.g. the check of an email. */
+    adornment?: ReactNode
 }
 
-export function EditableCell({ value, column, format, context, currency, onCommit }: EditableCellProps) {
+export function EditableCell({ value, column, format, context, currency, onCommit, adornment }: EditableCellProps) {
     const [draft, setDraft] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
 
@@ -58,9 +60,10 @@ export function EditableCell({ value, column, format, context, currency, onCommi
         <div
             onDoubleClick={onCommit ? () => setDraft(cellInputText(value)) : undefined}
             title={cellInputText(value)}
-            className={cn('flex min-h-5 min-w-0 items-center truncate', isNumericKind(column.kind) && !format && 'justify-end', onCommit && 'cursor-text')}
+            className={cn('flex min-h-5 min-w-0 items-center truncate', isNumericKind(column.kind) && !format && 'justify-end', adornment && 'gap-2', onCommit && 'cursor-text')}
         >
             {format ? formatCell(value, format, context) : <FriendlyCell value={value} column={column} currency={currency} tones={context.tones} />}
+            {adornment}
         </div>
     )
 }

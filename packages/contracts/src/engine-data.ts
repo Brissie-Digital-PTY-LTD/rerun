@@ -55,3 +55,40 @@ export const engineUsageBucketSchema = z.object({
 export const engineUsageSchema = z.object({ buckets: z.array(engineUsageBucketSchema) })
 
 export type EngineUsageBucket = z.infer<typeof engineUsageBucketSchema>
+
+// Where the rows of a table came from: the engine matches their values against every paid data call
+// it indexed, so a cell is traced to the call that returned it, whatever the coworker wrote around it.
+export const TABLE_SOURCES_MAX_ROWS = 100
+
+export const tableSourcesRequestSchema = z.object({
+    rows: z.array(z.record(z.string(), z.union([z.string().max(2000), z.number(), z.boolean(), z.null()]))).max(TABLE_SOURCES_MAX_ROWS),
+})
+
+export const tableSourceCallSchema = z.object({ capability: z.string(), servedBy: z.string().nullable(), at: z.string() })
+
+export const tableSourceCellSchema = z.object({
+    call: z.string(),
+    // The field of the provider's answer the value was found in, e.g. "email" or "website".
+    field: z.string(),
+    href: z.string().optional(),
+    // The email check of the address, lowercase as the provider gave it: "valid", "invalid", "accept_all"…
+    verdict: z.string().optional(),
+})
+
+export const tableSourcesResultSchema = z.object({
+    calls: z.record(z.string(), tableSourceCallSchema),
+    // One entry per requested row, in the same order: the calls it was built from, newest first.
+    rows: z.array(z.object({ sources: z.array(z.string()), cells: z.record(z.string(), tableSourceCellSchema) })),
+})
+
+export type TableSourcesRequest = z.infer<typeof tableSourcesRequestSchema>
+export type TableSourceCall = z.infer<typeof tableSourceCallSchema>
+export type TableSourceCell = z.infer<typeof tableSourceCellSchema>
+export type TableSourcesResult = z.infer<typeof tableSourcesResultSchema>
+
+export type EmailVerdictStatus = 'verified' | 'unconfirmed' | 'invalid'
+
+export function emailVerdictStatus(verdict: string): EmailVerdictStatus {
+    if (verdict === 'valid') return 'verified'
+    return verdict === 'invalid' ? 'invalid' : 'unconfirmed'
+}

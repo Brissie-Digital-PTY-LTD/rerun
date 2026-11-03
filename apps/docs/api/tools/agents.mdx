@@ -39,6 +39,8 @@ Returns the coworker identity (`handle`, `name`, `description`), its `soul` (the
 
 Skills and scheduled tasks are summarised here. Use [`get_skill`](/api/tools/skills) and [`list_schedules`](/api/tools/schedules) for their full text.
 
+When a part cannot be read, the call still answers: that part comes back empty and is named in `unavailable`, for example `["schedules"]`. For `runsOn` the provider and model are still there, only `connectionName` is lost. The field is absent when everything was read, so an empty list outside `unavailable` really is empty.
+
 <Note>
   `get_agent` deliberately omits trigger URLs, because a trigger URL carries a secret. Use [`list_triggers`](/api/tools/triggers) to read them on purpose.
 </Note>

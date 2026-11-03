@@ -5,7 +5,7 @@ import { parseScheduledRun } from '@/lib/schedules/scheduled-run'
 import { encodePeaks } from '@/lib/voice/peaks'
 import { parseVoiceMessage } from '@/lib/voice/marker'
 import { hitlKindOf } from '@/lib/chat-hitl'
-import { isContextPart, visibleText, billedMicrosOf, isPaidDataTool, stripBridgePrefix, type ConversationAttachment, type ConversationMessage, type ConversationMessageMetadata } from '@rerun/contracts'
+import { isContextPart, visibleText, billedMicrosOf, capabilityOfCall, isPaidDataTool, paidCallReceipt, stripBridgePrefix, type ConversationAttachment, type ConversationMessage, type ConversationMessageMetadata } from '@rerun/contracts'
 
 type TextPart = { type: 'text'; text: string }
 type ToolInvocationPart = {
@@ -139,13 +139,18 @@ export const MAX_TOOL_OUTPUT_CHARS = 16_000
 // Cards are what the app renders as the answer itself, so they always travel whole.
 const UNTRIMMED_TOOLS = /(^|__)card_[a-z_]+$/
 
-function trimOutput(toolName: string, output: unknown): unknown {
+function trimOutput(toolName: string, input: unknown, output: unknown): unknown {
     if (UNTRIMMED_TOOLS.test(toolName)) return output
     const serialized = typeof output === 'string' ? output : JSON.stringify(output)
     if (serialized === undefined || serialized.length <= MAX_TOOL_OUTPUT_CHARS) return output
     const preview = { truncated: true, preview: serialized.slice(0, MAX_TOOL_OUTPUT_CHARS) }
-    // A paid call's receipt adds up what it billed, so the figure outlives the trim.
-    if (isPaidDataTool(stripBridgePrefix(toolName))) return { status: (output as { status?: unknown }).status, billedMicros: billedMicrosOf(output), ...preview }
+    // A paid call's receipt adds up what it billed and where it bought it, so both outlive the trim.
+    const bareName = stripBridgePrefix(toolName)
+    if (isPaidDataTool(bareName)) {
+        const capability = capabilityOfCall(bareName, input)
+        const receipt = capability ? paidCallReceipt(capability, (input as { params?: Record<string, unknown> } | null)?.params, output) : null
+        return { status: (output as { status?: unknown }).status, billedMicros: billedMicrosOf(output), ...(receipt ? { receipt } : {}), ...preview }
+    }
     return preview
 }
 
@@ -202,7 +207,7 @@ export function toApiMessages(messages: HistoryMessage[]): ConversationMessage[]
         return {
             id: message.id,
             role: 'assistant',
-            parts: message.parts.map(part => (part.type !== 'text' && part.output !== undefined ? { ...part, output: trimOutput(part.toolName, part.output) } : part)),
+            parts: message.parts.map(part => (part.type !== 'text' && part.output !== undefined ? { ...part, output: trimOutput(part.toolName, part.input, part.output) } : part)),
             ...(message.metadata?.createdAt && { metadata: { createdAt: message.metadata.createdAt } }),
         }
     })

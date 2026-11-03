@@ -367,7 +367,7 @@ export async function resumeAgentSchedules(id: string): Promise<void> {
 // would be offered in the UI while call_agent still only answers to the old one.
 export async function renameAgent(id: string, newName: string) {
     const supabase = createServiceRoleClient()
-    const { data: agent } = await selectSingle(supabase, 'agents', ['workspace_id', 'space_id', 'engine_agent_id'] as const, { id })
+    const { data: agent } = await selectSingle(supabase, 'agents', ['workspace_id', 'space_id', 'engine_agent_id', 'handle'] as const, { id })
     if (!agent) throw new Error('Coworker not found')
 
     const handle = await deriveUniqueHandle(supabase, agent.workspace_id, newName, id)
@@ -379,7 +379,7 @@ export async function renameAgent(id: string, newName: string) {
     const { error } = await supabase.from('agents').update<Database['public']['Tables']['agents']['Update']>({ name: newName, handle }).eq('id', id)
     if (error) throw new Error(`Failed to rename agent: ${error.message}`)
 
-    return { name: newName, handle }
+    return { name: newName, handle, handleChanged: handle !== agent.handle }
 }
 
 // A handle that no longer follows the name, set on purpose. The engine rewrites the `@oldHandle`

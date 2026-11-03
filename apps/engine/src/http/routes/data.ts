@@ -2,9 +2,10 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { Client } from '@libsql/client'
 import { z } from 'zod'
-import { dbExecuteSchema, dbQuerySchema, rowFilterSchema, rowUpdateSchema, tableViewInputSchema } from '@rerun/contracts'
+import { dbExecuteSchema, dbQuerySchema, rowFilterSchema, rowUpdateSchema, tableSourcesRequestSchema, tableSourcesResultSchema, tableViewInputSchema } from '@rerun/contracts'
 import { deleteTableRows, dropTable, executeStore, exportTableRows, groupTableRows, listTables, purgeTable, queryStore, readTableRows, updateTableRow } from '../../db/sqlStore.js'
 import { deleteTableViews, deleteView, listViews, saveView } from '../../db/tableViews.js'
+import { lookupPaidSources } from '../../db/repos/paid-sources.js'
 
 const MAX_GROUPS = 50
 
@@ -30,8 +31,16 @@ function toCsvValue(value: unknown): string {
     return str
 }
 
-export function createDataRouter(getClient: (c: Context) => Promise<Client>, hidden: string[] = []): Hono {
+// `sourceAgentIds` names the agents whose paid data calls the rows of this database can come from.
+export function createDataRouter(getClient: (c: Context) => Promise<Client>, hidden: string[] = [], sourceAgentIds?: (c: Context) => string[] | Promise<string[]>): Hono {
     const routes = new Hono()
+
+    if (sourceAgentIds) {
+        routes.post('/sources', async c => {
+            const { rows } = tableSourcesRequestSchema.parse(await c.req.json())
+            return c.json(tableSourcesResultSchema.parse(await lookupPaidSources(await sourceAgentIds(c), rows)))
+        })
+    }
 
     routes.get('/tables', async c => {
         return c.json({ tables: await listTables(await getClient(c), hidden) })

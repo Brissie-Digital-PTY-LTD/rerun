@@ -1,3 +1,4 @@
+import { posix } from 'node:path'
 import { deleteFile, listFiles, readFileText, skillFilesBase } from '@/lib/engine/client'
 import type { EngineConnection } from '@/lib/engine/types'
 import { TEXT_FILE_PAGE_CHARS } from '@rerun/contracts'
@@ -87,9 +88,12 @@ export async function readSkillReferenceFile(conn: EngineConnection, agentId: st
 // touching the skill: upsert_skill writes the body first, and a removal refused after that swap
 // would fail the call on a skill it had already changed.
 export function planSkillFileRemovals(paths: string[]): string[] {
-    const targets = paths.map(normalizeSkillFilePath).filter(Boolean)
-    for (const target of targets) {
-        if (target === SKILL_ENTRY) throw new Error(`${SKILL_ENTRY} holds the skill body. Rewrite it with the body argument, or delete the whole skill.`)
+    const targets: string[] = []
+    for (const target of paths.map(normalizeSkillFilePath).filter(Boolean)) {
+        const resolved = posix.normalize(target)
+        if (resolved === SKILL_ENTRY) throw new Error(`${SKILL_ENTRY} holds the skill body. Rewrite it with the body argument, or delete the whole skill.`)
+        if (resolved === '.' || resolved === '..' || resolved.startsWith('../')) throw new Error(`"${target}" is not a file of the skill. Name a reference file, e.g. references/old.md, or delete the whole skill.`)
+        targets.push(resolved)
     }
     return targets
 }

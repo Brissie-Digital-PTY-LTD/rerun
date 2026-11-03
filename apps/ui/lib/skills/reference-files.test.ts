@@ -129,5 +129,16 @@ describe('removeSkillFiles', () => {
         await expect(removeSkillFiles(conn, 'agent-1', 'weekly-report', ['references/a.md', 'SKILL.md'])).rejects.toThrow('SKILL.md')
         expect(calls).toHaveLength(0)
         expect(() => planSkillFileRemovals(['./SKILL.md'])).toThrow('SKILL.md')
+        expect(() => planSkillFileRemovals(['references/../SKILL.md'])).toThrow('SKILL.md')
+    })
+
+    it('refuses the skill folder itself and anything above it before deleting anything', async () => {
+        const { calls } = mockEngine(() => ({ body: {} }))
+
+        for (const path of ['.', '..', 'references/..', '../other-skill/SKILL.md']) {
+            await expect(removeSkillFiles(conn, 'agent-1', 'weekly-report', ['references/a.md', path])).rejects.toThrow('not a file of the skill')
+        }
+        expect(calls).toHaveLength(0)
+        expect(planSkillFileRemovals(['references/old.md', './references/b.md', 'references/../references/c.md'])).toEqual(['references/old.md', 'references/b.md', 'references/c.md'])
     })
 })
