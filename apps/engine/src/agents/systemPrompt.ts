@@ -191,7 +191,7 @@ function turnOrderNote(order: TurnOrder, { cards, skillPropose }: TurnClosers): 
     const calls = [skillPropose ? 'skill_propose, when you propose a skill' : '', cards.length ? `at most one card that asks the user something (${cards.join(', ')})` : ''].filter(Boolean)
     const numbered = (steps: string[]) => steps.map((step, i) => `${i + 1}) ${step}`).join('; ')
     if (order === 'call-first') {
-        return `On this runtime the first message you write to the user ends your turn, so a tool you meant to call after it never runs. A turn therefore ends in this order, the calls first: ${numbered([...calls, `${message}, as the last thing you write`])}.`
+        return `On this runtime a message written before a call does not reach the user as your message: it ends your turn before the call is made, or is folded away as a working note. A turn therefore ends in this order, the calls first: ${numbered([...calls, `${message}, as the last thing you write`])}.`
     }
     return `A turn ends in this order, your message first: ${numbered([message, ...calls])}. When the turn ends on one of these calls, make it in the same reply as your message, right after it: a reply that stops at the message never sends the card you meant to send. Nothing comes after the last of them: your message has already reached the user, and writing it again shows it twice.`
 }
