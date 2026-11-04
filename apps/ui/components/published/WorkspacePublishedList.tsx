@@ -4,9 +4,7 @@ import { AgentBuddy } from '@rerun/ui/iso-grid'
 import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
 
 import { listWorkspacePublishedAction } from '@/app/api/_actions/publish.actions'
-import { PanelDialogContent } from '@/components/dialogs/PanelDialogContent'
 import { Chip } from '@/components/ui/chip'
-import { Dialog, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PANEL_CARD, PANEL_CARD_INTERACTIVE } from '@/components/ui/panel-row'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,23 +24,8 @@ type Filter = 'all' | PublishedAccess
 
 const SKELETON_CARDS = 6
 
-// Every link the coworkers of the workspace shared, filtered by who can open it. Opened from the
-// workspace menu.
-export function WorkspacePublishedDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <PanelDialogContent className="sm:max-w-4xl">
-                <div className="flex shrink-0 flex-col gap-1.5 border-b px-4 py-4 pr-12">
-                    <DialogTitle>Published</DialogTitle>
-                    <DialogDescription>Everything your coworkers shared, and who can open it.</DialogDescription>
-                </div>
-                {open && <WorkspacePublishedBody />}
-            </PanelDialogContent>
-        </Dialog>
-    )
-}
-
-function WorkspacePublishedBody() {
+// Every link the coworkers of the workspace shared, filtered by who can open it. Shown in the Brain.
+export function WorkspacePublishedList() {
     const [files, setFiles] = useState<PublishedFile[] | null>(null)
     const [filter, setFilter] = useState<Filter>('all')
     const [sharing, setSharing] = useState<PublishedFile | null>(null)

@@ -12,7 +12,7 @@ export const WHATSAPP_PRO_RELEASED = true
 // Gates the access settings of published links (the share dialog, the Published views, the
 // workspace policy). Before it, a workspace that never picked a policy publishes everything
 // public, as it always did.
-export const PUBLISHED_ACCESS_RELEASED = false
+export const PUBLISHED_ACCESS_RELEASED = true
 // Gates OpenCode as an AI provider: listed, and accepted on creation, only with it on and on a machine
 // whose engine reports the `connections.opencode` capability. Off by default; `NEXT_PUBLIC_OPENCODE_ENABLED=1`
 // turns it on for a local stack or a deploy.
