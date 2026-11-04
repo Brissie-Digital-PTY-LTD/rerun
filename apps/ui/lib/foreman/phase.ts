@@ -87,6 +87,8 @@ export type PhaseInput = {
     foreman: ForemanProfile
     onboardingCompletedAt: string | null
     entitled: boolean
+    // On a trial: entitled since the card went in, which says nothing of a team being there.
+    trialing?: boolean
     agentCount: number
     // No machine for this workspace and none left in the pool. Only ever true for a real account
     // that has not got past the funnel, and only read by the loader that asked the pool.
@@ -96,7 +98,7 @@ export type PhaseInput = {
     arrivedReadyMade?: boolean
 }
 
-export function foremanPhase({ foreman, onboardingCompletedAt, entitled, agentCount, waitlisted = false, arrivedReadyMade = false }: PhaseInput): ForemanPhase {
+export function foremanPhase({ foreman, onboardingCompletedAt, entitled, trialing = false, agentCount, waitlisted = false, arrivedReadyMade = false }: PhaseInput): ForemanPhase {
     // Being in the funnel is a workspace fact: discovery happened, or a team was agreed. Reading the
     // plan here and not just the profile is what keeps a conversation that never got a profile
     // written inside the funnel past its own checkout: `entitled` flips true there, and the funnel
@@ -107,8 +109,8 @@ export function foremanPhase({ foreman, onboardingCompletedAt, entitled, agentCo
     // it is refused to any workspace that is already running: a paying account, one that holds
     // agents, or one that went through the old survey is talking to a companion, not a guide. On a
     // self-hosted install every workspace is entitled from its first minute, which says nothing of
-    // whether it is running.
-    if (!inFunnel && ((RERUN_CLOUD && entitled) || agentCount > 0 || onboardingCompletedAt)) return 'companion'
+    // whether it is running, and neither does a trial started from a paywall the Foreman never showed.
+    if (!inFunnel && ((RERUN_CLOUD && entitled && !trialing) || agentCount > 0 || onboardingCompletedAt)) return 'companion'
 
     // What a ready-made arrival still owes once its coworker is on the board: the welcome card it
     // was let past on the way in.
@@ -181,6 +183,7 @@ export type ForemanState = {
     firstName: string
     language: string | null
     entitled: boolean
+    trialing?: boolean
     // The one free trial is gone: a workspace that is not entitled then has to be billed today, and
     // saying "free" to it is the promise the checkout breaks on the next screen.
     trialSpent: boolean

@@ -73,6 +73,16 @@ describe('foremanPhase', () => {
         expect(foremanPhase({ ...fresh, onboardingCompletedAt: '2026-01-01T00:00:00Z' })).toBe('companion')
     })
 
+    // A trial started from a paywall the Foreman never showed (Upgrade, an AI provider, API keys)
+    // leaves a fresh workspace entitled before its first question: it still has a team to build.
+    it('walks a fresh workspace whose trial started outside the funnel through it', () => {
+        expect(foremanPhase({ ...fresh, entitled: true, trialing: true })).toBe('discover')
+        expect(foremanPhase({ ...fresh, foreman: profiled, entitled: true, trialing: true })).toBe('plan')
+        expect(foremanPhase({ ...fresh, foreman: planned, entitled: true, trialing: true })).toBe('build')
+        expect(foremanPhase({ ...fresh, entitled: true, trialing: true, agentCount: 1 })).toBe('companion')
+        expect(foremanPhase({ ...fresh, entitled: true, trialing: true, onboardingCompletedAt: '2026-01-01T00:00:00Z' })).toBe('companion')
+    })
+
     // What they clicked is installed first and the welcome card waits behind the build: nothing
     // stands between the link and the coworker but an account and a trial.
     it('installs a ready-made link before asking who they are, then asks', () => {

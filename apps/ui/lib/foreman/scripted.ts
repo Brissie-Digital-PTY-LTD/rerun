@@ -210,7 +210,7 @@ export async function prepareScript(ctx: WorkspaceContext, state: ForemanState, 
         return offered ? { script: { kind: 'offer_pack', pack: offered } } : { planError: reason }
     }
 
-    const phase = foremanPhase({ foreman: next.foreman, onboardingCompletedAt: next.onboardingCompletedAt, entitled: next.entitled, agentCount: next.agents.length, arrivedReadyMade: isNamedReadyMade(next.intent) })
+    const phase = foremanPhase({ foreman: next.foreman, onboardingCompletedAt: next.onboardingCompletedAt, entitled: next.entitled, trialing: next.trialing, agentCount: next.agents.length, arrivedReadyMade: isNamedReadyMade(next.intent) })
     const shown = arrived?.template ? { template: arrived.template } : {}
     if (phase === 'trial') return { script: { kind: 'offer_trial', ...shown } }
     if (phase === 'build') return { script: { ...(await buildOrPurchase(ctx, { ...next, phase })), ...shown } }

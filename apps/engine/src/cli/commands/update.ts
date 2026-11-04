@@ -274,6 +274,12 @@ async function updateFromArtifact(layout: Layout, artifact: Artifact, noRestart:
     try {
         if (!isRoot() && !canSudo()) throw new Error('passwordless sudo is required to install a release')
         mkdirSync(releasesDir(root), { recursive: true })
+        // Before the free-space check, which the checkout alone can fail. A `release` updater runs from
+        // a release that already serves; only a swap not yet confirmed (`restarting`) or an updater cut
+        // short (`running`) leaves the checkout as the last build known to boot.
+        if (layout.kind === 'release' && previousUpdate?.status !== 'restarting' && previousUpdate?.status !== 'running') {
+            for (const path of sweepLegacyCheckout(root)) process.stdout.write(`removed legacy ${path}\n`)
+        }
         requireFreeSpace(releasesDir(root), artifact.bytes)
 
         const target = releaseDir(root, artifact.commit)
@@ -317,10 +323,6 @@ async function updateFromArtifact(layout: Layout, artifact: Artifact, noRestart:
         process.stdout.write(`current -> releases/${artifact.commit}${previous ? ` (previous: ${basename(previous)})` : ''}\n`)
         for (const path of installLayout(root)) process.stdout.write(`wrote ${path}\n`)
         for (const name of pruneReleases(root)) process.stdout.write(`removed release ${name}\n`)
-        // Only once a release has booted and served: the running engine may still read from the checkout.
-        if (layout.kind === 'release' && previousUpdate?.status === 'success') {
-            for (const path of sweepLegacyCheckout(root)) process.stdout.write(`removed legacy ${path}\n`)
-        }
         writeLastUpdate({ status: 'restarting', commit: artifact.commit })
     } catch (err) {
         rmSync(tmp, { recursive: true, force: true })

@@ -34,6 +34,9 @@ export const metadata: Metadata = {
   keywords: ["Rerun", "AI agents", "autonomous agents", "agent orchestration", "AI workforce", "no-code agents"],
   authors: [{ name: site.name }],
   metadataBase: new URL(site.url),
+  // iOS Safari otherwise wraps what looks like a phone number or an address in a link before React
+  // hydrates, and the markup no longer matches the server's (React error #418).
+  formatDetection: { telephone: false, email: false, address: false },
   // Next resolves the OpenGraph and Twitter titles against their own template, never against
   // `title.template`, so the suffix has to be declared here for child pages to inherit it.
   openGraph: {

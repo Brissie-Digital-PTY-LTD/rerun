@@ -48,6 +48,18 @@ describe('embedText', () => {
         await embedText('a'.repeat(40_000))
 
         const value = (vi.mocked(embed).mock.calls[0]?.[0] as { value: string }).value
-        expect(value.length).toBe(24_000)
+        expect(value.length).toBe(16_000)
+    })
+
+    // JSON and code spend about one token for every two characters, CJK text about one per character.
+    it('still gets a vector for text that spends more tokens than prose', async () => {
+        vi.mocked(embed).mockImplementation(async ({ value }) => {
+            const tokens = /[\u3040-\u9fff]/.test(value) ? value.length : value.length / 2
+            if (tokens > 8192) throw new Error("This model's maximum input length is 8192 tokens.")
+            return { embedding: [0.3] } as never
+        })
+
+        await expect(embedText('{"a":1}'.repeat(6000))).resolves.toEqual([0.3])
+        await expect(embedText('記憶'.repeat(20_000))).resolves.toEqual([0.3])
     })
 })

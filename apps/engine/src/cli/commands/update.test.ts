@@ -298,6 +298,7 @@ describe('updateCommand from a git checkout', () => {
 describe('updateCommand from an artifact', () => {
     const happyPath = [
         'sudo -n true',
+        `<sweep ${RELEASE_ROOT}>`,
         `<requireFreeSpace ${RELEASES} default>`,
         `<download ${URL} ${resolve(TMP, 'engine.tar.gz')} ${SHA}>`,
         `<extract ${resolve(TMP, 'engine.tar.gz')} ${TMP}>`,
@@ -347,20 +348,25 @@ describe('updateCommand from an artifact', () => {
         expect(state.calls).not.toContain(`<sweep ${RELEASE_ROOT}>`)
     })
 
-    it('sweeps the legacy checkout once a release has already booted and served', async () => {
+    it('sweeps the legacy checkout before checking the free space once a release has served', async () => {
         state.layout = RELEASE_LAYOUT
         state.swept = [resolve(RELEASE_ROOT, '.git')]
         writeLastUpdate({ status: 'success', commit: 'old0000' })
         await updateCommand(ARTIFACT_ARGS)
-        const sweep = state.calls.indexOf(`<sweep ${RELEASE_ROOT}>`)
-        expect(sweep).toBeGreaterThan(state.calls.indexOf(`<prune ${RELEASE_ROOT}>`))
-        expect(sweep).toBeLessThan(state.calls.indexOf('command -v systemctl'))
+        expect(state.calls.indexOf(`<sweep ${RELEASE_ROOT}>`)).toBeLessThan(state.calls.indexOf(`<requireFreeSpace ${RELEASES} default>`))
         expect(out).toContain(`removed legacy ${resolve(RELEASE_ROOT, '.git')}`)
     })
 
-    it('does not sweep after an update that failed or never settled', async () => {
+    it('still sweeps after an update that failed on a release that serves, so a full disk does not lock the box', async () => {
         state.layout = RELEASE_LAYOUT
-        writeLastUpdate({ status: 'error', commit: 'old0000', error: 'disk' })
+        writeLastUpdate({ status: 'error', commit: 'old0000', error: 'not enough free space' })
+        await updateCommand(ARTIFACT_ARGS)
+        expect(state.calls.indexOf(`<sweep ${RELEASE_ROOT}>`)).toBeLessThan(state.calls.indexOf(`<requireFreeSpace ${RELEASES} default>`))
+    })
+
+    it.each(['restarting', 'running'] as const)('does not sweep while the last update is %s', async status => {
+        state.layout = RELEASE_LAYOUT
+        writeLastUpdate({ status, commit: 'old0000' })
         await updateCommand(ARTIFACT_ARGS)
         expect(state.calls).not.toContain(`<sweep ${RELEASE_ROOT}>`)
     })
@@ -386,6 +392,7 @@ describe('updateCommand from an artifact', () => {
         state.layout = RELEASE_LAYOUT
         state.freeSpaceFails = true
         await expect(updateCommand(ARTIFACT_ARGS)).rejects.toThrow('not enough free space')
+        expect(state.calls).toContain(`<sweep ${RELEASE_ROOT}>`)
         expect(state.calls.some(call => call.startsWith('<download'))).toBe(false)
         expect(readLastUpdate()).toMatchObject({ status: 'error', error: 'not enough free space' })
     })

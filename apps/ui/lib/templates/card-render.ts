@@ -81,8 +81,8 @@ async function writeCards(supabase: SupabaseClient<Database>, row: TemplateCardR
         .update<Database['public']['Tables']['templates']['Update']>({ card_image_dark_url: dark, card_image_light_url: light })
         .eq('id', row.id)
     if (error) throw new Error(error.message)
-
-    await removeCards(supabase, [row.card_image_dark_url, row.card_image_light_url])
+    // The previous pair stays in the bucket: every name is new, and a page cached before this write
+    // (ISR, a tab left open, a lazy image not yet scrolled to) still asks for it.
 }
 
 /**

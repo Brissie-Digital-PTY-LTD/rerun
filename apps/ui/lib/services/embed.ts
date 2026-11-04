@@ -18,15 +18,25 @@ function embedModel() {
 }
 
 // The model refuses anything past 8192 tokens, and a long memory or report is well past it. Four
-// characters a token holds for English prose only; code and non-Latin text spend more, hence the
-// margin. The head of a document carries what it is about, which is what a search matches on.
-const EMBED_MAX_CHARS = 24_000
+// characters a token holds for English prose only: JSON and code spend about one for two characters,
+// which this head fits. The head of a document carries what it is about, which is what a search
+// matches on.
+const EMBED_MAX_CHARS = 16_000
+// CJK text spends about a token a character, so a head the model still refuses is cut to this.
+const EMBED_RETRY_CHARS = 6_000
+const TOO_LONG = /maximum (input|context) length|too many tokens/i
 
 export async function embedText(text: string): Promise<number[] | null> {
     const model = embedModel()
     if (!model) return null
-    const { embedding } = await embed({ model, value: text.slice(0, EMBED_MAX_CHARS) })
-    return embedding
+    try {
+        const { embedding } = await embed({ model, value: text.slice(0, EMBED_MAX_CHARS) })
+        return embedding
+    } catch (error) {
+        if (text.length <= EMBED_RETRY_CHARS || !(error instanceof Error) || !TOO_LONG.test(error.message)) throw error
+        const { embedding } = await embed({ model, value: text.slice(0, EMBED_RETRY_CHARS) })
+        return embedding
+    }
 }
 
 // The searchable "document" for a service: everything a natural-language capability query

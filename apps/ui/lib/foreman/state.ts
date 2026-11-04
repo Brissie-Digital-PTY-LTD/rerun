@@ -57,8 +57,9 @@ export async function loadForemanState(ctx: WorkspaceContext, acceptLanguage: st
     const answers = readAnswers(onboarding.data?.answers)
     const foreman = answers.foreman ?? {}
     const entitled = isSubscriptionEntitled(ctx.workspace.subscription_status)
+    const trialing = ctx.workspace.subscription_status === 'trialing'
     const onboardingCompletedAt = ctx.workspace.onboarded_at ?? null
-    const input = { foreman, onboardingCompletedAt, entitled, agentCount: agents?.length ?? 0 }
+    const input = { foreman, onboardingCompletedAt, entitled, trialing, agentCount: agents?.length ?? 0 }
     // A sandbox is an expert's workspace, handed its machine when it is created: it never goes
     // through the onboarding, and talks to the foreman on that machine from the start.
     const pastOnboarding = ctx.workspace.is_sandbox || foremanPhase(input) === 'companion'
@@ -85,6 +86,7 @@ export async function loadForemanState(ctx: WorkspaceContext, acceptLanguage: st
         firstName: readFirstName(ctx.authUser.user_metadata),
         language: foreman.language ?? preferredLanguage(acceptLanguage),
         entitled,
+        trialing,
         trialSpent: !!ctx.workspace.trial_ends_at,
         // The app sells nothing, so every trial it starts goes without a card, whatever the test's arm.
         trialNeedsCard: client === 'web' && trialArm(ctx.workspace.id) === 'card',

@@ -34,7 +34,7 @@ export function createForemanTurn(initial: ForemanState): ForemanTurn {
             const answers = asRecord(asRecord(result).profile) as ForemanAnswers
             if (!answers.foreman) return
             const next = { ...state, answers, foreman: answers.foreman, onboardingCompletedAt: state.onboardingCompletedAt ?? new Date().toISOString() }
-            state = { ...next, phase: foremanPhase({ foreman: next.foreman, onboardingCompletedAt: next.onboardingCompletedAt, entitled: next.entitled, agentCount: next.agents.length, arrivedReadyMade: isNamedReadyMade(next.intent) }) }
+            state = { ...next, phase: foremanPhase({ foreman: next.foreman, onboardingCompletedAt: next.onboardingCompletedAt, entitled: next.entitled, trialing: next.trialing, agentCount: next.agents.length, arrivedReadyMade: isNamedReadyMade(next.intent) }) }
         },
     }
 }
