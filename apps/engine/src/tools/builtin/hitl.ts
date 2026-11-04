@@ -91,7 +91,7 @@ export function hitlTurnIsOver(steps: ReadonlyArray<StepLike>, cli: boolean): bo
 
 export const HITL_ACK = {
     status: 'delivered',
-    instruction: 'Delivered to the user. Call no other tool. If you wrote nothing to the user before this call, they are looking at a bare card: write now, as your normal message, what you found, why you ask, and in full what the question is about, then end your turn. If you already did, end your turn now. The user will reply in the chat and you will continue from their reply.',
+    instruction: 'Delivered to the user. Call no other tool. If you wrote nothing to the user before this call, they are looking at a bare card: write now, as your normal message, what you found, why you ask, and in full what the question is about, then end your turn. The card shows below that message, so point to it as the card below, never above. If you already did, end your turn now. The user will reply in the chat and you will continue from their reply.',
 } as const
 
 function hitlTool<S extends z.ZodTypeAny>(order: TurnOrder, description: string, inputSchema: S) {

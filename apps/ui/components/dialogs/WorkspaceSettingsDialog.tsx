@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import type { ActionResult } from '@/app/api/_actions/space.actions'
+import { updatePublishPolicyAction } from '@/app/api/_actions/publish.actions'
 import { updateWorkspaceAction } from '@/app/api/_actions/workspace.actions'
+import { usePublishedAccessEnabled } from '@/components/layout/FeatureFlagsProvider'
+import { PublishPolicyField, usePublishPolicyDraft } from '@/components/published/PublishPolicyField'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Field } from '@/components/ui/field'
@@ -35,27 +38,34 @@ const VISIBLE_ILLUSTRATIONS = 10
 
 export function WorkspaceSettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const { workspace, refreshWorkspace } = useSession()
+    const publishedAccess = usePublishedAccessEnabled()
+    const policy = usePublishPolicyDraft(open && publishedAccess && !!workspace && !workspace.is_sandbox)
     if (!workspace) return null
 
-    const save = async (formData: FormData) => {
+    const save = async (formData: FormData): Promise<ActionResult> => {
         const result = await updateWorkspaceAction(formData)
-        if (result.ok) {
-            await refreshWorkspace()
-            onOpenChange(false)
+        if (!result.ok) return result
+        if (policy.changed && policy.draft) {
+            const saved = await updatePublishPolicyAction(policy.draft)
+            if (!saved.ok) return saved
         }
+        await refreshWorkspace()
+        onOpenChange(false)
         return result
     }
+
+    const policyField = policy.settings ? <PublishPolicyField value={policy.draft} onChange={policy.setDraft} publicLinks={policy.settings.publicLinks} workspaceName={workspace.name || 'Workspace'} /> : null
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-                {open && <WorkspaceSettingsForm workspace={workspace} onSave={save} onCancel={() => onOpenChange(false)} />}
+                {open && <WorkspaceSettingsForm workspace={workspace} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} />}
             </DialogContent>
         </Dialog>
     )
 }
 
-export function WorkspaceSettingsForm({ workspace, onSave, onCancel }: { workspace: { name: string | null; icon_url: string | null }; onSave: (formData: FormData) => Promise<ActionResult>; onCancel: () => void }) {
+export function WorkspaceSettingsForm({ workspace, onSave, onCancel, extra }: { workspace: { name: string | null; icon_url: string | null }; onSave: (formData: FormData) => Promise<ActionResult>; onCancel: () => void; extra?: ReactNode }) {
     const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { name: workspace.name ?? '' } })
     const {
         formState: { isSubmitting },
@@ -157,6 +167,8 @@ export function WorkspaceSettingsForm({ workspace, onSave, onCancel }: { workspa
                         <Field label="Or pick an illustration">
                             <IllustrationGrid selectedUrl={selectedBlobUrl} onPick={pickBlob} />
                         </Field>
+
+                        {extra}
 
                         {form.formState.errors.root && <p className="text-sm text-destructive">{form.formState.errors.root.message}</p>}
                     </div>

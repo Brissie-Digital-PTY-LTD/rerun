@@ -103,6 +103,7 @@ const KIND_TITLES: Record<Exclude<ChatErrorKind, 'generic' | 'usage_limit'>, str
     overloaded: 'Provider overloaded',
     context_window: 'Conversation too long',
     provider_error: 'The model could not answer',
+    thinking_replay: 'The run could not continue',
     interrupted: 'Run interrupted',
     run_in_flight: 'This conversation is still busy',
 }
@@ -127,6 +128,7 @@ const KIND_MESSAGES: Partial<Record<ChatErrorKind, string>> = {
     overloaded: 'The provider is overloaded right now. Try again in a moment.',
     context_window: 'This conversation no longer fits the model, and sending it again will hit the same wall. Switch to a model with a larger context window, or start a new conversation.',
     provider_error: 'The model provider refused this request, and sending it again will get the same answer. Switch to another model to keep going.',
+    thinking_replay: 'The engine replayed this turn in a way the model provider rejects. This is an engine bug, not the model: switching models will not help. Try again, and update the engine if it keeps happening.',
     interrupted: 'The run was cut off before it could finish.',
 }
 

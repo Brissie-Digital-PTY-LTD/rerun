@@ -30,6 +30,8 @@ import { ToolCallStep, toolStatusOf, type ToolState } from '@/components/chat/To
 import { VoiceMessageBubble } from '@/components/chat/VoiceMessageBubble'
 import { WebhookRunBlock } from '@/components/chat/WebhookRunBlock'
 import { ServiceInstalledBlock } from '@/components/services/ServiceInstalledBlock'
+import { PublishedChatCard } from '@/components/published/PublishedChatCard'
+import { usePublishedAccessEnabled } from '@/components/layout/FeatureFlagsProvider'
 import { parseAttachments } from '@/lib/chat/attachments-marker'
 import { hitlKindOf, parseHitlReply } from '@/lib/chat-hitl'
 import type { HitlCallPart } from '@/lib/chat/hitl-receipts'
@@ -41,7 +43,7 @@ import { stripBridgePrefix } from '@/lib/chat/bridge-name'
 import { cancelSubRunAction } from '@/app/api/_actions/agent.actions'
 import { isSubRunLive, pairSubRuns, SUB_RUN_TOOL_NAMES } from '@/lib/chat/sub-run-progress'
 import { parseHubOutput } from '@/lib/services/parse-hub-output'
-import type { InstallResult } from '@/lib/services/types'
+import type { InstallResult, PublishResult } from '@/lib/services/types'
 import type { EngineSkillProposal } from '@/lib/engine/types'
 import { useToolDisplay } from '@/hooks/useToolDisplay'
 import { parseTriggerPayload } from '@/lib/triggers/trigger-payload'
@@ -174,6 +176,7 @@ export function UnderText({ children }: { children: ReactNode }) {
 
 function MessageViewInner({ message, isActive = false, isLastAssistant = false, agentId, pendingHitlToolCallId, pendingMcpSignIn, hitlCall, pendingAlertToolCallId, activeRunId, onStopTask: stopTaskOverride, onSendMessage, showQuickReplies = false, onRegenerate, onRateMessage, feedbackRating = null, rawUrlFor, readFile, sharedFiles, skillProposals, decidingProposalId, onDecideProposal, pinnedProposalIds, renderToolPart, installing, mentions, assistantLayout, createdAt, paidSources }: MessageViewProps) {
     const toolDisplay = useToolDisplay(agentId)
+    const publishedAccess = usePublishedAccessEnabled()
     const sources = message.role === 'assistant' ? messageSources(message) : []
     const install = message.role === 'user' ? parseInstallMessage(messageText(message)) : null
     const hitlReply = message.role === 'user' && !install ? parseHitlReply(messageText(message)) : null
@@ -265,6 +268,11 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
                         return { kind: 'standalone', key, node: <ServiceInstalledBlock agentId={agentId} name={out.name} toolNames={out.toolNames} /> }
                     }
                     if (out?.status === 'needs_auth') return { kind: 'standalone', key, node: <NeedsAuthCard agentId={agentId} slug={out.slug} name={out.name} /> }
+                }
+                // What a coworker published, and who can open it, where it said so.
+                if (publishedAccess && toolName === 'rerun_hub_publish_file' && toolPart.state === 'output-available') {
+                    const out = parseHubOutput<PublishResult>(toolPart.output)
+                    if (out?.status === 'published' && out.slug) return { kind: 'standalone', key, node: <PublishedChatCard agentId={agentId} result={out} /> }
                 }
                 // A server registered outside the catalog: what the user sees in Apps, and the one
                 // place a sign-in it still owes can be made.

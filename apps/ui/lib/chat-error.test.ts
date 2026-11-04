@@ -90,6 +90,17 @@ describe('classifyChatError', () => {
         expect(classifyChatError('ProviderRefusedError: Provider returned error: tools.0.custom.input_schema: invalid')).toBe('provider_error')
     })
 
+    // Anthropic refusing a signed thinking block the engine replayed against another tool list. It
+    // reads "Provider returned error" too, but switching models does not help: a fresh run does.
+    it('tells a rejected thinking replay apart from a refusal', () => {
+        const fromApi = 'ProviderRefusedError: Provider returned error: messages.25.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation. The `tools` list differs from the one this block was created with.'
+        const pastedWithoutBackticks = 'ProviderRefusedError: Provider returned error: messages.402.content.0: Invalid signature in thinking block. The block is bound to a different conversation.'
+        expect(classifyChatError(fromApi)).toBe('thinking_replay')
+        expect(classifyChatError(pastedWithoutBackticks)).toBe('thinking_replay')
+        expect(chatErrorTitle('thinking_replay', fromApi)).toBe('The run could not continue')
+        expect(friendlyError(fromApi)).toContain('switching models will not help')
+    })
+
     // The engine keeps the provider's reason in the run's error for the logs; the chat says what to do.
     it('tells the user a refusal will repeat, without the technical reason', () => {
         const message = friendlyError('ProviderRefusedError: Provider returned error: tools.0.custom.input_schema: invalid')

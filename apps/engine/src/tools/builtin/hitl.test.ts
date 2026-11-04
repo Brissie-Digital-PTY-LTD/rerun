@@ -48,6 +48,10 @@ describe('the ack of a card', () => {
         expect(HITL_ACK.instruction).toContain('in full what the question is about')
         expect(HITL_ACK.instruction).toContain('If you already did, end your turn now.')
     })
+
+    it('tells a message written after the card that the card sits below it', () => {
+        expect(HITL_ACK.instruction).toContain('The card shows below that message, so point to it as the card below, never above.')
+    })
 })
 
 describe('ask_user input schema', () => {

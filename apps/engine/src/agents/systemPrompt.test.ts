@@ -146,6 +146,17 @@ describe('skills section', () => {
         expect(without).not.toContain('The card never carries your explanation')
     })
 
+    it('places the card below the message, whichever comes first in the reply', async () => {
+        for (const provider of ['claude', 'codex'] as const) {
+            const prompt = await buildSystemPrompt(agentWith({ askUser: true }), { source: 'chat' }, provider)
+            const section = prompt.slice(prompt.indexOf('<asking_the_user>'), prompt.indexOf('</asking_the_user>'))
+            expect(section).toContain('the card shows at the bottom of the conversation, below your message')
+            expect(section).toContain('never the card above')
+        }
+        const without = await buildSystemPrompt(agentWith({ askUser: false, requestApproval: false, suggestService: false, requestSecret: false }), { source: 'chat' })
+        expect(without).not.toContain('never the card above')
+    })
+
     it('holds the proposal back while a flow is still being built', async () => {
         const prompt = await buildSystemPrompt(agentWith({ skills: true }), { source: 'chat' })
         expect(prompt).toContain('never while it is still being shaped')

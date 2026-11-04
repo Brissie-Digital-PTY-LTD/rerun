@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { turnOrder } from './turn-order.js'
+import { cardCallTiming, turnOrder } from './turn-order.js'
 
 describe('the order of a turn', () => {
     it.each([
@@ -23,5 +23,10 @@ describe('the order of a turn', () => {
         ['google', 'gemini-3.5-flash'],
     ] as const)('puts the message first on %s running %s', (provider, model) => {
         expect(turnOrder(provider, model)).toBe('message-first')
+    })
+
+    it('tells a model that calls first that the card still shows below its message', () => {
+        expect(cardCallTiming('call-first')).toContain('the card still shows below that message')
+        expect(cardCallTiming('message-first')).not.toContain('below')
     })
 })

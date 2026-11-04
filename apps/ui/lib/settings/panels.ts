@@ -19,7 +19,9 @@ export const SETTINGS_PANEL_LABELS: Record<SettingsPanel, string> = {
 }
 
 // The ones the workspace settings store owns. The others already have a store of their own.
-export type WorkspaceDialogPanel = Extract<SettingsPanel, 'workspace' | 'members' | 'api_keys' | 'ai_providers' | 'knowledge_base'>
+// `published` (every link the coworkers shared) is opened from the workspace menu alone: it stays
+// out of SETTINGS_PANELS, which the assistant can open, until the feature is launched.
+export type WorkspaceDialogPanel = Extract<SettingsPanel, 'workspace' | 'members' | 'api_keys' | 'ai_providers' | 'knowledge_base'> | 'published'
 
 // The tabs of the Brain dialog: the company pages every agent reads, the changes agents propose to
 // them, the shared folder and the shared database. The panel id keeps its older name.

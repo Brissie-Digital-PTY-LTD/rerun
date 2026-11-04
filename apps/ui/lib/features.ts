@@ -9,3 +9,7 @@ export const COMPUTER_RELEASED = true
 export const LINKEDIN_PRO_RELEASED = true
 // Gates WhatsApp Pro, the second paid app, like LINKEDIN_PRO_RELEASED gates the first.
 export const WHATSAPP_PRO_RELEASED = true
+// Gates the access settings of published links (the share dialog, the Published views, the
+// workspace policy). Before it, a workspace that never picked a policy publishes everything
+// public, as it always did.
+export const PUBLISHED_ACCESS_RELEASED = false

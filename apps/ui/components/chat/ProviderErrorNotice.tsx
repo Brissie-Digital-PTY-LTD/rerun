@@ -19,6 +19,7 @@ const ICONS: Record<NoticeKind, ComponentType<{ className?: string }>> = {
     overloaded: ServerIcon,
     context_window: ScrollTextIcon,
     provider_error: ServerIcon,
+    thinking_replay: RotateCwIcon,
     interrupted: RotateCwIcon,
     run_in_flight: RotateCwIcon,
     generic: AlertTriangleIcon,
@@ -63,8 +64,9 @@ export function ProviderErrorNotice({ kind, message, onSwitchModel, onOpenConnec
             onClick: onContinue,
         })
     }
-    // A refusal repeats on every send, so only a transient failure is offered a retry.
-    if ((kind === 'overloaded' || kind === 'generic') && onRetry) {
+    // A refusal repeats on every send, so only a transient failure is offered a retry. A rejected
+    // thinking replay is the engine's, and a fresh run does not carry it.
+    if ((kind === 'overloaded' || kind === 'generic' || kind === 'thinking_replay') && onRetry) {
         actions.push({
             key: 'retry',
             leading: <Icon icon={RotateCwIcon} size="sm" />,

@@ -1,6 +1,6 @@
 // What the chat can say something useful about. `generic` is the catch-all, and still gets a block
 // of its own rather than the raw provider text.
-export type ChatErrorKind = 'budget' | 'usage_limit' | 'unauthorized' | 'overloaded' | 'context_window' | 'provider_error' | 'interrupted' | 'run_in_flight' | 'generic'
+export type ChatErrorKind = 'budget' | 'usage_limit' | 'unauthorized' | 'overloaded' | 'context_window' | 'provider_error' | 'thinking_replay' | 'interrupted' | 'run_in_flight' | 'generic'
 
 // The AI SDK throws `new Error(await response.text())` on a failed /api/chat request, so
 // what reaches the UI is the raw response body: the `Response.json({ error })` envelope of
@@ -58,12 +58,20 @@ export const PROVIDER_OVERLOADED = /overloaded|rate.?limit|too many requests|at 
 // is a larger model or a fresh conversation. Shared with the engine's `classifyProviderError`.
 export const CONTEXT_WINDOW = /context.?window|too many tokens|prompt is too long/i
 
+// The API quotes the field names ("Invalid `signature` in `thinking` block"), a copy pasted out of a
+// chat often loses the backticks.
+const THINKING_REPLAY_REJECTED = /invalid `?signature`? in `?thinking`? block/i
+
 // Classified on the text rather than on a code, because what reaches the chat is `runs.error`, the
 // flattened provider message the engine stored. The patterns mirror the engine's own
 // `classifyProviderError`, so both ends agree on what a spent subscription looks like.
 export function classifyChatError(message: string): ChatErrorKind {
     const m = message.toLowerCase()
     if (!m) return 'generic'
+    // Anthropic refusing a thinking block the engine replayed against another tool list: the engine
+    // built the request wrong, so another model fails the same way while a fresh run starts clean.
+    // Checked first, since the refusal quotes message indexes ("messages.402") a looser test catches.
+    if (THINKING_REPLAY_REJECTED.test(m)) return 'thinking_replay'
     if (m.includes('rerun_budget_exhausted') || m.includes('payment required') || m.includes('402')) return 'budget'
     if (m.includes('run_in_flight')) return 'run_in_flight'
     if (SUBSCRIPTION_LIMIT.test(m)) return 'usage_limit'

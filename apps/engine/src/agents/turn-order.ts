@@ -17,6 +17,6 @@ export function turnOrder(provider: Provider, model: string): TurnOrder {
 // closely than the prompt, and without it ends its reply on the message that announces the card.
 export function cardCallTiming(order: TurnOrder): string {
     return order === 'call-first'
-        ? 'Call it before writing your message, which then ends your turn.'
+        ? 'Call it before writing your message, which then ends your turn: the card still shows below that message.'
         : 'Call it in the same reply as your message, right after it: a reply that stops at the message never sends the card.'
 }

@@ -14,7 +14,8 @@ import { CreditMeter, UpgradePill } from '@/cloud/billing.client'
 import { ExpertProfileDialog } from '@/components/dialogs/ExpertProfileDialog'
 import { KnowledgeBaseDialog } from '@/components/dialogs/KnowledgeBaseDialog'
 import { PaidAppDialogs, usePaidAppsStore, AppsMenuSection } from '@/cloud/apps.client'
-import { useEnabledPaidApps } from '@/components/layout/FeatureFlagsProvider'
+import { useEnabledPaidApps, usePublishedAccessEnabled } from '@/components/layout/FeatureFlagsProvider'
+import { WorkspacePublishedDialog } from '@/components/published/WorkspacePublishedDialog'
 import { WorkspaceMembersDialog } from '@/components/dialogs/WorkspaceMembersDialog'
 import { WorkspaceSettingsDialog } from '@/components/dialogs/WorkspaceSettingsDialog'
 import { SignInPillButton } from '@/components/layout/SignInPill'
@@ -37,7 +38,7 @@ import { useForemanStore } from '@/stores/foreman.store'
 import { useNotificationsStore } from '@/stores/notifications.store'
 import { useWorkspaceSettingsStore } from '@/stores/workspace-settings.store'
 import { useSession } from '@/supabase/session/SessionProvider'
-import { BadgeCheck, BellIcon, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserPlus, UserRoundIcon } from '@/lib/icons'
+import { BadgeCheck, BellIcon, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GlobeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserPlus, UserRoundIcon } from '@/lib/icons'
 import { openCrisp } from '@/lib/crisp'
 import { cn } from '@/lib/utils'
 import { abortWorkspaceSwitch, beginWorkspaceSwitch, enterActiveWorkspace } from '@/lib/workspace/workspace-switch'
@@ -63,6 +64,7 @@ export function WorkspaceSwitcher() {
     const { user, workspace, workspaces, session, isAnonymous, signOut } = useSession()
     const openBilling = useBillingStore(s => s.openBilling)
     const paidApps = useEnabledPaidApps()
+    const publishedAccess = usePublishedAccessEnabled()
     const openApp = usePaidAppsStore(s => s.openApp)
     const appAccounts = usePaidAppsStore(s => s.accountCounts)
     const appsRevision = usePaidAppsStore(s => s.revision)
@@ -210,6 +212,12 @@ export function WorkspaceSwitcher() {
                     </span>
                 )}
             </DropdownMenuItem>
+            {publishedAccess && !workspace.is_sandbox && (
+                <DropdownMenuItem onSelect={() => openWorkspacePanel('published')} className="gap-2 text-muted-foreground">
+                    <GlobeIcon className="size-4" />
+                    Published
+                </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => openWorkspacePanel('ai_providers')} className="gap-2 text-muted-foreground">
                 <LockKeyholeIcon className="size-4" />
                 AI providers
@@ -414,6 +422,7 @@ export function WorkspaceSwitcher() {
             {SERVERS_ENABLED && <ServersDialog open={serversOpen} onOpenChange={setServersOpen} />}
             <AiProvidersDialog open={panel === 'ai_providers'} onOpenChange={open => setPanel(open ? 'ai_providers' : null)} />
             <KnowledgeBaseDialog open={panel === 'knowledge_base'} onOpenChange={open => setPanel(open ? 'knowledge_base' : null)} />
+            {publishedAccess && <WorkspacePublishedDialog open={panel === 'published'} onOpenChange={open => setPanel(open ? 'published' : null)} />}
             <PaidAppDialogs apps={paidApps} />
             <WorkspacePowerDialog action={powerAction} onOpenChange={open => setPowerAction(open ? powerAction : null)} />
             {isExpert && <ExpertProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />}
