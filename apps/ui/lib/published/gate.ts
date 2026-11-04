@@ -1,3 +1,4 @@
+import { internalPath } from '@/lib/auth/internal-path'
 import 'server-only'
 import type { Database } from '@/app/api/database.types'
 import { isPublishedAccess, type PublishedAccess } from '@/lib/published/access'
@@ -23,25 +24,7 @@ export const GATE_ERROR_PARAM = 'rr_error'
 export const GATE_EMAIL_PARAM = 'rr_email'
 export type GateError = 'password' | 'code' | 'limited' | 'email'
 
-const PUBLISHED_ENTRY_COLUMNS = [
-    'id',
-    'slug',
-    'workspace_id',
-    'agent_id',
-    'source_path',
-    'kind',
-    'content_type',
-    'size',
-    'storage_key',
-    'files',
-    'title',
-    'access',
-    'invited',
-    'password_hash',
-    'access_version',
-    'thumbnail_key',
-    'updated_at',
-] as const
+const PUBLISHED_ENTRY_COLUMNS = ['id', 'slug', 'workspace_id', 'agent_id', 'source_path', 'kind', 'content_type', 'size', 'storage_key', 'files', 'title', 'access', 'invited', 'password_hash', 'access_version', 'thumbnail_key', 'updated_at'] as const
 
 type Row = Pick<Database['public']['Tables']['published_files']['Row'], (typeof PUBLISHED_ENTRY_COLUMNS)[number]>
 export type PublishedEntry = Omit<Row, 'access'> & { access: PublishedAccess }
@@ -116,13 +99,16 @@ export function clearAccessCookieHeader(secure: boolean): string {
 
 // Only a path on the same host, so a gate can never be turned into a redirect to anywhere else.
 export function safeNextPath(raw: string | null | undefined): string {
-    if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\') || raw.startsWith(RESERVED_PREFIX)) return '/'
-    return raw
+    const path = internalPath(raw, '/')
+    return path.startsWith(RESERVED_PREFIX) ? '/' : path
 }
 
 export function siteFileExists(entry: Pick<PublishedEntry, 'kind' | 'files'>, pathname: string): boolean {
     if (entry.kind !== 'site') return false
-    const segments = pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment))
+    const segments = pathname
+        .split('/')
+        .filter(Boolean)
+        .map(segment => decodeURIComponent(segment))
     return resolveSitePath(segments, entry.files ?? []) !== null
 }
 

@@ -14,7 +14,7 @@ import { defaultSoul } from './soul.js'
 import { hasPendingSetup } from './setup.js'
 import { offersQuickReplies } from './quick-replies-stream.js'
 import { HITL_TOOL_NAMES, offersTakeover, type HitlToolName } from '../tools/builtin/hitl.js'
-import { offersComputer } from '../tools/builtin/computer.js'
+import { runOffersComputer } from '../tools/builtin/computer.js'
 import { CLI_PROVIDERS, type LoadedAgent } from './types.js'
 import { turnOrder, type TurnOrder } from './turn-order.js'
 import type { RunTrigger } from '../runtime/context.js'
@@ -268,7 +268,7 @@ export async function buildSystemPrompt(agent: LoadedAgent, trigger: RunTrigger 
         cfg.brain ? buildBrainSection().catch(() => '') : Promise.resolve(''),
     ])
 
-    const computer = offersComputer(agent.config)
+    const computer = runOffersComputer(agent.config, provider, agent.resolved.model)
     const takeover = offersTakeover(agent.config)
     const conversational = !agent.config.ephemeral
     const asks = cfg.askUser || cfg.requestApproval || cfg.suggestService || cfg.requestSecret

@@ -12,6 +12,7 @@ type NoticeKind = Exclude<ChatErrorKind, 'budget'>
 
 const ClaudeGlyph = ({ className }: { className?: string }) => <ProviderIcon provider="claude" className={className} />
 const OpenAIGlyph = ({ className }: { className?: string }) => <ProviderIcon provider="openai" className={className} />
+const OpencodeGlyph = ({ className }: { className?: string }) => <ProviderIcon provider="opencode" className={className} />
 
 const ICONS: Record<NoticeKind, ComponentType<{ className?: string }>> = {
     usage_limit: GaugeIcon,
@@ -34,7 +35,7 @@ function header(kind: NoticeKind, message: string): { title: string; icon: Compo
     if (kind !== 'usage_limit') return { title, icon: ICONS[kind] }
     const plan = describeSubscriptionLimit(message).plan
     if (!plan) return { title, icon: ICONS.usage_limit }
-    return { title, icon: plan === 'claude' ? ClaudeGlyph : OpenAIGlyph }
+    return { title, icon: plan === 'claude' ? ClaudeGlyph : plan === 'opencode' ? OpencodeGlyph : OpenAIGlyph }
 }
 
 // The dead end this replaces: a raw provider stack, or "A run is already in flight on this

@@ -207,6 +207,35 @@ describe('describeSubscriptionLimit', () => {
     })
 })
 
+// The engine rewrites OpenCode's refusals into these sentences: OpenCode's own say neither which plan
+// nor which window ran out.
+describe('OpenCode limits', () => {
+    const credits = 'AI_APICallError: OpenCode Console credits used up: Insufficient account funds'
+    const goWeekly = 'AI_APICallError: OpenCode Go limit reached: weekly window · resets Nov 6, 3:00 PM UTC'
+
+    it('reads as a usage limit, never as the Rerun budget, and names OpenCode', () => {
+        expect(classifyChatError(credits)).toBe('usage_limit')
+        expect(classifyChatError(goWeekly)).toBe('usage_limit')
+        expect(chatErrorTitle('usage_limit', credits)).toBe('OpenCode credits used up')
+        expect(friendlyError(credits)).toBe('No Console credits left. Add credits on opencode.ai, or pick a Go model to keep going.')
+    })
+
+    // A Console model is often a Claude: the OpenCode rule runs before the "claude" one.
+    it('names OpenCode on a Console Claude model', () => {
+        const onClaude = `${credits} (console/claude-sonnet-5-5)`
+        expect(describeSubscriptionLimit(onClaude)).toEqual({ plan: 'opencode', scope: 'credits' })
+        expect(friendlyError(onClaude)).not.toContain('Claude plan')
+    })
+
+    it('names the Go window that ran out, and when it comes back', () => {
+        expect(describeSubscriptionLimit(goWeekly)).toEqual({ plan: 'opencode', scope: 'weekly', resetsAt: 'Nov 6, 3:00 PM UTC' })
+        expect(chatErrorTitle('usage_limit', goWeekly)).toBe('OpenCode Go weekly limit reached')
+        expect(friendlyError(goWeekly)).toContain('reached its weekly limit. It resets Nov 6, 3:00 PM UTC')
+        expect(describeSubscriptionLimit('OpenCode Go limit reached: monthly window')).toEqual({ plan: 'opencode', scope: 'monthly' })
+        expect(friendlyError('OpenCode Go limit reached: 5-hour window')).toContain('its 5-hour limit')
+    })
+})
+
 describe('chatErrorTitle', () => {
     const titleOf = (message: string) => chatErrorTitle(classifyChatError(message), message)
 

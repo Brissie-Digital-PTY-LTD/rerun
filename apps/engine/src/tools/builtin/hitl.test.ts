@@ -373,6 +373,8 @@ describe('request_takeover', () => {
     it('takes a page and one line telling the user what to do there', () => {
         expect(schema().safeParse({ url: 'https://www.linkedin.com/login', reason: 'Sign in to LinkedIn' }).success).toBe(true)
         expect(schema().safeParse({ url: 'not a url', reason: 'Sign in' }).success).toBe(false)
+        expect(schema().safeParse({ url: 'file:///etc/passwd', reason: 'Sign in' }).success).toBe(false)
+        expect(schema().safeParse({ url: 'ftp://files.example/', reason: 'Sign in' }).success).toBe(false)
         expect(schema().safeParse({ url: 'https://www.linkedin.com/login' }).success).toBe(false)
     })
 

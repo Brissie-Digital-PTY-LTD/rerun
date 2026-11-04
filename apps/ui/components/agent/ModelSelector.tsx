@@ -200,7 +200,7 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
                                     <span className="flex min-w-0 items-center gap-1.5">
                                         <ProviderIcon provider={group.provider} className="size-3.5 shrink-0" />
                                         <span className="truncate">{group.label}</span>
-                                        {group.connectionId === RERUN_CONNECTION_ID ? <RerunCreditHint credit={rerunCredit} /> : <PlanLimitHint windows={group.planWindows} />}
+                                        {group.connectionId === RERUN_CONNECTION_ID ? <RerunCreditHint credit={rerunCredit} /> : <PlanLimitHint windows={group.planWindows} provider={group.provider} />}
                                     </span>
                                 }
                             >

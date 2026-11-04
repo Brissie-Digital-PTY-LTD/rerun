@@ -7,6 +7,7 @@ import { ApprovalBlock } from '@/components/chat/ApprovalBlock'
 import { AgentInstallBlock } from '@/components/chat/AgentInstallBlock'
 import { AgentWorkspaceMessage } from '@/components/chat/AgentWorkspaceMessage'
 import type { ReadChatFile } from '@/components/chat/AttachmentLightbox'
+import { CopyAction } from '@/components/chat/CopyAction'
 import { MessageAttachments } from '@/components/chat/MessageAttachments'
 import { FileCard, type FileAccess } from '@/components/chat/FileCard'
 import { HitlReceipt } from '@/components/chat/HitlReceipt'
@@ -27,7 +28,7 @@ import { SkillProposalBlock } from '@/components/chat/SkillProposalBlock'
 import { StepGroup, type StepGroupItem } from '@/components/chat/StepGroup'
 import { SubRunBlock } from '@/components/chat/SubRunBlock'
 import { ToolCallStep, toolStatusOf, type ToolState } from '@/components/chat/ToolCallBlock'
-import { VoiceMessageBubble } from '@/components/chat/VoiceMessageBubble'
+import { VoiceUserMessage } from '@/components/chat/VoiceUserMessage'
 import { WebhookRunBlock } from '@/components/chat/WebhookRunBlock'
 import { ServiceInstalledBlock } from '@/components/services/ServiceInstalledBlock'
 import { PublishedChatCard } from '@/components/published/PublishedChatCard'
@@ -52,8 +53,8 @@ import { parseVoiceMessage } from '@/lib/voice/marker'
 import { cn } from '@/lib/utils'
 import { QUICK_REPLIES_TOOL, fileCardSchema, quickRepliesOf, skillProposalIdOf, tableCardSchema, toolActivityOf, type MessageFeedbackRating, type PaidTurnSources } from '@rerun/contracts'
 import type { UIMessage } from 'ai'
-import { BrainIcon, CheckIcon, CopyIcon, FoldVerticalIcon, RefreshCcwIcon, ThumbsDownIcon, ThumbsUpIcon } from '@/lib/icons'
-import { Fragment, isValidElement, memo, type ReactNode, useState } from 'react'
+import { BrainIcon, FoldVerticalIcon, RefreshCcwIcon, ThumbsDownIcon, ThumbsUpIcon } from '@/lib/icons'
+import { Fragment, isValidElement, memo, type ReactNode } from 'react'
 
 type RenderStep =
     | ({ kind: 'group-item' } & StepGroupItem)
@@ -87,23 +88,6 @@ function messageSources(message: { parts: readonly MessagePartLike[] }): Normali
             const sp = p as { url?: string; title?: string; filename?: string }
             return { url: sp.url, title: sp.title ?? sp.filename ?? sp.url }
         })
-}
-
-function CopyAction({ text }: { text: string }) {
-    const [copied, setCopied] = useState(false)
-    return (
-        <MessageAction
-            tooltip={copied ? 'Copied!' : 'Copy'}
-            onClick={() => {
-                navigator.clipboard.writeText(text).then(() => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 1500)
-                })
-            }}
-        >
-            {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-        </MessageAction>
-    )
 }
 
 function FeedbackAction({ rating, current, onRate }: { rating: MessageFeedbackRating; current: MessageFeedbackRating | null; onRate: (rating: MessageFeedbackRating) => void }) {
@@ -198,6 +182,8 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
             </Message>
         )
     }
+
+    if (voice) return <VoiceUserMessage voice={voice} agentId={agentId} rawUrlFor={rawUrlFor} readFile={readFile} attachmentPaths={attachments?.paths} createdAt={createdAt} />
 
     const renderAssistantSteps = (): AssistantStep[] => {
         const lastPart = message.parts.length - 1
@@ -397,8 +383,6 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
                 <MessageContent className={cn(USER_BUBBLE_SHAPE, inkBubble && USER_BUBBLE_INK, assistantSteps && assistantLayout && 'overflow-visible')} data-ink={inkBubble || undefined}>
                     {assistantSteps ? (
                         assistantLayout ? assistantLayout(assistantSteps) : assistantSteps.map(step => <Fragment key={step.key}>{step.node}</Fragment>)
-                    ) : voice ? (
-                        <VoiceMessageBubble agentId={agentId} rawUrlFor={rawUrlFor} src={voice.src} durationMs={voice.durationMs} peaks={voice.peaks} transcript={voice.transcript} />
                     ) : message.role === 'user' ? (
                         <ExpandableMessage agentId={agentId} mentions={mentions}>{attachments ? attachments.text : messageText(message)}</ExpandableMessage>
                     ) : (

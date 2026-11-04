@@ -32,6 +32,12 @@ export function stripErrorPrefix(message: string): string {
     }
 }
 
+// What the engine stores when OpenCode refuses a Console model for lack of credits (402), and when
+// the Go plan is out on one of its windows. The window and its reset follow the second one:
+// "OpenCode Go limit reached: weekly window · resets Nov 6, 3:00 PM UTC".
+export const OPENCODE_CREDITS_USED_UP = 'OpenCode Console credits used up'
+export const OPENCODE_GO_LIMIT = 'OpenCode Go limit reached'
+
 // Claude Code builds its own sentence: "You've hit your ${limit}" with the limit named after the
 // window that ran out (`session limit`, `weekly limit`, `Opus limit`, `Sonnet limit`), optionally
 // followed by " · resets <time>". The older wording ("Claude AI usage limit reached|<epoch>") is
@@ -42,7 +48,7 @@ export function stripErrorPrefix(message: string): string {
 // once they are spent), Codex "The 'gpt-6-astra' model is not supported when using Codex with a
 // ChatGPT account". Shared with the engine's `classifyProviderError`, so both ends agree.
 export const SUBSCRIPTION_LIMIT =
-    /hit your (?:session|weekly|opus|sonnet|usage) limit|usage limit reached|usage_limit_exceeded|5-hour limit|quota exceeded|monthly spend limit|usage credits|not supported when using codex with a chatgpt account|does not exist or you do not have access/i
+    /hit your (?:session|weekly|opus|sonnet|usage) limit|usage limit reached|usage_limit_exceeded|5-hour limit|quota exceeded|monthly spend limit|usage credits|not supported when using codex with a chatgpt account|does not exist or you do not have access|opencode console credits used up|opencode go limit reached/i
 
 // Claude Code reports a dead OAuth token as "Failed to authenticate. API Error: 401 Invalid bearer
 // token", OpenRouter as "No auth credentials found".

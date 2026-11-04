@@ -1,4 +1,4 @@
-import type { Provider } from '@rerun/contracts'
+import { opencodeUpstreamId, type Provider } from '@rerun/contracts'
 
 export type TurnOrder = 'message-first' | 'call-first'
 
@@ -8,9 +8,11 @@ export type TurnOrder = 'message-first' | 'call-first'
 // that close the turn.
 const ENDS_ON_ITS_MESSAGE = /^(openai\/)?(gpt-|o\d)/i
 
-// `model` is the one that answers: behind a Rerun alias, the model the hub serves it with.
+// `model` is the one that answers: behind a Rerun alias, the model the hub serves it with. An OpenCode
+// id is read without its plan (`go/gpt-6-luna`).
 export function turnOrder(provider: Provider, model: string): TurnOrder {
-    return provider === 'codex' || ENDS_ON_ITS_MESSAGE.test(model) ? 'call-first' : 'message-first'
+    const id = provider === 'opencode' ? opencodeUpstreamId(model) : model
+    return provider === 'codex' || ENDS_ON_ITS_MESSAGE.test(id) ? 'call-first' : 'message-first'
 }
 
 // Repeated on each card that closes a turn: a model on an API provider reads a tool's own text more

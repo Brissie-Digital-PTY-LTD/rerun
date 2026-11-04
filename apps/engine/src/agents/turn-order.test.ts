@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { cardCallTiming, turnOrder } from './turn-order.js'
 
 describe('the order of a turn', () => {
+    it('reads an OpenCode id without its plan', () => {
+        expect(turnOrder('opencode', 'go/gpt-6-luna')).toBe('call-first')
+        expect(turnOrder('opencode', 'console/gpt-5.5')).toBe('call-first')
+        expect(turnOrder('opencode', 'go/deepseek-v4-pro')).toBe('message-first')
+        expect(turnOrder('opencode', 'console/claude-sonnet-5-5')).toBe('message-first')
+    })
+
     it.each([
         ['codex', 'gpt-6-sol'],
         ['rerun', 'openai/gpt-6-sol'],
