@@ -237,6 +237,20 @@ describe('resolveClient', () => {
         const metadata = { ...NO_REGISTRATION, registrationEndpoint: 'https://auth/register', clientIdMetadataDocumentSupported: true }
         await expect(resolveClient(metadata, 'https://mcp.example/mcp', request)).resolves.toEqual({ clientId: 'https://app.rerun.build/api/mcp/oauth/client-metadata' })
     })
+
+    it('sends HeyGen its Client ID Metadata Document without registering, since its DCR hands out a shared client', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(Response.json({ client_id: 'heygen-shared', client_name: 'HeyGen MCP Default' }, { status: 201 }))
+        vi.stubGlobal('fetch', fetchMock)
+        const metadata = { ...NO_REGISTRATION, registrationEndpoint: 'https://api2.heygen.com/v1/oauth/register', clientIdMetadataDocumentSupported: true }
+        await expect(resolveClient(metadata, 'https://mcp.heygen.com/mcp/v1/', request)).resolves.toEqual({ clientId: 'https://app.rerun.build/api/mcp/oauth/client-metadata' })
+        expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('keeps a successful DCR for other servers that also support a Client ID Metadata Document', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ client_id: 'dcr-id' }, { status: 201 })))
+        const metadata = { ...NO_REGISTRATION, registrationEndpoint: 'https://auth/register', clientIdMetadataDocumentSupported: true }
+        await expect(resolveClient(metadata, 'https://mcp.example/mcp', request)).resolves.toEqual({ clientId: 'dcr-id' })
+    })
 })
 
 describe('exchangeCode', () => {

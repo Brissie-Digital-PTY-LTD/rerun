@@ -24,9 +24,9 @@ import {
 } from '@rerun/contracts'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// The UI kit is the product's whole interface laid out for copying, so it answers 404 unless the
-// request carries the shared design system token, as `?key=` or in the cookie that grants it. Same
-// token and same cookie as the landing, set on `.rerun.build`: unlocking once opens both hosts.
+// The labs are work in progress, so they answer 404 unless the request carries the shared design
+// system token, as `?key=` or in the cookie that grants it. Same token and same cookie as the
+// landing, set on `.rerun.build`: unlocking once opens both hosts. The UI kit next to them is public.
 // No Supabase session is read here, so a capture of these pages still provisions nothing, which is
 // what excluding `render/` from the matcher below exists for.
 function brandGate(request: NextRequest): NextResponse {
@@ -144,11 +144,9 @@ export const config = {
          * Feel free to modify this pattern to include more paths.
          */
         '/((?!_next/static|_next/image|favicon.ico|api/version|api/t/|api/files|api/llm/|api/v1/|api/host-metrics|api/public/|og/|render/|email/|r/|p/|published-auth|desktop-view|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-        // The two trees under /render put back in, for the gate alone: proxy() returns before it
-        // ever reaches updateSession(). The OG renders next to them, /render/brand and
+        // The labs put back in, for the gate alone: proxy() returns before it ever reaches
+        // updateSession(). The UI kit (/render/kit) and the OG renders, /render/brand and
         // /render/templates, stay out: the screenshot service captures those on every card.
-        '/render/kit',
-        '/render/kit/:path*',
         '/render/lab',
         '/render/lab/:path*',
         // Every path of a published site, images and favicon.ico included, which the exclusions

@@ -17,8 +17,9 @@ const { connectionsDir } = await import('../config/paths.js')
 const { createConnection, ensureRerunConnection } = await import('../connections/store.js')
 const { getConnection } = await import('../connections/registry.js')
 const { clearAgentCache } = await import('./registry.js')
-const { clearBoxDefault, writeBoxDefault } = await import('../connections/default.js')
-const { boxDefaultModel, isUsable, resolveAutomationModel, resolveConfiguredModel } = await import('./availability.js')
+const { clearBoxDefault, readBoxDefault, writeBoxDefault } = await import('../connections/default.js')
+const { forgetCliModels, recordCliModels, recordRefusedModel } = await import('../connections/cli-models.js')
+const { boxDefaultModel, defaultModelOf, isUsable, repairBoxDefault, resolveAutomationModel, resolveConfiguredModel } = await import('./availability.js')
 
 let seq = 0
 
@@ -198,5 +199,70 @@ describe('resolveAutomationModel over a box-default agent', () => {
         const anthropic = await connect('anthropic', { ANTHROPIC_API_KEY: 'k' })
         await writeBoxDefault({ connectionId: anthropic.id, model: 'claude-opus-4-8' })
         expect(await resolveAutomationModel(await boxDefaultAgent(), undefined)).toEqual({ connectionId: anthropic.id, provider: 'anthropic', model: 'claude-opus-4-8' })
+    })
+})
+
+// What a ChatGPT account without the Sol models answers to Codex's `model/list`, read on a real box.
+const CHATGPT_PLAN_MODELS = ['gpt-6-luna', 'gpt-5.6-terra', 'gpt-5.6-luna']
+
+async function chatgpt(served: string[] | null = CHATGPT_PLAN_MODELS) {
+    const connection = await connect('codex', { CODEX_OAUTH_TOKEN: 't' })
+    forgetCliModels(connection.id)
+    if (served) recordCliModels(connection.id, served, '0.166.0', false)
+    return connection
+}
+
+describe('a ChatGPT plan that leaves models out', () => {
+    it('defaults to the first model the account serves', async () => {
+        expect(defaultModelOf(await chatgpt())).toBe('gpt-6-luna')
+    })
+
+    it('does not count a model the account refuses as usable', async () => {
+        const codex = await chatgpt()
+        expect(isUsable(codex, 'gpt-6-sol')).toBe(false)
+        expect(isUsable(codex, 'gpt-6-luna')).toBe(true)
+    })
+
+    it('runs a refused stored default on a served model of the same connection, not on Rerun', async () => {
+        await ensureRerunConnection()
+        const codex = await chatgpt()
+        await writeBoxDefault({ connectionId: codex.id, model: 'gpt-6-sol' })
+        expect(await boxDefaultModel()).toMatchObject({ connection: { id: codex.id }, provider: 'codex', model: 'gpt-6-luna' })
+    })
+
+    it('moves a refused stored default to a served model', async () => {
+        const codex = await chatgpt()
+        await writeBoxDefault({ connectionId: codex.id, model: 'gpt-6-sol' })
+        await repairBoxDefault(codex)
+        expect(await readBoxDefault()).toEqual({ connectionId: codex.id, model: 'gpt-6-luna' })
+    })
+
+    it('leaves a served default, another connection, and a connection never read alone', async () => {
+        const read = await chatgpt()
+        await writeBoxDefault({ connectionId: read.id, model: 'gpt-5.6-terra' })
+        await repairBoxDefault(read)
+        expect(await readBoxDefault()).toEqual({ connectionId: read.id, model: 'gpt-5.6-terra' })
+
+        const unread = await chatgpt(null)
+        await writeBoxDefault({ connectionId: unread.id, model: 'gpt-6-sol' })
+        await repairBoxDefault(read)
+        await repairBoxDefault(unread)
+        expect(await readBoxDefault()).toEqual({ connectionId: unread.id, model: 'gpt-6-sol' })
+    })
+
+    it('stops serving a model a run was refused on, though the list announced it', async () => {
+        const codex = await chatgpt(DEFAULT_CONNECTION_MODELS.codex)
+        await writeBoxDefault({ connectionId: codex.id, model: 'gpt-6-sol' })
+        recordRefusedModel(codex.id, 'gpt-6-sol')
+        await repairBoxDefault(codex)
+        expect(await readBoxDefault()).toEqual({ connectionId: codex.id, model: 'gpt-6.1-sol' })
+    })
+
+    it('falls an automation back off a refused model, but keeps a pin as asked', async () => {
+        const codex = await chatgpt()
+        await writeBoxDefault({ connectionId: codex.id, model: 'gpt-6-luna' })
+        const pinned = await makeAgent(codex.id, 'codex', 'gpt-6-sol')
+        expect(pinned.resolved).toMatchObject({ provider: 'codex', model: 'gpt-6-sol' })
+        expect(await resolveAutomationModel(pinned, { connectionId: codex.id, model: 'gpt-6-sol' })).toEqual({ connectionId: codex.id, provider: 'codex', model: 'gpt-6-luna' })
     })
 })

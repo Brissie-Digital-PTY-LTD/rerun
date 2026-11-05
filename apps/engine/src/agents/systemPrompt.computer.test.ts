@@ -69,8 +69,16 @@ describe('computer section', () => {
         const prompt = await buildSystemPrompt(agentWith({ computer: true }), { source: 'chat' })
         const section = prompt.slice(prompt.indexOf('<computer>'), prompt.indexOf('</computer>'))
         expect(section).toContain('counts as signed in only on the screenshot you are about to act in')
-        expect(section).toContain('when a page keeps reloading or the window is gone, say so')
+        expect(section).toContain('When a page keeps reloading or the window is gone, say so')
         expect(section).toContain('the shortest way to do that step themselves')
+    })
+
+    it('counts an action on a site as done only on a screenshot that shows its result, and never repeats it to find out', async () => {
+        const prompt = await buildSystemPrompt(agentWith({ computer: true }), { source: 'chat' })
+        const section = prompt.slice(prompt.indexOf('<computer>'), prompt.indexOf('</computer>'))
+        expect(section).toContain('counts as done only on a screenshot that shows its result (the confirmation, the new state)')
+        expect(section).toContain('text you quote from the screen comes from a screenshot you read')
+        expect(section).toContain('say it is not confirmed and look again, never doing the action twice')
     })
 
     it('keeps the screen for acting and sends information gathering to the browser and paid data', async () => {

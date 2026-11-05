@@ -20,7 +20,7 @@ describe('desktop', () => {
 
     it('ends with the desktop, closed or handed back', () => {
         useDesktopStore.getState().openTakeover(TAKEOVER)
-        useDesktopStore.getState().handBack('call-1', null)
+        useDesktopStore.getState().handBack('call-1', { url: null })
         expect(useDesktopStore.getState()).toMatchObject({ agentId: null, takeover: null, handedBack: { 'call-1': { url: null } } })
         useDesktopStore.getState().openDesktop('a1')
         useDesktopStore.getState().close()

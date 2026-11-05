@@ -50,6 +50,12 @@ export const OPENCODE_GO_LIMIT = 'OpenCode Go limit reached'
 export const SUBSCRIPTION_LIMIT =
     /hit your (?:session|weekly|opus|sonnet|usage) limit|usage limit reached|usage_limit_exceeded|5-hour limit|quota exceeded|monthly spend limit|usage credits|not supported when using codex with a chatgpt account|does not exist or you do not have access|opencode console credits used up|opencode go limit reached/i
 
+// The subset of `SUBSCRIPTION_LIMIT` that names a model the plan does not include, rather than a
+// window that ran out. The chat words both the same way, but the engine reports it under its own
+// code: waiting for a reset does not bring the model back, and the funnel must not read it as a
+// spent quota.
+export const MODEL_NOT_IN_PLAN = /not supported when using codex with a chatgpt account|does not exist or you do not have access|requires usage credits|model_not_found/i
+
 // Claude Code reports a dead OAuth token as "Failed to authenticate. API Error: 401 Invalid bearer
 // token", OpenRouter as "No auth credentials found".
 const PROVIDER_UNAUTHORIZED =

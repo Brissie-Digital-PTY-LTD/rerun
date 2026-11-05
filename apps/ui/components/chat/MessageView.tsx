@@ -51,7 +51,7 @@ import { parseTriggerPayload } from '@/lib/triggers/trigger-payload'
 import { parseScheduledRun } from '@/lib/schedules/scheduled-run'
 import { parseVoiceMessage } from '@/lib/voice/marker'
 import { cn } from '@/lib/utils'
-import { QUICK_REPLIES_TOOL, fileCardSchema, quickRepliesOf, skillProposalIdOf, tableCardSchema, toolActivityOf, type MessageFeedbackRating, type PaidTurnSources } from '@rerun/contracts'
+import { QUICK_REPLIES_TOOL, fileCardSchema, quickRepliesOf, quickReplyDraft, skillProposalIdOf, tableCardSchema, toolActivityOf, type MessageFeedbackRating, type PaidTurnSources } from '@rerun/contracts'
 import type { UIMessage } from 'ai'
 import { BrainIcon, FoldVerticalIcon, RefreshCcwIcon, ThumbsDownIcon, ThumbsUpIcon } from '@/lib/icons'
 import { Fragment, isValidElement, memo, type ReactNode } from 'react'
@@ -115,6 +115,9 @@ export type MessageViewProps = {
     activeRunId?: string | null
     onStopTask?: (taskId: string) => void
     onSendMessage?: (opts: { text: string }) => void
+    // Where a quick reply that still needs a value from the user goes to be finished. Without it,
+    // such a reply is not offered at all: sent as is, it would reach the coworker empty-handed.
+    onDraftReply?: (text: string) => void
     // The agent's suggested replies only stand while this is the last word of a finished turn.
     showQuickReplies?: boolean
     onRegenerate?: (messageId: string) => void
@@ -158,7 +161,7 @@ export function UnderText({ children }: { children: ReactNode }) {
     return children
 }
 
-function MessageViewInner({ message, isActive = false, isLastAssistant = false, agentId, pendingHitlToolCallId, pendingMcpSignIn, hitlCall, pendingAlertToolCallId, activeRunId, onStopTask: stopTaskOverride, onSendMessage, showQuickReplies = false, onRegenerate, onRateMessage, feedbackRating = null, rawUrlFor, readFile, sharedFiles, skillProposals, decidingProposalId, onDecideProposal, pinnedProposalIds, renderToolPart, installing, mentions, assistantLayout, createdAt, paidSources }: MessageViewProps) {
+function MessageViewInner({ message, isActive = false, isLastAssistant = false, agentId, pendingHitlToolCallId, pendingMcpSignIn, hitlCall, pendingAlertToolCallId, activeRunId, onStopTask: stopTaskOverride, onSendMessage, onDraftReply, showQuickReplies = false, onRegenerate, onRateMessage, feedbackRating = null, rawUrlFor, readFile, sharedFiles, skillProposals, decidingProposalId, onDecideProposal, pinnedProposalIds, renderToolPart, installing, mentions, assistantLayout, createdAt, paidSources }: MessageViewProps) {
     const toolDisplay = useToolDisplay(agentId)
     const publishedAccess = usePublishedAccessEnabled()
     const sources = message.role === 'assistant' ? messageSources(message) : []
@@ -171,7 +174,7 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
     const attachments = message.role === 'user' && !install && !hitlReply && !automated ? parseAttachments(messageText(message)) : null
     const voice = message.role === 'user' && !install && !hitlReply && !automated ? parseVoiceMessage(attachments?.text ?? messageText(message)) : null
     const subRuns = pairSubRuns(message.parts)
-    const quickReplies = showQuickReplies && onSendMessage ? quickRepliesOf(message) : []
+    const quickReplies = showQuickReplies && onSendMessage ? quickRepliesOf(message).filter(reply => onDraftReply || quickReplyDraft(reply) === null) : []
     const onStopTask = stopTaskOverride ?? (activeRunId && agentId ? (taskId: string) => void cancelSubRunAction(agentId, activeRunId, taskId) : undefined)
 
     // Files sent without a word: the thumbnails are the whole message, an empty bubble under them would be noise.
@@ -404,7 +407,15 @@ function MessageViewInner({ message, isActive = false, isLastAssistant = false, 
             {quickReplies.length > 0 && (
                 <Suggestions className="animate-in fade-in duration-300">
                     {quickReplies.map(reply => (
-                        <Suggestion key={reply} suggestion={reply} onClick={text => onSendMessage?.({ text })} />
+                        <Suggestion
+                            key={reply}
+                            suggestion={reply}
+                            onClick={text => {
+                                const draft = quickReplyDraft(text)
+                                if (draft) onDraftReply?.(draft)
+                                else onSendMessage?.({ text })
+                            }}
+                        />
                     ))}
                 </Suggestions>
             )}

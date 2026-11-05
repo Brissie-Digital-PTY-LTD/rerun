@@ -33,8 +33,11 @@ export function behaviourOf(provider: Provider, model: string): Provider {
 }
 
 // An image sent to a model that cannot see is dropped by OpenCode without a word: the engine has
-// to know before it sends one. Every other provider is trusted with the images it is handed.
-export function modelSeesImages(provider: Provider, model: string): boolean {
+// to know before it sends one. A custom endpoint says nothing about it, so its owner does, and the
+// default is no: a text-only local model answers an image with an error. Every other provider is
+// trusted with the images it is handed.
+export function modelSeesImages(provider: Provider, model: string, connection?: LoadedConnection | null): boolean {
+    if (provider === 'custom') return connection?.config.vision === true
     if (provider !== 'opencode') return true
     return opencodeModel(model)?.images ?? true
 }

@@ -7,8 +7,10 @@ import {
     createAiConnection,
     deleteAiConnection,
     getAiConnectionUsage,
+    isCustomOfferedTo,
     isOpencodeOfferedTo,
     listAiConnections,
+    probeCustomEndpoint,
     setWorkspaceDefaultModel,
     startClaudeSignIn,
     startCodexSignIn,
@@ -19,6 +21,7 @@ import { NoPlanError } from '@/app/api/_services/capacity.service'
 import type { ClaudeOAuthStart } from '@/lib/engine/claude-oauth'
 import type { CodexDeviceAuthStart } from '@/lib/engine/codex-oauth'
 import type { BoxConnection, BoxConnectionsList, BoxConnectionUsage, BoxDefault, CreateBoxConnectionInput, UpdateBoxConnectionInput } from '@/lib/engine/types'
+import { customProbeInputSchema, type CustomProbeInput, type CustomProbeResult } from '@rerun/contracts'
 
 // The AI providers of the workspace, for the web dialog. The workspace of the session is the whole
 // scope, so these actions take no id at all; the logic is shared with the app in ai-connection.service.
@@ -38,14 +41,23 @@ function failure(err: unknown, fallback: string): { success: false; error: strin
 type CreateResult = { success: true; connection: BoxConnection } | { success: false; error: string; reason?: 'no_plan' }
 
 // `opencodeOffered`: whether this workspace may add OpenCode, behind its flag and on an engine that
-// runs it.
-export async function listAiConnectionsAction(): Promise<BoxConnectionsList & { opencodeOffered: boolean }> {
+// runs it. `customOffered`: whether its engine runs custom endpoints.
+export async function listAiConnectionsAction(): Promise<BoxConnectionsList & { opencodeOffered: boolean; customOffered: boolean }> {
     try {
         const workspaceId = await requireWorkspaceId()
-        const [list, opencodeOffered] = await Promise.all([listAiConnections(workspaceId), isOpencodeOfferedTo(workspaceId).catch(() => false)])
-        return { ...list, opencodeOffered }
+        const [list, opencodeOffered, customOffered] = await Promise.all([listAiConnections(workspaceId), isOpencodeOfferedTo(workspaceId).catch(() => false), isCustomOfferedTo(workspaceId).catch(() => false)])
+        return { ...list, opencodeOffered, customOffered }
     } catch {
-        return { connections: [], default: null, opencodeOffered: false }
+        return { connections: [], default: null, opencodeOffered: false, customOffered: false }
+    }
+}
+
+export async function probeCustomEndpointAction(input: CustomProbeInput): Promise<{ success: true; result: CustomProbeResult } | { success: false; error: string; reason?: 'no_plan' }> {
+    try {
+        return { success: true, result: await probeCustomEndpoint(await requireWorkspaceId(), customProbeInputSchema.parse(input)) }
+    } catch (err) {
+        if (err instanceof NoPlanError) return { success: false, error: 'Start your free trial to connect your own model.', reason: 'no_plan' }
+        return failure(err, 'Could not reach this endpoint')
     }
 }
 

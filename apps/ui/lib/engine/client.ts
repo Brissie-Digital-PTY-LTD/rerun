@@ -1,7 +1,11 @@
 import {
     ENGINE_CAPABILITY_DESKTOP,
     ENGINE_CAPABILITY_OPENCODE,
+    ENGINE_CAPABILITY_CUSTOM,
+    customProbeResultSchema,
     desktopStatusSchema,
+    type CustomProbeInput,
+    type CustomProbeResult,
     takeoverResultSchema,
     type DesktopApp,
     type DesktopStatus,
@@ -197,8 +201,19 @@ export async function createConnection(conn: EngineConnection, params: CreateBox
     return request(conn, '/connections', { method: 'POST', body: JSON.stringify(params) }, d => boxConnectionSchema.parse(d))
 }
 
+// A custom endpoint's new address is read for its models before the engine answers, 10 s at worst.
+const PATCH_CONNECTION_TIMEOUT_MS = 20_000
+
 export async function patchConnection(conn: EngineConnection, id: string, patch: UpdateBoxConnectionInput): Promise<BoxConnection> {
-    return request(conn, `/connections/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }, d => boxConnectionSchema.parse(d))
+    return request(conn, `/connections/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch), signal: AbortSignal.timeout(PATCH_CONNECTION_TIMEOUT_MS) }, d => boxConnectionSchema.parse(d))
+}
+
+// The probe tries the address as typed and, for a loopback one, the Docker host after it; asking a
+// model for one token on a slow local server can take a while on top.
+const PROBE_TIMEOUT_MS = 75_000
+
+export async function probeCustomEndpoint(conn: EngineConnection, input: CustomProbeInput): Promise<CustomProbeResult> {
+    return request(conn, '/connections/probe', { method: 'POST', body: JSON.stringify(input), signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) }, d => customProbeResultSchema.parse(d))
 }
 
 export async function updateConnectionKeys(conn: EngineConnection, id: string, body: { set?: Record<string, string>; remove?: string[] }): Promise<string[]> {
@@ -640,6 +655,10 @@ export async function supportsOpencode(conn: EngineConnection): Promise<boolean>
     return (await engineCapabilities(conn)).has(ENGINE_CAPABILITY_OPENCODE)
 }
 
+export async function supportsCustomProvider(conn: EngineConnection): Promise<boolean> {
+    return (await engineCapabilities(conn)).has(ENGINE_CAPABILITY_CUSTOM)
+}
+
 export async function supportsScheduleRename(conn: EngineConnection): Promise<boolean> {
     return (await engineCapabilities(conn)).has(ENGINE_CAPABILITY_SCHEDULE_RENAME)
 }
@@ -661,8 +680,10 @@ export async function startTakeover(conn: EngineConnection, agentId: string, url
     await request(conn, `/agents/${encodeURIComponent(agentId)}/desktop/takeover`, { method: 'POST', body: JSON.stringify(url ? { url } : {}), signal: AbortSignal.timeout(DESKTOP_TIMEOUT_MS) }, () => undefined)
 }
 
-export async function finishTakeover(conn: EngineConnection, agentId: string): Promise<TakeoverResult> {
-    return request(conn, `/agents/${encodeURIComponent(agentId)}/desktop/takeover`, { method: 'DELETE', signal: AbortSignal.timeout(DESKTOP_TIMEOUT_MS) }, d => takeoverResultSchema.parse(d))
+// keepOpen leaves the window on the coworker's screen for the run it resumes. An engine that predates
+// it ignores the flag, closes the window and says nothing of `open`.
+export async function finishTakeover(conn: EngineConnection, agentId: string, { keepOpen = false } = {}): Promise<TakeoverResult> {
+    return request(conn, `/agents/${encodeURIComponent(agentId)}/desktop/takeover${keepOpen ? '?keepOpen=1' : ''}`, { method: 'DELETE', signal: AbortSignal.timeout(DESKTOP_TIMEOUT_MS) }, d => takeoverResultSchema.parse(d))
 }
 
 export function forgetEngineCapabilities(conn: EngineConnection): void {

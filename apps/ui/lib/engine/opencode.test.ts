@@ -18,6 +18,7 @@ function opencode(overrides: Partial<BoxConnection> = {}): BoxConnection {
         planLimits: null,
         cliModels: null,
         providerModels: null,
+        discoveredModels: null,
         ...overrides,
     }
 }

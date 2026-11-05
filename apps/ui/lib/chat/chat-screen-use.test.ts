@@ -14,7 +14,7 @@ describe('runUsesScreen', () => {
     })
 
     it('keeps the run going across a takeover handed back', () => {
-        expect(runUsesScreen([user('find them'), assistant(click), user(serializeTakeoverResult('https://www.linkedin.com/feed/')), assistant({ type: 'text' })])).toBe(true)
+        expect(runUsesScreen([user('find them'), assistant(click), user(serializeTakeoverResult({ url: 'https://www.linkedin.com/feed/', open: true })), assistant({ type: 'text' })])).toBe(true)
     })
 
     it('knows the screen tools the CLI bridge prefixed', () => {

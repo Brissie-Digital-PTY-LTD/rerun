@@ -12,11 +12,16 @@ export const connectionConfigSchema = z.object({
     // The model ids this connection offers. Curation lives here rather than in the browser, so it
     // is shared by everyone on the box and survives a new device.
     models: z.array(z.string()).default([]),
-    // OpenRouter-compatible router of the user's own. Empty falls back to openrouter.ai, and it has
+    // Where the requests go: an OpenRouter-compatible router of the user's own, or the endpoint of a
+    // `custom` connection, which has nowhere else to go. Empty falls back to openrouter.ai, and it has
     // to be a valid member of the type since a PATCH cannot clear a field by sending `undefined`.
     baseUrl: z.url().or(z.literal('')).optional(),
-    // Model ids beyond the UI's curated catalog, served by the OpenRouter provider.
+    // Model ids beyond the UI's curated catalog, typed by hand on an OpenRouter or custom connection.
     extraModels: z.array(z.string()).default([]),
+    // What a `custom` endpoint does not say about itself. The window applies to every model the
+    // endpoint's own listing gives none for; null is how a PATCH clears it.
+    contextWindow: z.number().int().positive().nullable().optional(),
+    vision: z.boolean().optional(),
     createdAt: z.string(),
 })
 export type ConnectionConfig = z.infer<typeof connectionConfigSchema>
@@ -73,6 +78,11 @@ export function opencodeServesModel(provider: Provider, providerModels: Provider
     return providerModels.some(model => model.id === id)
 }
 
+// One model a custom endpoint lists, with the context window when the server states it (OpenRouter
+// and LM Studio say `context_length`, vLLM `max_model_len`, Ollama nothing).
+export const discoveredModelSchema = z.object({ id: z.string(), contextWindow: z.number().nullable() })
+export type DiscoveredModel = z.infer<typeof discoveredModelSchema>
+
 export const connectionSummarySchema = connectionConfigSchema.extend({
     id: z.string(),
     // Whether the credential behind it is present. The value itself is never returned.
@@ -87,6 +97,9 @@ export const connectionSummarySchema = connectionConfigSchema.extend({
     // The models an API-key provider with a live catalog reaches today (OpenCode). Null on every
     // other provider, and on an engine older than it: the hub then falls back on its snapshot.
     providerModels: z.array(providerModelSchema).nullable().default(null),
+    // What a `custom` endpoint listed at `GET /models` when the box last asked. Null on every other
+    // provider, before the first answer, and on an engine older than it.
+    discoveredModels: z.array(discoveredModelSchema).nullable().default(null),
 })
 export type ConnectionSummary = z.infer<typeof connectionSummarySchema>
 
@@ -109,6 +122,8 @@ export const createConnectionSchema = z.object({
     models: z.array(z.string()).default([]),
     baseUrl: z.url().or(z.literal('')).optional(),
     extraModels: z.array(z.string()).default([]),
+    contextWindow: z.number().int().positive().nullable().optional(),
+    vision: z.boolean().optional(),
     keys: z.record(z.string(), z.string()).default({}),
 })
 export type CreateConnectionInput = z.infer<typeof createConnectionSchema>
@@ -120,6 +135,8 @@ export const updateConnectionSchema = z.object({
     models: z.array(z.string()).optional(),
     baseUrl: z.url().or(z.literal('')).optional(),
     extraModels: z.array(z.string()).optional(),
+    contextWindow: z.number().int().positive().nullable().optional(),
+    vision: z.boolean().optional(),
 })
 export type UpdateConnectionInput = z.infer<typeof updateConnectionSchema>
 
@@ -155,6 +172,8 @@ export const CONNECTION_TOKEN_KEY: Record<z.infer<typeof providerSchema>, string
     google: 'GOOGLE_GENERATIVE_AI_API_KEY',
     openrouter: 'OPENROUTER_API_KEY',
     opencode: 'OPENCODE_API_KEY',
+    // Optional: a local server (Ollama, LM Studio) takes requests without one.
+    custom: 'CUSTOM_API_KEY',
 }
 
 // What is wrong with a value about to be stored as a Claude subscription token, or null when it
@@ -178,6 +197,7 @@ export const CONNECTION_SATELLITE_KEYS: Record<z.infer<typeof providerSchema>, s
     google: ['GOOGLE_API_KEY'],
     openrouter: [],
     opencode: [],
+    custom: [],
 }
 
 // Every env var name that used to live on an agent and now belongs to a connection. What the boot
@@ -246,6 +266,8 @@ export const DEFAULT_CONNECTION_MODELS: Record<z.infer<typeof providerSchema>, s
     // Every model the Go plan includes, the default first. Console models are paid per token from
     // the account's credits, so they start switched off.
     opencode: [OPENCODE_DEFAULT_MODEL, ...OPENCODE_SNAPSHOT.filter(model => model.plan === 'go' && model.id !== OPENCODE_DEFAULT_MODEL).map(model => model.id)],
+    // Only the endpoint knows what it serves: the models arrive with the connection, read off it.
+    custom: [],
 }
 
 // How a connection names itself when nobody has yet: the boot migration builds "Claude (Theo)"
@@ -259,6 +281,7 @@ export const PROVIDER_LABELS: Record<z.infer<typeof providerSchema>, string> = {
     google: 'Google',
     openrouter: 'OpenRouter',
     opencode: 'OpenCode',
+    custom: 'Custom',
 }
 
 // The model the app's picker offers for one coworker, grouped and labelled by the hub with the web
@@ -336,13 +359,18 @@ export const aiConnectionsViewSchema = z.object({
 export type AiConnectionsView = z.infer<typeof aiConnectionsViewSchema>
 
 // The app sends the one value it holds; the hub knows which env var each provider stores it under.
-// For `claude` it is a setup-token pasted by hand.
-export const createAiConnectionInputSchema = z.object({
-    provider: addableProviderSchema,
-    apiKey: z.string().trim().min(1),
-    name: z.string().trim().min(1).optional(),
-    baseUrl: z.url().or(z.literal('')).optional(),
-})
+// For `claude` it is a setup-token pasted by hand. A `custom` endpoint needs its address instead, and
+// the key is optional there: a local server takes requests without one.
+export const createAiConnectionInputSchema = z
+    .object({
+        provider: addableProviderSchema,
+        apiKey: z.string().trim().optional(),
+        name: z.string().trim().min(1).optional(),
+        baseUrl: z.url().or(z.literal('')).optional(),
+        models: z.array(z.string().trim().min(1)).optional(),
+    })
+    .refine(input => input.provider === 'custom' || !!input.apiKey, { message: 'An API key is required', path: ['apiKey'] })
+    .refine(input => input.provider !== 'custom' || !!input.baseUrl, { message: 'A base URL is required', path: ['baseUrl'] })
 export type CreateAiConnectionInput = z.infer<typeof createAiConnectionInputSchema>
 
 export const replaceAiConnectionKeyInputSchema = z.object({ apiKey: z.string().trim().min(1) })

@@ -1,3 +1,5 @@
+import { customContextWindow } from '../../connections/custom-catalog.js'
+import type { LoadedConnection } from '../../connections/types.js'
 import { opencodeModel } from '../../connections/opencode-catalog.js'
 import { generateText, type ModelMessage } from 'ai'
 import { isContextPart, modelContextWindow, type Provider } from '@rerun/contracts'
@@ -89,8 +91,9 @@ async function summarizeMiddle(ctx: RunContext, override: ModelOverride | undefi
 
 // An OpenCode model OpenCode published after this build is only known to the live catalog, which
 // also has the fresher figure for the others.
-export function runContextWindow(model: string, provider: Provider): number | undefined {
+export function runContextWindow(model: string, provider: Provider, connection?: LoadedConnection | null): number | undefined {
     if (provider === 'opencode') return opencodeModel(model)?.contextWindow ?? modelContextWindow(model, provider)
+    if (provider === 'custom') return customContextWindow(connection, model)
     return modelContextWindow(model, provider)
 }
 
@@ -111,7 +114,7 @@ export async function prepareRunHistory(ctx: RunContext, system: string, overrid
     })
     const working = priorSummary ? [priorSummary, ...live] : live
 
-    const contextWindow = runContextWindow(ctx.model, ctx.provider)
+    const contextWindow = runContextWindow(ctx.model, ctx.provider, ctx.agent.resolved.connection)
     if (!contextWindow) return working
     if (estimateTokens(working, system, toolChars) < compactionThreshold(contextWindow, ctx.provider)) return working
 

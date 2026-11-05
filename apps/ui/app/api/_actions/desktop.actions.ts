@@ -1,6 +1,6 @@
 'use server'
 
-import { desktopAppSchema, desktopViewModeSchema, takeoverUrlSchema, type DesktopApp, type DesktopViewMode } from '@rerun/contracts'
+import { desktopAppSchema, desktopViewModeSchema, takeoverUrlSchema, type DesktopApp, type DesktopViewMode, type TakeoverResult } from '@rerun/contracts'
 
 import { assertAgentInWorkspace, requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { DesktopUnavailableError, desktopSocketUrl, resolveWorkspaceDesktop, type WorkspaceDesktop } from '@/app/api/_services/desktop.service'
@@ -67,11 +67,11 @@ export async function startTakeoverAction(agentId: string, url?: string): Promis
     }
 }
 
-export async function finishTakeoverAction(agentId: string): Promise<{ ok: true; url: string | null } | Failure> {
+export async function finishTakeoverAction(agentId: string, { keepOpen = false } = {}): Promise<({ ok: true } & TakeoverResult) | Failure> {
     try {
         const [desktop, engineId] = await Promise.all([memberDesktop(), engineAgentId(agentId)])
-        const { url } = await finishTakeover(desktop.conn, engineId)
-        return { ok: true, url }
+        const { url, open } = await finishTakeover(desktop.conn, engineId, { keepOpen })
+        return { ok: true, url, open }
     } catch (err) {
         return failure(err)
     }

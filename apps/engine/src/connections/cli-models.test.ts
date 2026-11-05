@@ -1,6 +1,6 @@
 import { cliServesModel } from '@rerun/contracts'
-import { describe, expect, it } from 'vitest'
-import { forgetCliModels, readCliModels, recordCliModels } from './cli-models.js'
+import { describe, expect, it, vi } from 'vitest'
+import { REFUSAL_TTL_MS, forgetCliModels, readCliModels, recordCliModels, recordRefusedModel } from './cli-models.js'
 
 describe('cli models', () => {
     it('keeps no reading of an empty answer, so nothing gets locked by a probe that saw nothing', () => {
@@ -13,6 +13,33 @@ describe('cli models', () => {
         expect(readCliModels('c1')).toMatchObject({ models: ['opus', 'claude-opus-5-5'], version: '2.1.317', outdated: false })
         forgetCliModels('c1')
         expect(readCliModels('c1')).toBeNull()
+    })
+
+    it('drops a model a run was refused on from every later reading, until the credential changes', () => {
+        recordCliModels('c2', ['gpt-6-sol', 'gpt-6-luna'], '0.166.0', false)
+        recordRefusedModel('c2', 'gpt-6-sol')
+        expect(readCliModels('c2')?.models).toEqual(['gpt-6-luna'])
+        recordCliModels('c2', ['gpt-6-sol', 'gpt-6-luna'], '0.166.0', false)
+        expect(readCliModels('c2')?.models).toEqual(['gpt-6-luna'])
+        forgetCliModels('c2')
+        recordCliModels('c2', ['gpt-6-sol', 'gpt-6-luna'], '0.166.0', false)
+        expect(readCliModels('c2')?.models).toEqual(['gpt-6-sol', 'gpt-6-luna'])
+    })
+})
+
+describe('a refused model', () => {
+    it('comes back once the refusal expires, for a plan upgraded on the same account', () => {
+        vi.useFakeTimers()
+        try {
+            recordCliModels('c3', ['gpt-6-sol', 'gpt-6-luna'], '0.166.0', false)
+            recordRefusedModel('c3', 'gpt-6-sol')
+            vi.advanceTimersByTime(REFUSAL_TTL_MS - 1)
+            expect(readCliModels('c3')?.models).toEqual(['gpt-6-luna'])
+            vi.advanceTimersByTime(1)
+            expect(readCliModels('c3')?.models).toEqual(['gpt-6-sol', 'gpt-6-luna'])
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })
 

@@ -1,4 +1,5 @@
 import { createProviderRegistry, wrapLanguageModel, type LanguageModel, type ToolSet } from 'ai'
+import { Agent as UndiciAgent } from 'undici'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -18,7 +19,7 @@ import { env } from '../config/env.js'
 import { codexPath } from '../runtime/codex-cli.js'
 import { codexHomeDir } from '../config/paths.js'
 import { allowedModel } from '../connections/plan.js'
-import { RERUN_CONNECTION_ID } from '@rerun/contracts'
+import { CONNECTION_TOKEN_KEY, RERUN_CONNECTION_ID } from '@rerun/contracts'
 import { childProcessEnv, envOverlay } from '../lib/child-env.js'
 import { newId } from '../lib/ids.js'
 import { resolveTransport } from '../tools/mcp.js'
@@ -35,7 +36,7 @@ import { openrouterReasoningMiddleware, reasoningFetch } from './openrouter-reas
 import { cacheBreakpointsFetch } from './openrouter-cache.js'
 import { openrouterStreamRetryMiddleware } from './openrouter-stream-retry.js'
 import { opencodeLanguageModel } from './opencode.js'
-import { opencodeUsageMiddleware } from './opencode-stream.js'
+import { opencodeChatReasoningMiddleware, opencodeUsageMiddleware } from './opencode-stream.js'
 import { agentProcessEnv } from './process-env.js'
 import { BRIDGE_SERVER_NAME, CLI_PROVIDERS, type LoadedAgent } from './types.js'
 import { hubCallerHeaders } from '../runtime/hub.js'
@@ -393,6 +394,25 @@ function openrouterCompatibleOptions(agent: LoadedAgent, provider: 'rerun' | 'op
     }
 }
 
+// A local model on modest hardware reads a long prompt for minutes before its first token, and
+// sends no response header until then: past the five minutes Node allows, the request is dropped and
+// retried from scratch, three times over. Measured on a CPU box: a 20k-token prompt takes 25 minutes.
+const CUSTOM_ENDPOINT_PATIENCE_MS = 60 * 60_000
+const customEndpointDispatcher = new UndiciAgent({ headersTimeout: CUSTOM_ENDPOINT_PATIENCE_MS, bodyTimeout: CUSTOM_ENDPOINT_PATIENCE_MS })
+
+const customEndpointFetch: typeof fetch = (input, init) => fetch(input, { ...init, dispatcher: customEndpointDispatcher } as RequestInit)
+
+// Any server that speaks the OpenAI chat format, at the address its owner gave. Nothing of
+// OpenRouter's dialect is added to the request: a strict server answers an unknown field with a 400.
+// The SDK refuses to build without a key, and a local server ignores the header it puts it in.
+function customOptions(agent: LoadedAgent): Parameters<typeof createOpenAI>[0] {
+    return {
+        apiKey: connectionEnv(agent)[CONNECTION_TOKEN_KEY.custom] || 'none',
+        baseURL: (agent.resolved.connection?.config.baseUrl ?? '').trim().replace(/\/+$/, ''),
+        fetch: customEndpointFetch,
+    }
+}
+
 function registryFor(agent: LoadedAgent, tools?: ToolSet, mcpServers?: McpServer[], options?: CliModelOptions) {
     const e = connectionEnv(agent)
     return createProviderRegistry({
@@ -403,6 +423,7 @@ function registryFor(agent: LoadedAgent, tools?: ToolSet, mcpServers?: McpServer
         openai: createOpenAI({ apiKey: e.OPENAI_API_KEY }),
         google: createGoogleGenerativeAI({ apiKey: e.GOOGLE_GENERATIVE_AI_API_KEY ?? e.GOOGLE_API_KEY }),
         openrouter: openaiChat(openrouterCompatibleOptions(agent, 'openrouter')),
+        custom: openaiChat(customOptions(agent)),
     })
 }
 
@@ -465,6 +486,12 @@ export function resolveModel(agent: LoadedAgent, override?: ModelOverride, tools
     if (provider === 'rerun' || provider === 'openrouter') {
         const openrouter = openaiChat({ ...openrouterCompatibleOptions(agent, provider), fetch: provider === 'openrouter' ? cacheBreakpointsFetch(reasoningFetch) : reasoningFetch })
         return { model: wrapLanguageModel({ model: openrouter.languageModel(model), middleware: [openrouterStreamRetryMiddleware, openrouterReasoningMiddleware, replies.middleware, cardTags, guard] }), close: noClose, quickReplies: replies.read }
+    }
+    // The reasoning a DeepSeek or a vLLM server streams back comes as `reasoning_content`, read the
+    // way OpenCode's chat models are, without asking for it in the request.
+    if (provider === 'custom') {
+        const custom = openaiChat(customOptions(agent))
+        return { model: wrapLanguageModel({ model: custom.languageModel(model), middleware: [openrouterStreamRetryMiddleware, opencodeChatReasoningMiddleware, replies.middleware, cardTags, guard] }), close: noClose, quickReplies: replies.read }
     }
     const middleware = provider === 'google' ? [googleToolSchemaMiddleware, replies.middleware, cardTags, guard] : [replies.middleware, cardTags, guard]
     return { model: wrapLanguageModel({ model: registryFor(agent, tools, mcpServers).languageModel(`${provider}:${model}`), middleware }), close: noClose, quickReplies: replies.read }

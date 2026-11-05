@@ -32,19 +32,20 @@ describe('brandGateVerdict', () => {
 })
 
 describe('isGatedPath', () => {
-    it('gates the UI kit and the labs of the app, and everything under them', () => {
-        expect(isGatedPath('/render/kit', APP_GATED_PATHS)).toBe(true)
+    it('gates the labs of the app and everything under them, and leaves the UI kit open', () => {
+        expect(isGatedPath('/render/lab', APP_GATED_PATHS)).toBe(true)
         expect(isGatedPath('/render/lab/buttons', APP_GATED_PATHS)).toBe(true)
+        expect(isGatedPath('/render/kit', APP_GATED_PATHS)).toBe(false)
     })
 
     it('leaves a sibling path sharing the prefix open', () => {
-        expect(isGatedPath('/render/kitchen', APP_GATED_PATHS)).toBe(false)
+        expect(isGatedPath('/render/labels', APP_GATED_PATHS)).toBe(false)
         expect(isGatedPath('/render/brand/og', APP_GATED_PATHS)).toBe(false)
     })
 
-    it('gates the design system pages of the landing', () => {
-        expect(isGatedPath('/brand/ui', LANDING_GATED_PATHS)).toBe(true)
+    it('gates the preview labs of the landing, and leaves the brand pages open', () => {
         expect(isGatedPath('/preview/cards', LANDING_GATED_PATHS)).toBe(true)
+        expect(isGatedPath('/brand/ui', LANDING_GATED_PATHS)).toBe(false)
         expect(isGatedPath('/brand', LANDING_GATED_PATHS)).toBe(false)
     })
 })

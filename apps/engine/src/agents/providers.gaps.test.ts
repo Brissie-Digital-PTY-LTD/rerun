@@ -43,6 +43,7 @@ const { generateText, tool } = await import('ai')
 const { z } = await import('zod')
 const { agentConfigSchema, connectionConfigSchema } = await import('@rerun/contracts')
 const { CLAUDE_HARNESS_ENV, CODEX_HARNESS_OVERRIDES, CODEX_ONE_SHOT_INSTRUCTIONS, modelFor, resolveModel } = await import('./providers.js')
+const { applyCaching } = await import('./caching.js')
 const { codexHomeDir, workspaceDir } = await import('../config/paths.js')
 
 type Provider = import('@rerun/contracts').Provider
@@ -156,6 +157,42 @@ describe('resolveModel over the OpenAI chat format', () => {
         await generateText({ model: resolveModel(agentOn('openrouter', 'acme/large', { OPENROUTER_API_KEY: 'or-key' })).model, prompt: 'hello' })
 
         expect(sent().url).toBe('https://openrouter.ai/api/v1/chat/completions')
+    })
+})
+
+describe('resolveModel on a custom endpoint', () => {
+    it("sends the request to the endpoint's own address, in plain OpenAI chat with none of OpenRouter's fields", async () => {
+        respondWith(CHAT_COMPLETION)
+        const agent = agentOn('custom', 'llama3.3:70b', { CUSTOM_API_KEY: 'lk-1' }, { baseUrl: 'http://ollama.lan:11434/v1/' })
+
+        await generateText({ model: resolveModel(agent).model, prompt: 'hello', providerOptions: applyCaching('custom', { system: 's', messages: [], sessionId: 's1', model: 'llama3.3:70b' }).providerOptions })
+
+        const request = sent()
+        expect(request.url).toBe('http://ollama.lan:11434/v1/chat/completions')
+        expect(request.headers.get('authorization')).toBe('Bearer lk-1')
+        expect(request.body.model).toBe('llama3.3:70b')
+        for (const field of ['reasoning', 'usage', 'provider', 'prompt_cache_key']) expect(request.body).not.toHaveProperty(field)
+        expect(JSON.stringify(request.body)).not.toContain('cache_control')
+        // A local model can read its prompt for longer than the five minutes Node waits for headers.
+        expect((fetchMock.mock.calls[0] as [string, RequestInit & { dispatcher?: unknown }])[1].dispatcher).toBeDefined()
+    })
+
+    it('runs a keyless local server, which ignores the placeholder the SDK insists on', async () => {
+        respondWith(CHAT_COMPLETION)
+
+        await generateText({ model: resolveModel(agentOn('custom', 'qwen3:4b', {}, { baseUrl: 'http://localhost:11434/v1' })).model, prompt: 'hello' })
+
+        expect(sent().url).toBe('http://localhost:11434/v1/chat/completions')
+        expect(sent().headers.get('authorization')).toBe('Bearer none')
+    })
+
+    it('serves the one-shot calls from the same endpoint', async () => {
+        respondWith(CHAT_COMPLETION)
+
+        await generateText({ model: modelFor(agentOn('custom', 'qwen3:4b', {}, { baseUrl: 'http://localhost:11434/v1' })), prompt: 'summarise' })
+
+        expect(sent().url).toBe('http://localhost:11434/v1/chat/completions')
+        expect(sent().body.reasoning).toBeUndefined()
     })
 })
 

@@ -55,7 +55,7 @@ export async function buildTools(ctx: RunContext): Promise<{ tools: ToolSet; clo
     if (cfg.browser) Object.assign(tools, browserTools(ctx))
     if (offersTakeover(ctx.agent.config)) Object.assign(tools, requestTakeoverTool(ctx))
     if (cfg.vision) Object.assign(tools, visionTools(ctx))
-    const computer = runOffersComputer(ctx.agent.config, ctx.provider, ctx.model) ? computerTools(ctx) : null
+    const computer = runOffersComputer(ctx.agent.config, ctx.provider, ctx.model, ctx.agent.resolved.connection) ? computerTools(ctx) : null
     if (computer) Object.assign(tools, computer.tools)
     if (cfg.notify) Object.assign(tools, notifyTools(ctx))
     if (cfg.hub) Object.assign(tools, hubTools(ctx))

@@ -35,7 +35,7 @@ const { mkdir, readFile, rm, writeFile } = await import('node:fs/promises')
 const { DEFAULT_CONNECTION_MODELS, RERUN_CONNECTION_ID } = await import('@rerun/contracts')
 const { connectionRoutes } = await import('./connections.js')
 const { createServer } = await import('../server.js')
-const { agentDir, agentsDir, configPath, connectionConfigPath, connectionEnvPath, connectionsDir, scheduleFile, schedulesDir } = await import('../../config/paths.js')
+const { agentDir, agentsDir, boxDefaultPath, configPath, connectionConfigPath, connectionEnvPath, connectionsDir, scheduleFile, schedulesDir } = await import('../../config/paths.js')
 const { readEnvFile } = await import('../../lib/env-file.js')
 const { ensureRerunConnection } = await import('../../connections/store.js')
 const { unloadConnection } = await import('../../connections/registry.js')
@@ -248,12 +248,33 @@ describe('box default model', () => {
     })
 
     // The reading is taken against the credential that just arrived, before the default is written:
-    // a box must never adopt a model the account's Codex refuses, and nothing rewrites a star later.
+    // a box must never adopt a model the account's Codex refuses.
     it("adopts the first model the account's Codex serves", async () => {
         codexCli.models = ['gpt-6-luna', 'gpt-5.6-sol']
         const res = await post('/', { name: 'codex', provider: 'codex', models: DEFAULT_CONNECTION_MODELS.codex, keys: { CODEX_OAUTH_TOKEN: 'codex-secret' } })
         const created = (await res.json()) as Summary
         expect(await readBoxDefault()).toEqual({ connectionId: created.id, model: 'gpt-6-luna' })
+    })
+
+    // A star written before the box knew what the plan serves (every box connected before #1613).
+    it('lists a default moved off a model the account refuses', async () => {
+        codexCli.models = ['gpt-6-luna', 'gpt-5.6-terra']
+        const created = (await (await post('/', { name: 'codex', provider: 'codex', models: DEFAULT_CONNECTION_MODELS.codex, keys: { CODEX_OAUTH_TOKEN: 'codex-secret' } })).json()) as Summary
+        expect((await put('/default', { connectionId: created.id, model: 'gpt-6-sol' })).status).toBe(200)
+        const listed = (await (await connectionRoutes.request('/')).json()) as { default: unknown }
+        expect(listed.default).toEqual({ connectionId: created.id, model: 'gpt-6-luna' })
+        expect(await readBoxDefault()).toEqual({ connectionId: created.id, model: 'gpt-6-luna' })
+    })
+
+    // Two lists repairing at once collide on the same temp file: the one that loses still lists.
+    it('still lists when the repair of the default cannot write', async () => {
+        codexCli.models = ['gpt-6-luna', 'gpt-5.6-terra']
+        const created = (await (await post('/', { name: 'codex', provider: 'codex', models: DEFAULT_CONNECTION_MODELS.codex, keys: { CODEX_OAUTH_TOKEN: 'codex-secret' } })).json()) as Summary
+        await put('/default', { connectionId: created.id, model: 'gpt-6-sol' })
+        await mkdir(`${boxDefaultPath()}.tmp`)
+        const res = await connectionRoutes.request('/')
+        expect(res.status).toBe(200)
+        expect(((await res.json()) as { default: unknown }).default).toEqual({ connectionId: created.id, model: 'gpt-6-sol' })
     })
 
     it('adopts DeepSeek V4 Pro on a fresh OpenCode connection, after reading the catalog', async () => {

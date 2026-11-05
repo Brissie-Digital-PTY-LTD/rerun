@@ -9,6 +9,7 @@ import type { IsoCamera } from '@rerun/ui/iso-grid'
 import type { AgentLink, AgentStatus, IsoAgent, SpacePublic } from '@/lib/board/types'
 import { findFreeRect, rectOnSide, type NewSpaceRect, type SpaceRect } from '@/lib/board/space-layout'
 import { CARD_THEMES, type CardTheme } from '@/lib/og/size'
+import { randomUuid } from '@/lib/random-uuid'
 
 export type SceneOptions = {
     boxes?: number
@@ -214,7 +215,7 @@ function frameScene(spaces: SpacePublic[], agents: IsoAgent[], frame: { width: n
 }
 
 export function randomSeed(): string {
-    return crypto.randomUUID().slice(0, 8)
+    return randomUuid().slice(0, 8)
 }
 
 export function buildWorkspaceScene(seed: string, options: SceneOptions = {}): WorkspaceScene {

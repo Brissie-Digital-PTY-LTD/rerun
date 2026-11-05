@@ -1,9 +1,10 @@
 import { APICallError, LoadAPIKeyError, RetryError } from 'ai'
-import { CONTEXT_WINDOW, PROVIDER_OVERLOADED, SUBSCRIPTION_LIMIT, type Provider } from '@rerun/contracts'
+import { CONTEXT_WINDOW, MODEL_NOT_IN_PLAN, PROVIDER_OVERLOADED, SUBSCRIPTION_LIMIT, type Provider } from '@rerun/contracts'
 import { isRerunBudgetError, RERUN_BUDGET_ERROR_CODE } from './budget-latch.js'
 
 export const RUN_ERROR_CODES = {
     usageLimit: 'provider_usage_limit',
+    modelNotInPlan: 'provider_model_not_in_plan',
     unauthorized: 'provider_unauthorized',
     authRenewed: 'provider_auth_renewed',
     overloaded: 'provider_overloaded',
@@ -72,6 +73,34 @@ export function classifyFinishReason(finishReason: string | undefined, rawFinish
 // reason we recognise as a failure turns a finish into an error.
 export function isFailedFinish(finishReason: string | undefined, rawFinishReason: string | undefined): boolean {
     return classifyFinishReason(finishReason, rawFinishReason) !== null
+}
+
+// A custom endpoint is a server its owner runs, often on their own machine: one that is stopped,
+// asleep or out of the engine's reach fails before any HTTP status exists, and the SDK's own
+// "Cannot connect to API" does not say which address it tried.
+export class CustomEndpointUnreachableError extends Error {
+    constructor(host: string, code: string) {
+        super(`Could not reach the custom endpoint at ${host} (${code}). Check that the server is running and reachable from the engine.`)
+        this.name = 'CustomEndpointUnreachableError'
+    }
+}
+
+const UNREACHABLE = /\b(ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|EAI_AGAIN|UND_ERR_CONNECT_TIMEOUT)\b/
+
+export function unreachableEndpointError(baseUrl: string | undefined, error: unknown): CustomEndpointUnreachableError | null {
+    const cause = RetryError.isInstance(error) ? error.lastError : error
+    const code = UNREACHABLE.exec(errorText(cause))?.[1] ?? UNREACHABLE.exec(errorText((cause as { cause?: unknown })?.cause))?.[1]
+    if (!code) return null
+    return new CustomEndpointUnreachableError(hostOf(baseUrl), code)
+}
+
+function hostOf(baseUrl: string | undefined): string {
+    if (!baseUrl) return 'its address'
+    try {
+        return new URL(baseUrl).host
+    } catch {
+        return baseUrl
+    }
 }
 
 function serialized(value: unknown): string {
@@ -148,6 +177,7 @@ export function classifyProviderError(provider: Provider, error: unknown): RunEr
     // Both CLIs surface a spent subscription as free text on a generic error, with no status code
     // and no error kind of their own. Claude Code names the window that ran out rather than saying
     // "usage limit" at all: "You've hit your session limit · resets 3pm".
+    if (MODEL_NOT_IN_PLAN.test(text)) return RUN_ERROR_CODES.modelNotInPlan
     if (SUBSCRIPTION_LIMIT.test(text)) return RUN_ERROR_CODES.usageLimit
     if (LoadAPIKeyError.isInstance(error)) return RUN_ERROR_CODES.unauthorized
     // The AI SDK gives up on a retryable status after its own attempts and wraps the last one.

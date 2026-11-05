@@ -298,6 +298,20 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
         [sendChatMessage, status, askNotificationPermission, userId]
     )
 
+    // What the user already typed stays, after the reply: they may have pasted the value first.
+    const draftReply = useCallback(
+        (text: string) => {
+            const el = inputRef.current
+            if (!composerRef.current?.restore(text) && el && !el.value.startsWith(text)) {
+                el.value = `${text}${el.value.trimStart()}`
+                el.setSelectionRange(el.value.length, el.value.length)
+                composerRef.current?.sync(el.value)
+            }
+            composerRef.current?.focus()
+        },
+        [inputRef]
+    )
+
     // ask_user / request_approval now execute a passthrough result and end the
     // turn; the answer comes back as a normal chat message. A call is "awaiting" an
     // answer when the last message is the assistant's and it holds a HITL tool call
@@ -639,6 +653,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     // pitch is for the users who brought none. Starts true so it never flashes before that answer.
     const [hasOwnConnection, setHasOwnConnection] = useState(true)
     const [activeConnectionId, setActiveConnectionId] = useState<string | null>(null)
+    const [refusedModel, setRefusedModel] = useState<string | null>(null)
     // Credentials belong to the workspace, so both the subscription strip and the error notices'
     // action cells leave the chat for the AI providers dialog.
     const openAiProviders = useWorkspaceSettingsStore(state => state.openAiProviders)
@@ -693,7 +708,12 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
     // Only surface the hint while it's both armed (a blocked send) and still no model.
     const showModelHint = hintArmed && !modelReady
     // Shared by the composer and the install gate, which both refuse to run without a model.
-    const modelHint = showModelHint ? <p className="text-xs text-destructive">Select a model to start — open the model menu below.</p> : null
+    const modelHint = showModelHint ? <p className="text-xs text-destructive">{refusedModel ?? 'Select a model to start — open the model menu below.'}</p> : null
+    // A model the plan refuses has served models next to it: the picker opens on them right away.
+    const blockSend = useCallback(() => {
+        setHintArmed(true)
+        if (refusedModel) switchModel()
+    }, [refusedModel, switchModel])
 
     // Run already in flight when the conversation opens: the kickoff started server-side right
     // after agent creation (see startKickoffAction), or a run a schedule / a trigger / another
@@ -898,6 +918,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                                         pendingAlertToolCallId={pendingAlert?.toolCallId ?? undefined}
                                         activeRunId={activeRunIdRef.current}
                                         onSendMessage={sendMessage}
+                                        onDraftReply={draftReply}
                                         showQuickReplies={isLast && !showLoader && !pendingHitl && !pendingAlert && displayedError === null}
                                         onRegenerate={isLast && pendingHitl ? undefined : handleRegenerate}
                                         onRateMessage={sessionId ? messageFeedback.rate : undefined}
@@ -986,10 +1007,10 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                                     onContinue={() => setup?.sessionId && onOpenInstall?.(setup.sessionId)}
                                     disabled={status === 'streaming' || status === 'submitted'}
                                     hint={modelHint}
-                                    modelSlot={<ModelSelector agentId={agentId} pickerKey={uid} onReadyChange={setModelReady} onOwnConnectionChange={setHasOwnConnection} onConnectionChange={setActiveConnectionId} />}
+                                    modelSlot={<ModelSelector agentId={agentId} pickerKey={uid} onReadyChange={setModelReady} onOwnConnectionChange={setHasOwnConnection} onConnectionChange={setActiveConnectionId} onRefusedModelChange={setRefusedModel} />}
                                     onStart={() => {
                                         if (!modelReady) {
-                                            setHintArmed(true)
+                                            blockSend()
                                             return false
                                         }
                                         track('agent_install_started', { agent_id: agentId })
@@ -1003,7 +1024,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                             </motion.div>
                         ) : (
                             <motion.div key="composer" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }} className="overflow-hidden pb-px">
-                                <ChatComposer ref={composerRef} uid={uid} active={active} uploadTarget={uploadTarget} status={status} busy={showLoader} onSend={text => sendMessage({ text })} onSent={() => onMessageSentRef.current?.()} onStop={handleStop} onUploadingChange={setUploading} queue={{ text: queued?.text ?? null, pending: stopping, enqueue: enqueueFromComposer, onSendNow: () => void sendQueuedNow(), onDiscard: clearQueued }} gate={{ ready: modelReady, onBlocked: () => setHintArmed(true), hint: modelHint }} modelSlot={<ModelSelector agentId={agentId} pickerKey={uid} onReadyChange={setModelReady} onOwnConnectionChange={setHasOwnConnection} onConnectionChange={setActiveConnectionId} />} contextSlot={contextStats && <Context usedTokens={contextStats.used} maxTokens={contextStats.max ?? modelContextWindow(contextStats.model, contextStats.provider)} usage={contextStats.usage} modelId={contextStats.model} />} textareaRef={inputRef} textareaProps={mentionTextareaProps} mentionTokens={mentionTokens} />
+                                <ChatComposer ref={composerRef} uid={uid} active={active} uploadTarget={uploadTarget} status={status} busy={showLoader} onSend={text => sendMessage({ text })} onSent={() => onMessageSentRef.current?.()} onStop={handleStop} onUploadingChange={setUploading} queue={{ text: queued?.text ?? null, pending: stopping, enqueue: enqueueFromComposer, onSendNow: () => void sendQueuedNow(), onDiscard: clearQueued }} gate={{ ready: modelReady, onBlocked: blockSend, hint: modelHint }} modelSlot={<ModelSelector agentId={agentId} pickerKey={uid} onReadyChange={setModelReady} onOwnConnectionChange={setHasOwnConnection} onConnectionChange={setActiveConnectionId} onRefusedModelChange={setRefusedModel} />} contextSlot={contextStats && <Context usedTokens={contextStats.used} maxTokens={contextStats.max ?? modelContextWindow(contextStats.model, contextStats.provider)} usage={contextStats.usage} modelId={contextStats.model} />} textareaRef={inputRef} textareaProps={mentionTextareaProps} mentionTokens={mentionTokens} />
                                 <ComposerSubscriptionCta open={!hasOwnConnection} onClick={connectSubscription} />
                             </motion.div>
                         )}

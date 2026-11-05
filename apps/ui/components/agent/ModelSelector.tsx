@@ -11,6 +11,7 @@ import { PowerBars } from '@/components/ui/power-bars'
 import { TooltipDisabledReason, TooltipLabeled } from '@/components/ui/tooltip'
 import { useAgentModel } from '@/hooks/useAgentModel'
 import { useAvailableModels, type ConnectionGroup } from '@/hooks/useAvailableModels'
+import { refusedModelReason } from '@/lib/engine/model-groups'
 import { useRerunCredit } from '@/hooks/useRerunCredit'
 import { PREMIUM_MODEL_BILLING_TRIGGER, RERUN_CREDIT_PAUSED_REASON } from '@/lib/engine/ai-sources'
 import { modelLabel } from '@/lib/engine/models'
@@ -33,6 +34,9 @@ type ModelSelectorProps = {
     onOwnConnectionChange?: (hasOwn: boolean) => void
     // Notified of the connection the next turn runs on, so an auth error can open that one.
     onConnectionChange?: (connectionId: string | null) => void
+    // Notified of why the subscription refuses the model the next turn would run, or null: the
+    // composer says it while it holds the message back.
+    onRefusedModelChange?: (reason: string | null) => void
     // The key a notice outside the composer requests this picker open by (see model-picker.store).
     pickerKey?: string
 }
@@ -44,7 +48,7 @@ type ModelSelectorProps = {
 //
 // The "Box default" entry is the one exception: it is not a per-conversation choice but a statement
 // about the agent, so it clears both the override and the pin in one click.
-export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, onConnectionChange, pickerKey }: ModelSelectorProps) {
+export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, onConnectionChange, onRefusedModelChange, pickerKey }: ModelSelectorProps) {
     const [open, setOpen] = useState(false)
     const { availableGroups, connectionOf, pinnedModel, pinnedConnectionId, resolvedModel, resolvedConnectionId, followsBoxDefault, supportsBoxDefault, boxDefaultPick, setDefault, followBoxDefault, refreshConnections, loading } =
         useAvailableModels(agentId)
@@ -74,6 +78,11 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
         const group = availableGroups.find(g => g.connectionId === connectionId)
         return group?.models.some(m => m.id === model) ? group : undefined
     }, [availableGroups, connectionId, model])
+
+    // A pick the subscription refuses is kept, not swapped behind the user's back: the message is
+    // held and the picker offers the models the plan does serve.
+    const refusedReason = refusedModelReason(active, model)
+    const refusedMessage = refusedReason ? `${modelLabel(model)} · ${refusedReason}. Pick another model below.` : null
 
     // A pin or an override that no longer resolves (a template just imported, a connection removed)
     // is repointed at whatever the Box can actually run, the Box default first: Rerun only heads the
@@ -113,10 +122,11 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
         // Don't report "not ready" while still loading — that would block the composer and flash a
         // false "no model" state before the fetch resolves.
         if (loading) return
-        onReadyChange?.(Boolean(active) || (engineResolvesModel && hasAvailable))
+        onReadyChange?.((Boolean(active) || (engineResolvesModel && hasAvailable)) && !refusedMessage)
         onOwnConnectionChange?.(hasOwnConnection)
         onConnectionChange?.(connectionId)
-    }, [loading, active, engineResolvesModel, hasAvailable, hasOwnConnection, connectionId, onReadyChange, onOwnConnectionChange, onConnectionChange])
+        onRefusedModelChange?.(refusedMessage)
+    }, [loading, active, engineResolvesModel, hasAvailable, hasOwnConnection, connectionId, refusedMessage, onReadyChange, onOwnConnectionChange, onConnectionChange, onRefusedModelChange])
 
     const selectModel = useCallback(
         (group: ConnectionGroup, nextModel: string) => {
@@ -180,7 +190,7 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <ModelPillTrigger provider={active?.provider} label={label} />
+                <ModelPillTrigger provider={active?.provider} label={label} className={refusedReason ? 'text-destructive hover:bg-destructive/10 hover:text-destructive aria-expanded:text-destructive' : undefined} />
             </PopoverTrigger>
             <PopoverContent align="start" className="w-80 gap-0 p-0">
                 <Command>

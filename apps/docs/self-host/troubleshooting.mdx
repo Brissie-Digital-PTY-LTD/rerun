@@ -144,6 +144,16 @@ The coworker is on a Rerun model, and the app has no OpenRouter key. Either:
 - put your key in `OPENROUTER_API_KEY` in `.env` and run `docker compose up -d`, or
 - connect another provider in **AI providers** and pick it in the coworker's model picker. See [AI models](/self-host/models).
 
+## A coworker on your own model answers "Could not reach the custom endpoint"
+
+The engine could not reach the server of a **Custom endpoint** connection. The message names the address it tried.
+
+- Check the server is running: `curl http://localhost:11434/v1/models` on its machine should list the models.
+- The engine runs in a container: `localhost` there is the container. Use `host.docker.internal` (the Compose file maps it) or the machine's network address.
+- Ollama on Linux only listens on `127.0.0.1` by default: start it with `OLLAMA_HOST=0.0.0.0`.
+
+If the model answers but forgets its instructions, its context is too small. See [Your own model](/self-host/models#your-own-model).
+
 ## The Foreman does not answer
 
 With `OPENROUTER_API_KEY` set, the Foreman walks a new workspace through its onboarding on that key: look for `[llm]` or OpenRouter errors in `docker compose logs app`, an empty balance or a spending limit on the key stops it too.

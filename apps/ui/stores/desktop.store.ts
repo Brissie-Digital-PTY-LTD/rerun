@@ -1,3 +1,4 @@
+import type { TakeoverResult } from '@rerun/contracts'
 import { create } from 'zustand'
 
 // The browser an agent asked a person to take over, and the chat card that asked for it.
@@ -9,10 +10,10 @@ type DesktopState = {
     takeover: TakeoverTarget | null
     // Keyed by the chat call that asked: the card it belongs to may have unmounted while the
     // desktop was open, and resumes the run when it reads its entry back.
-    handedBack: Record<string, { url: string | null }>
+    handedBack: Record<string, TakeoverResult>
     openDesktop: (agentId: string) => void
     openTakeover: (target: TakeoverTarget) => void
-    handBack: (callId: string, url: string | null) => void
+    handBack: (callId: string, result: TakeoverResult) => void
     // Closing the view leaves a takeover open on the machine: the card offers to come back to it.
     close: () => void
 }
@@ -23,6 +24,6 @@ export const useDesktopStore = create<DesktopState>(set => ({
     handedBack: {},
     openDesktop: agentId => set({ agentId, takeover: null }),
     openTakeover: target => set({ agentId: target.agentId, takeover: target }),
-    handBack: (callId, url) => set(state => ({ agentId: null, takeover: null, handedBack: { ...state.handedBack, [callId]: { url } } })),
+    handBack: (callId, result) => set(state => ({ agentId: null, takeover: null, handedBack: { ...state.handedBack, [callId]: result } })),
     close: () => set({ agentId: null, takeover: null }),
 }))

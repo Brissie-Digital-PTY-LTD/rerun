@@ -42,6 +42,7 @@ const CLAUDE_DEFAULT = {
     connections: [connection('rerun', 'rerun', ['rerun-max', 'rerun-fast', 'rerun-smart']), connection('claude-1', 'claude', ['claude-sonnet-5-5', 'claude-opus-5-5'])],
     default: { connectionId: 'claude-1', model: 'claude-sonnet-5-5' },
     opencodeOffered: false,
+    customOffered: false,
 }
 
 const modelContext = (model: Record<string, unknown>) => ({ model: { connectionId: null, model: null, resolvedConnectionId: null, resolvedModel: null, loaded: true, ...model }, setup: null })

@@ -36,7 +36,8 @@ export type DesktopStatus = z.infer<typeof desktopStatusSchema>
 export const takeoverUrlSchema = z.string().url().refine(url => /^https?:\/\//i.test(url), 'Only a web page can be opened')
 export const takeoverRequestSchema = z.object({ url: takeoverUrlSchema.optional() })
 
-export const takeoverResultSchema = z.object({ url: z.string().nullable() })
+// open: the window was left on the agent's screen. An engine that predates it closes the window and leaves it out.
+export const takeoverResultSchema = z.object({ url: z.string().nullable(), open: z.boolean().optional() })
 export type TakeoverResult = z.infer<typeof takeoverResultSchema>
 
 // An app's request for a socket to one agent's screen. The ticket in the URL is spent after a minute:

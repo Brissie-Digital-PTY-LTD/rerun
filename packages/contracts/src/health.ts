@@ -43,6 +43,9 @@ export const ENGINE_CAPABILITY_ARTIFACT_UPDATE = 'update.artifact'
 // The engine runs OpenCode connections: the hub offers OpenCode only to a box that says so.
 export const ENGINE_CAPABILITY_OPENCODE = 'connections.opencode'
 
+// The engine runs custom OpenAI-compatible connections and answers `POST /connections/probe`.
+export const ENGINE_CAPABILITY_CUSTOM = 'connections.custom'
+
 // What the last `rerun update` on a box did, as `/health` reports it.
 export const engineLastUpdateSchema = z.object({
     status: z.enum(['running', 'error', 'restarting', 'success']),

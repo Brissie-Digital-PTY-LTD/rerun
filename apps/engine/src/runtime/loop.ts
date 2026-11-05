@@ -8,15 +8,16 @@ import { approvalSummary, canonicalHitlName, findPendingHitl, hitlStepLacksMessa
 import { CLI_PROVIDERS, resolveModel, type ModelOverride } from '../agents/providers.js'
 import { offersQuickReplies, quickRepliesCall, type QuickRepliesCapture } from '../agents/quick-replies-stream.js'
 import { codexThreadToResume, forgetCodexThread, rememberCodexThread } from '../agents/codex-threads.js'
-import { resolveRunModel } from '../agents/availability.js'
+import { repairBoxDefault, resolveRunModel } from '../agents/availability.js'
 import { claudeTokenOf, claudeTokenOutlived } from '../connections/claude-token.js'
 import { ensureCliAuth } from '../connections/cli-auth.js'
 import { syncCodexAuth } from '../connections/codex-auth.js'
 import { forgetCredentialRejected, recordCredentialRejected } from '../connections/credential-rejections.js'
+import { recordRefusedModel } from '../connections/cli-models.js'
 import { refreshCodexPlanLimits } from '../connections/codex-plan-limits.js'
 import { refreshOpencodePlanLimits } from '../connections/opencode-plan-limits.js'
 import { behaviourOf } from '../agents/opencode.js'
-import { buildSystemPrompt, nowBlock, recallMemories, recallSection, systemPromptText, userLanguageBlock } from '../agents/systemPrompt.js'
+import { buildSystemPrompt, nowBlock, recallMemories, recallSection, systemPromptText, userBlock, userLanguageBlock } from '../agents/systemPrompt.js'
 import type { LoadedAgent } from '../agents/types.js'
 import { turnOrder } from '../agents/turn-order.js'
 import { answeringModel } from '../agents/rerun-upstream.js'
@@ -42,7 +43,7 @@ import { repairToolCall } from './tool-repair.js'
 import { stepWithScreenshots } from './screenshots.js'
 import { authorMetadata, sendNotification, type NotificationKind } from './notify.js'
 import { emitRunTerminal } from './run-events.js'
-import { ClaudeSignInRenewedError, classifyFinishReason, classifyProviderError, errorMessageOf, isFailedFinish, ProviderRefusedError, ProviderStreamCutError, RUN_ERROR_CODES, refusalReason, type RunErrorCode } from './provider-errors.js'
+import { ClaudeSignInRenewedError, classifyFinishReason, classifyProviderError, errorMessageOf, isFailedFinish, ProviderRefusedError, ProviderStreamCutError, RUN_ERROR_CODES, refusalReason, unreachableEndpointError, type RunErrorCode } from './provider-errors.js'
 import { armBudgetLatch, clearBudgetLatch, RERUN_BUDGET_ERROR_CODE } from './budget-latch.js'
 
 export type RunOutcome = { kind: 'done' | 'error' | 'cancelled'; error?: string; errorCode?: RunErrorCode | null }
@@ -313,6 +314,8 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             const renewed = settlement.errorCode === RUN_ERROR_CODES.unauthorized && provider === 'claude' && claudeTokenOutlived(connection, spawnToken)
             if (renewed) settlement = { ...settlement, error: new ClaudeSignInRenewedError(), errorCode: RUN_ERROR_CODES.authRenewed }
             if (settlement.errorCode === RUN_ERROR_CODES.refused) settlement = { ...settlement, error: new ProviderRefusedError(refusalReason(settlement.error)) }
+            const unreachable = provider === 'custom' ? unreachableEndpointError(connection?.config.baseUrl, settlement.error) : null
+            if (unreachable) settlement = { ...settlement, error: unreachable }
             const errorCode = settlement.errorCode ?? null
             const errorMessage = errorMessageOf(settlement.error)
             forgetCodexThread(agent.id, sessionId)
@@ -321,6 +324,13 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             // The token is still on file, so the connection would keep reading "Ready" while every
             // run on it fails. The keyless Rerun connection answers for the hub's key, not the user's.
             if (errorCode === RUN_ERROR_CODES.unauthorized && connection && connection.id !== RERUN_CONNECTION_ID) recordCredentialRejected(connection.id)
+            // Codex's answer to a real request outranks the list it gave: the model is greyed out from now
+            // on, and a box default naming it moves to one the account serves.
+            if (errorCode === RUN_ERROR_CODES.modelNotInPlan && provider === 'codex' && connection) {
+                const refusedOn = connection
+                recordRefusedModel(refusedOn.id, model)
+                await repairBoxDefault(refusedOn).catch(err => logger.warn({ err: String(err), connection: refusedOn.id }, 'box default repair failed'))
+            }
             // A turn that failed mid-flight still said things worth keeping; without this the user
             // loses everything the agent had already produced.
             if (settlement.messages) for (const message of canonicalizeHitlNames(settlement.messages)) await appendMessage(agent.id, sessionId, message).catch(() => {})
@@ -438,7 +448,8 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
         // The turn is stored as it is sent, its context part included: the history the next turn
         // replays is then byte for byte the prompt the provider already cached. Only the signature
         // stays out of the row, `signHistoryMessage` puts it back on a shared conversation.
-        const suffix = [recall, userLanguageBlock(trigger.source === 'chat' ? trigger.userLanguage : undefined), nowBlock()].filter(Boolean).join('\n\n')
+        // A shared conversation already signs each turn with its sender.
+        const suffix = [recall, shared ? '' : userBlock(author?.name), userLanguageBlock(trigger.source === 'chat' ? trigger.userLanguage : undefined), nowBlock()].filter(Boolean).join('\n\n')
         const context = suffix ? [contextTextPart(suffix)] : []
         appendP = appendMessage(agent.id, sessionId, { role: 'user', content: [{ type: 'text', text: userText }, ...context] }, author)
         appendP.catch(err => logger.error({ err: String(err), agent: agent.id }, 'append user message failed'))
@@ -472,7 +483,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             // rather than an empty `activeTools`, since Anthropic refuses a transcript holding
             // tool_use blocks when the request defines no tool.
             prepareStep: ({ messages, steps }) => {
-                const step = stepWithScreenshots(messages, ctx.screenshots, provider, model)
+                const step = stepWithScreenshots(messages, ctx.screenshots, provider, model, connection)
                 return {
                     ...step,
                     ...(behaviourOf(provider, model) === 'anthropic' ? { messages: withTailBreakpoint(step.messages ?? messages) } : {}),

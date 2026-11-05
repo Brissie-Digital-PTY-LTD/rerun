@@ -1,6 +1,6 @@
 import { mkdir, rm } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { chromium, type BrowserContext, type Page } from 'patchright'
+import { chromium, type BrowserContext, type Page, type Response as PageResponse } from 'patchright'
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import { resolveInWorkspace } from '../sandbox.js'
@@ -149,42 +149,58 @@ async function readLinks(page: Page): Promise<string> {
     return `\n\nLinks:\n${lines.length ? lines.join('\n') : 'none'}`
 }
 
-async function readPage(ctx: RunContext, page: Page, { url, screenshotPath, links, timeoutMs }: Visit): Promise<HostAttempt> {
+// `reload: false` reads a tab already showing the page as it is: it has no status of its own to report.
+async function readPage(ctx: RunContext, page: Page, { url, screenshotPath, links, timeoutMs }: Visit, { reload = true } = {}): Promise<HostAttempt> {
     let documentStatus: number | undefined
-    page.on('response', response => {
+    // Detached once read: a tab reused for every visit to its site would pile one up per visit.
+    const onResponse = (response: PageResponse) => {
         if (response.request().resourceType() === 'document' && response.frame() === page.mainFrame()) documentStatus = response.status()
-    })
-    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs })
-    const wall = await waitOutBotWall(page, timeoutMs)
-    if (!wall) {
-        await settle(page)
-        if (await acceptCookieBanner(page, timeoutMs)) await settle(page)
     }
-    const status = documentStatus ?? response?.status() ?? 0
-    const body = wall
-        ? `Blocked by ${wall.provider} bot protection, so this page cannot be read from here. ${offersTakeover(ctx.agent.config) ? 'If the user can get past it by hand, call request_takeover with this URL; otherwise use another source.' : 'Use another source.'}`
-        : (await page.innerText('body')).replace(/\s+\n/g, '\n').trim().slice(0, TEXT_LIMIT)
-    const linkList = links && !wall ? await readLinks(page) : ''
-    const html = wall ? null : await page.content().catch(() => null)
-    const saved = html === null ? null : await savePage(ctx.agent.id, { url, view: 'browser', body: html, ext: 'html', status, finalUrl: page.url() })
-    let note = ''
-    if (screenshotPath) {
-        const target = await resolveInWorkspace(ctx.agent.id, screenshotPath)
-        await mkdir(dirname(target), { recursive: true })
-        await page.screenshot({ path: target, fullPage: true })
-        note = `\n\n[screenshot saved to ${screenshotPath}]`
+    page.on('response', onResponse)
+    try {
+        const response = reload ? await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs }) : null
+        const wall = await waitOutBotWall(page, timeoutMs)
+        if (!wall) {
+            await settle(page)
+            if (await acceptCookieBanner(page, timeoutMs)) await settle(page)
+        }
+        const status = documentStatus ?? response?.status() ?? (reload ? 0 : undefined)
+        const body = wall
+            ? `Blocked by ${wall.provider} bot protection, so this page cannot be read from here. ${offersTakeover(ctx.agent.config) ? 'If the user can get past it by hand, call request_takeover with this URL; otherwise use another source.' : 'Use another source.'}`
+            : (await page.innerText('body')).replace(/\s+\n/g, '\n').trim().slice(0, TEXT_LIMIT)
+        const linkList = links && !wall ? await readLinks(page) : ''
+        const html = wall ? null : await page.content().catch(() => null)
+        const saved = html === null ? null : await savePage(ctx.agent.id, { url, view: 'browser', body: html, ext: 'html', status, finalUrl: page.url() })
+        let note = ''
+        if (screenshotPath) {
+            const target = await resolveInWorkspace(ctx.agent.id, screenshotPath)
+            await mkdir(dirname(target), { recursive: true })
+            await page.screenshot({ path: target, fullPage: true })
+            note = `\n\n[screenshot saved to ${screenshotPath}]`
+        }
+        const savedLine = saved ? `\nSaved whole: ${saved} (the rendered HTML: read or grep it for anything this text leaves out)` : ''
+        const head = status === undefined ? '[already open on your screen]' : `[${status}]`
+        return { text: `${head} ${url}${savedLine}\n\n${body}${linkList}${note}`, failed: !!wall || (status !== undefined && isFailureStatus(status)) }
+    } finally {
+        page.off('response', onResponse)
     }
-    const savedLine = saved ? `\nSaved whole: ${saved} (the rendered HTML: read or grep it for anything this text leaves out)` : ''
-    return { text: `[${status}] ${url}${savedLine}\n\n${body}${linkList}${note}`, failed: !!wall || isFailureStatus(status) }
 }
 
 const navigationFailed = (e: unknown): HostAttempt => ({ text: `Navigation failed: ${(e as Error).message}`, failed: true })
 const navigationRefused = (e: NonPublicHostError, url: string): HostAttempt => ({ text: `Navigation refused: ${e.message} (${url}), ${PUBLIC_HTTP_URL_MESSAGE}.`, failed: false })
 
-// The tab stays open and loads everything: it is on the screen the agent and a person look at.
+const originOf = (url: string): string | null => (URL.canParse(url) ? new URL(url).origin : null)
+const withoutHash = (url: string): string => Object.assign(new URL(url), { hash: '' }).href
+
+// The tab stays open and loads everything: it is on the screen the agent and a person look at. A tab
+// already on the site is reused rather than doubled: a second WhatsApp Web tab takes the session from
+// the first, and reloading the page it already shows starts the app's sync over.
 async function readInOpenBrowser(ctx: RunContext, context: BrowserContext, visit: Visit): Promise<HostAttempt> {
     try {
-        return await readPage(ctx, await context.newPage(), visit)
+        const tab = context.pages().findLast(page => originOf(page.url()) === originOf(visit.url))
+        if (!tab) return await readPage(ctx, await context.newPage(), visit)
+        await tab.bringToFront()
+        return await readPage(ctx, tab, visit, { reload: withoutHash(tab.url()) !== withoutHash(visit.url) })
     } catch (e) {
         return navigationFailed(e)
     }

@@ -265,6 +265,16 @@ describe('run loop paths', () => {
         expect(sent.content.map(p => ({ type: p.type, text: p.text, providerOptions: p.providerOptions }))).toEqual(stored.map(p => ({ type: p.type, text: p.text, providerOptions: p.providerOptions })))
     })
 
+    it("names the user in the turn's context when they talk alone with the coworker", async () => {
+        stream.parts = textTurn('Noted.')
+
+        const { sessionId } = await run('draft the emails', { trigger: { source: 'chat', author: { id: 'u1', name: 'Yassine' } } })
+
+        const stored = JSON.parse((await listMessages(id, sessionId))[0].contentJson) as Array<{ type: string; text: string }>
+        expect(stored[0].text).toBe('draft the emails')
+        expect(stored[1].text).toMatch(/^<user>\nYassine: the person you are talking to/)
+    })
+
     // The recall waits on the hub's embedding, so it runs alongside the preparation, not after it.
     it('starts the memory recall before the tools are even built', async () => {
         let release!: () => void

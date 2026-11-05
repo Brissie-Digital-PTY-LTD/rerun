@@ -125,7 +125,8 @@ export function ModelBuckets({ connection, defaultModel, onModelsChange }: Model
     const hidden = offered.filter(m => !isModelEnabled(connection, m.id))
 
     if (connection.id === RERUN_CONNECTION_ID || offered.length <= 1) {
-        if (available.length <= 1) return null
+        // A custom endpoint's lone model is still the one thing saying what the server answered.
+        if (available.length === 0 || (available.length === 1 && connection.provider !== 'custom')) return null
         return (
             <DetailBlock title="Models">
                 <div className={MODEL_GRID}>

@@ -10,6 +10,7 @@ import { installBrowserInBackground, installDesktopInBackground, updateCliToolsI
 import { CODEX_VERSION } from '../../runtime/codex-cli.js'
 import { listConnections } from '../../connections/registry.js'
 import { refreshStaleCodexPlanLimits } from '../../connections/codex-plan-limits.js'
+import { refreshStaleCustomCatalogs } from '../../connections/custom-catalog.js'
 import { refreshOpencodeCatalog } from '../../connections/opencode-catalog.js'
 import { refreshStaleOpencodePlanLimits } from '../../connections/opencode-plan-limits.js'
 import { env } from '../../config/env.js'
@@ -35,6 +36,7 @@ export async function runCommand(): Promise<void> {
             refreshStaleCodexPlanLimits(connections)
             refreshStaleOpencodePlanLimits(connections)
             if (connections.some(connection => connection.config.provider === 'opencode')) void refreshOpencodeCatalog()
+            refreshStaleCustomCatalogs(connections)
         })
         .catch(err => logger.warn({ err: String(err) }, 'plan limits boot read skipped'))
     const stopScheduler = startScheduler()

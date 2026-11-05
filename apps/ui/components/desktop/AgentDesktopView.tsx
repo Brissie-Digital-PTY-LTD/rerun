@@ -118,14 +118,14 @@ function DesktopSession({ agentId, takeover }: { agentId: string; takeover: Take
         if (!takeover || finishingRef.current) return
         finishingRef.current = true
         setBusy(true)
-        const result = await finishTakeoverAction(agentId)
+        const result = await finishTakeoverAction(agentId, { keepOpen: true })
         setBusy(false)
         if (!result.ok) {
             finishingRef.current = false
             toast.error(result.error)
             return
         }
-        handBack(takeover.callId, result.url)
+        handBack(takeover.callId, { url: result.url, open: result.open })
     }
 
     const onDisconnect = useCallback(() => setScreen({ status: 'disconnected' }), [])

@@ -3,7 +3,7 @@ import { desktopAppRequestSchema, desktopSessionRequestSchema, takeoverRequestSc
 import { agentExists } from '../../agents/loader.js'
 import { openDesktopApp } from '../../desktop/apps.js'
 import { desktopAvailable, ensureDesktop, runningDesktops } from '../../desktop/session.js'
-import { activeTakeovers, finishTakeover, startTakeover } from '../../desktop/takeover.js'
+import { activeTakeovers, finishTakeover, handBackTakeover, startTakeover } from '../../desktop/takeover.js'
 import { notFound } from '../../lib/errors.js'
 import { agentsOnScreen } from '../../tools/builtin/computer.js'
 
@@ -42,4 +42,8 @@ agentDesktopRoutes.post('/takeover', async c => {
     return c.json(status())
 })
 
-agentDesktopRoutes.delete('/takeover', async c => c.json(await finishTakeover(c.req.param('id')!)))
+// keepOpen: the person hands the browser back to the run that asked for it, which carries on in it.
+agentDesktopRoutes.delete('/takeover', async c => {
+    const id = c.req.param('id')!
+    return c.json(await (c.req.query('keepOpen') === '1' ? handBackTakeover(id) : finishTakeover(id)))
+})

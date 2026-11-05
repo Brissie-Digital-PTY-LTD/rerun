@@ -1,9 +1,9 @@
 import { APP_CATEGORIES, LANDING_CATEGORIES, kitCategoryPath, type KitCategory } from './catalogue'
 
 /**
- * Both galleries render the same map of fifteen categories. Whichever side you land on, the six
- * shared ones and the nine app ones are listed together: only the href changes, so a designer never
- * has to know which app a component happens to live in.
+ * Both galleries render the same map of categories. Whichever side you land on, the shared ones and
+ * the app ones are listed together: only the href changes, so a designer never has to know which
+ * app a component happens to live in.
  */
 export function KitIndex({ here, landingBase, appBase }: { here: 'landing' | 'app'; landingBase: string; appBase: string }) {
     const hrefOf = (category: KitCategory) => {

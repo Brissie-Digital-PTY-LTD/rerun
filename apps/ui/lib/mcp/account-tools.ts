@@ -37,7 +37,7 @@ const MODEL_PIN_PROPERTIES = {
     provider: {
         type: 'string',
         description:
-            'rerun | anthropic | claude | codex | openai | google | openrouter | opencode. A shortcut for `connectionId` that only works while the workspace has a single connection of that provider; with several, the call is refused and lists them. It replaces whatever connection the coworker was pinned to.',
+            'rerun | anthropic | claude | codex | openai | google | openrouter | opencode | custom. A shortcut for `connectionId` that only works while the workspace has a single connection of that provider; with several, the call is refused and lists them. It replaces whatever connection the coworker was pinned to.',
     },
     model: {
         type: ['string', 'null'],

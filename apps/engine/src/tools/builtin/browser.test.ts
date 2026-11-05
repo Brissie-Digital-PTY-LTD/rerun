@@ -42,6 +42,7 @@ const pw = vi.hoisted(() => ({
     closeError: false,
     joinable: null as (() => Promise<unknown>) | null,
     newPages: 0,
+    broughtToFront: 0,
 }))
 
 vi.mock('../virtual-display.js', () => ({
@@ -79,6 +80,8 @@ vi.mock('patchright', () => ({
             }
             const page = {
                 on: (_event: string, listener: (response: unknown) => void) => listeners.push(listener),
+                off: (_event: string, listener: (response: unknown) => void) => listeners.splice(listeners.indexOf(listener), 1),
+                listenerCount: () => listeners.length,
                 mainFrame: () => mainFrame,
                 goto: async (url: string, gotoOptions: unknown) => {
                     pw.gotos.push({ url, options: gotoOptions })
@@ -97,6 +100,9 @@ vi.mock('patchright', () => ({
                     view += 1
                 },
                 waitForLoadState: async () => {},
+                bringToFront: async () => {
+                    pw.broughtToFront += 1
+                },
                 waitForEvent: async (_event: string, options: { predicate: (frame: unknown) => boolean }) => {
                     if (!pw.page.consentNavigates || !options.predicate(mainFrame)) throw new Error('Timeout 2000ms exceeded while waiting for event "framenavigated"')
                     return mainFrame
@@ -186,6 +192,7 @@ beforeEach(() => {
     pw.closeError = false
     pw.joinable = null
     pw.newPages = 0
+    pw.broughtToFront = 0
 })
 
 describe('browser_navigate', () => {
@@ -498,6 +505,46 @@ describe('browser_navigate', () => {
             expect(pw.routes).toBe(0)
             expect(pw.closes).toBe(0)
             expect(pw.displayHolds).toEqual([])
+        })
+
+        it('reads a tab already showing the page as it is, without reloading it or opening another', async () => {
+            const context = await openWindow()
+            await context.pages()[0]!.goto('https://web.example/#chats', {})
+            pw.joinable = async () => context
+            pw.page.views = showing('Chats')
+            expect(await navigate(ctxWith(), { url: 'https://web.example/' })).toBe('[already open on your screen] https://web.example/\n\nChats')
+            expect(pw.gotos).toHaveLength(1)
+            expect(pw.newPages).toBe(0)
+            expect(pw.broughtToFront).toBe(1)
+        })
+
+        it('knows the page a tab shows when the url is written without its trailing slash', async () => {
+            const context = await openWindow()
+            await context.pages()[0]!.goto('https://web.example/', {})
+            pw.joinable = async () => context
+            pw.page.views = showing('Chats')
+            expect(await navigate(ctxWith(), { url: 'https://web.example' })).toBe('[already open on your screen] https://web.example\n\nChats')
+            expect(pw.gotos).toHaveLength(1)
+        })
+
+        it('leaves no listener behind on a tab it reads again and again', async () => {
+            const context = await openWindow()
+            await context.pages()[0]!.goto('https://web.example/', {})
+            pw.joinable = async () => context
+            pw.page.views = showing('Chats')
+            await navigate(ctxWith(), { url: 'https://web.example/' })
+            await navigate(ctxWith(), { url: 'https://web.example/settings' })
+            expect((context.pages()[0] as unknown as { listenerCount: () => number }).listenerCount()).toBe(0)
+        })
+
+        it('goes to another page of a site in the tab already on that site', async () => {
+            const context = await openWindow()
+            await context.pages()[0]!.goto('https://web.example/', {})
+            pw.joinable = async () => context
+            pw.page.views = showing('Settings')
+            expect(await navigate(ctxWith(), { url: 'https://web.example/settings' })).toBe('[200] https://web.example/settings\n\nSettings')
+            expect(pw.gotos.map(visit => visit.url)).toEqual(['https://web.example/', 'https://web.example/settings'])
+            expect(pw.newPages).toBe(0)
         })
 
         it('reports a tab that could not load without touching the window', async () => {

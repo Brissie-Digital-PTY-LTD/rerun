@@ -66,7 +66,7 @@ export type SelfImprovement = z.infer<typeof selfImprovementSchema>
 export type SelfImprovementKey = keyof SelfImprovement
 export const SELF_IMPROVEMENT_KEYS = Object.keys(selfImprovementSchema.shape) as SelfImprovementKey[]
 
-export const providerSchema = z.enum(['rerun', 'anthropic', 'claude', 'codex', 'openai', 'google', 'openrouter', 'opencode'])
+export const providerSchema = z.enum(['rerun', 'anthropic', 'claude', 'codex', 'openai', 'google', 'openrouter', 'opencode', 'custom'])
 export type Provider = z.infer<typeof providerSchema>
 
 // The names the boxes know the Rerun models by. Aliases, not OpenRouter ids: the hub proxy resolves
@@ -106,6 +106,9 @@ export const DEFAULT_PROVIDER_MODEL: Record<Provider, string> = {
     google: 'gemini-3.6-flash',
     openrouter: 'anthropic/claude-sonnet-5.5',
     opencode: OPENCODE_DEFAULT_MODEL,
+    // A custom endpoint serves whatever its owner installed: there is no model to fall back on, so
+    // a connection runs the first one it lists.
+    custom: '',
 }
 
 // How much prose the agent addresses to the user, independent of how much work it does. `normal`

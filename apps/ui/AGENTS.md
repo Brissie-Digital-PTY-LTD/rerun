@@ -48,16 +48,16 @@ Interface web moderne pour **rerun-engine** : un moteur d'agents IA autonomes, a
 └─────────────────────────────────────────────┘
 ```
 
-## UI kit sous jeton
+## Labs sous jeton
 
 `/render/kit` (la galerie de toutes les briques d'UI de l'app) et `/render/lab/*` (les labs de
-composants) sont hors auth, `render/` étant exclu du matcher de `proxy.ts` : ils répondent 404 sur un
-hôte déployé sans le jeton `BRAND_GATE_TOKEN`. Les rendus OG voisins, `/render/brand/[card]` et
-`/render/templates/[slug]`, restent ouverts, le service de capture les prend sur chaque carte.
+composants) sont hors auth, `render/` étant exclu du matcher de `proxy.ts`. Le UI kit est public,
+comme les rendus OG voisins (`/render/brand/[card]`, `/render/templates/[slug]`). Seuls les labs
+répondent 404 sur un hôte déployé sans le jeton `BRAND_GATE_TOKEN`.
 
 On ouvre une fois avec `?key=<jeton>` : le cookie posé vaut pour `.rerun.build`, donc aussi pour les
-pages de design system de la landing (`/brand/ui`, `/brand/motion`, `/preview/*`). Détail dans
-`apps/landing/AGENTS.md`. Un serveur de dev est toujours ouvert.
+labs de la landing (`/preview/*`). Détail dans `apps/landing/AGENTS.md`. Un serveur de dev est
+toujours ouvert.
 
 ## Staging sous mot de passe
 

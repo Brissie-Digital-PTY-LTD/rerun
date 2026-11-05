@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { APICallError, LoadAPIKeyError, RetryError } from 'ai'
-import { classifyFinishReason, classifyProviderError, errorMessageOf, isFailedFinish, ProviderRefusedError, refusalReason, RUN_ERROR_CODES, STREAM_CUT_RAW_REASON, upstreamReason } from './provider-errors.js'
+import { classifyFinishReason, classifyProviderError, errorMessageOf, isFailedFinish, ProviderRefusedError, refusalReason, RUN_ERROR_CODES, STREAM_CUT_RAW_REASON, unreachableEndpointError, upstreamReason } from './provider-errors.js'
 import { RERUN_BUDGET_ERROR_CODE } from './budget-latch.js'
 
 const apiError = (init: { statusCode?: number; message?: string; data?: unknown; isRetryable?: boolean; responseBody?: string }) =>
@@ -70,14 +70,23 @@ describe('classifyProviderError', () => {
     // Read off the failed runs of real boxes: none of them carried an error code, so the chat showed
     // the raw text with nothing to click.
     it('matches a model the plan does not include, and a spent plan worded differently', () => {
-        expect(classifyProviderError('claude', apiError({ message: 'Fable 5.1 requires usage credits. Switch to another model to continue.' }))).toBe(RUN_ERROR_CODES.usageLimit)
+        expect(classifyProviderError('claude', apiError({ message: 'Fable 5.1 requires usage credits. Switch to another model to continue.' }))).toBe(RUN_ERROR_CODES.modelNotInPlan)
         expect(classifyProviderError('claude', apiError({ message: "You're out of usage credits. Switch to another model to continue." }))).toBe(RUN_ERROR_CODES.usageLimit)
         expect(classifyProviderError('claude', apiError({ message: "You've hit your org's monthly spend limit · ask your admin to raise it at claude.ai/admin-settings/usage" }))).toBe(RUN_ERROR_CODES.usageLimit)
         expect(
             classifyProviderError('codex', new Error('{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-6-astra\' model is not supported when using Codex with a ChatGPT account."}}'))
-        ).toBe(RUN_ERROR_CODES.usageLimit)
-        expect(classifyProviderError('codex', new Error('unexpected status 404 Not Found: The model `gpt-5.5` does not exist or you do not have access to it.'))).toBe(RUN_ERROR_CODES.usageLimit)
+        ).toBe(RUN_ERROR_CODES.modelNotInPlan)
+        expect(classifyProviderError('codex', new Error('unexpected status 404 Not Found: The model `gpt-5.5` does not exist or you do not have access to it.'))).toBe(RUN_ERROR_CODES.modelNotInPlan)
         expect(classifyProviderError('codex', new Error("You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro) or try again at 4:44 PM."))).toBe(RUN_ERROR_CODES.usageLimit)
+    })
+
+    // The body a ChatGPT account without the model answers with, as the hub stored it for 16 failed
+    // runs: a spent quota resets, a missing model does not, so the two are told apart.
+    it('reads a model the ChatGPT plan leaves out apart from a spent quota', () => {
+        const body = '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-6.1-sol\' model is not supported when using Codex with a ChatGPT account.","code":"model_not_found"}}'
+        expect(classifyProviderError('codex', new Error(body))).toBe(RUN_ERROR_CODES.modelNotInPlan)
+        expect(classifyProviderError('codex', apiError({ message: body, statusCode: 400, responseBody: body }))).toBe(RUN_ERROR_CODES.modelNotInPlan)
+        expect(classifyProviderError('codex', new Error('usage_limit_exceeded'))).toBe(RUN_ERROR_CODES.usageLimit)
     })
 
     it('matches an expired CLI login', () => {
@@ -125,7 +134,7 @@ describe('classifyProviderError', () => {
     })
 
     it('reads an error event of the OpenAI Responses stream', () => {
-        expect(classifyProviderError('openai', openAiStreamError('model_not_found', MODEL_NOT_FOUND))).toBe(RUN_ERROR_CODES.usageLimit)
+        expect(classifyProviderError('openai', openAiStreamError('model_not_found', MODEL_NOT_FOUND))).toBe(RUN_ERROR_CODES.modelNotInPlan)
     })
 })
 
@@ -182,5 +191,23 @@ describe('ProviderRefusedError', () => {
     it('keeps the words the chat classifies, with the reason after them', () => {
         expect(new ProviderRefusedError(SCHEMA_REFUSAL).message).toBe(`Provider returned error: ${SCHEMA_REFUSAL}`)
         expect(new ProviderRefusedError(null).message).toBe('Provider returned error')
+    })
+})
+
+describe('unreachableEndpointError', () => {
+    const refused = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { code: 'ECONNREFUSED' }) })
+
+    it('names the address and the reason a custom endpoint could not be reached', () => {
+        const error = unreachableEndpointError('http://localhost:11434/v1', new APICallError({ message: 'Cannot connect to API: fetch failed', url: 'http://localhost:11434/v1/chat/completions', requestBodyValues: {}, cause: refused }))
+        expect(error?.message).toBe('Could not reach the custom endpoint at localhost:11434 (ECONNREFUSED). Check that the server is running and reachable from the engine.')
+    })
+
+    it('looks through the retries the SDK wraps the last attempt in', () => {
+        const last = new APICallError({ message: 'Cannot connect to API: getaddrinfo ENOTFOUND gpu.lan', url: 'http://gpu.lan/v1', requestBodyValues: {} })
+        expect(unreachableEndpointError('http://gpu.lan/v1', new RetryError({ message: 'failed after 3 attempts', reason: 'maxRetriesExceeded', errors: [last] }))?.message).toContain('gpu.lan (ENOTFOUND)')
+    })
+
+    it('leaves an error the server answered alone', () => {
+        expect(unreachableEndpointError('http://localhost:11434/v1', new APICallError({ message: 'Bad request', url: 'u', requestBodyValues: {}, statusCode: 400 }))).toBeNull()
     })
 })

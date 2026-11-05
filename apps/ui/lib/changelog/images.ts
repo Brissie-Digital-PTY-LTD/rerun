@@ -1,6 +1,7 @@
 import type { Database } from '@/app/api/database.types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { uploadPublicImage } from '@/lib/images/upload'
+import { randomUuid } from '@/lib/random-uuid'
 
 export const CHANGELOG_BUCKET = 'changelog-images'
 
@@ -34,7 +35,7 @@ export async function uploadChangelogMedia(supabase: SupabaseClient<Database>, b
         throw new Error(`Animation too heavy (${Math.round(animated.byteLength / 1000)} kB). Shorten the recording or lower its frame rate.`)
     }
 
-    const path = `${FOLDER}/${crypto.randomUUID()}.webp`
+    const path = `${FOLDER}/${randomUuid()}.webp`
     const { error } = await supabase.storage
         .from(CHANGELOG_BUCKET)
         .upload(path, new Uint8Array(animated), { contentType: 'image/webp', cacheControl: IMMUTABLE_CACHE_CONTROL, upsert: true })

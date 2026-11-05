@@ -10,7 +10,9 @@ export type SourceKind = 'included' | 'plan' | 'key'
 
 export type AddableProvider = Exclude<Provider, 'rerun'>
 
-export type KeyProvider = Exclude<AddableProvider, 'claude' | 'codex' | 'opencode'>
+// The API key providers with a key to fetch from a console. A custom endpoint is listed beside them
+// but asks for its address first, and its key is optional.
+export type KeyProvider = Exclude<AddableProvider, 'claude' | 'codex' | 'opencode' | 'custom'>
 
 // The providers connected by pasting a key, whose page walks the user through getting one. OpenCode
 // is one of them while it sells a plan: it sits with the subscriptions, not with the API keys.
@@ -41,6 +43,7 @@ export const PROVIDER_PITCH: Record<AddableProvider, { title: string; hint: stri
     google: { title: 'Google', hint: 'Gemini models, billed per token' },
     openrouter: { title: 'OpenRouter', hint: 'Every model behind one key' },
     opencode: { title: 'OpenCode Go or Console', hint: 'Paste your OpenCode key' },
+    custom: { title: 'Custom endpoint', hint: 'Ollama, LM Studio, vLLM or any OpenAI-compatible server' },
 }
 
 // Numbered steps rendered by CredentialGuide, the same fold the service credentials use.
@@ -96,6 +99,11 @@ export function planProviders(opencodeOffered: boolean): AddableProvider[] {
 }
 export const KEY_PROVIDERS: KeyProvider[] = ['anthropic', 'openai', 'google', 'openrouter']
 
+// A custom endpoint joins the API keys only on a machine whose engine runs it.
+export function keyProviders(customOffered: boolean): AddableProvider[] {
+    return customOffered ? [...KEY_PROVIDERS, 'custom'] : KEY_PROVIDERS
+}
+
 export const PLAN_LABELS: Partial<Record<AddableProvider, string>> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' }
 
 const PLAN_NAMES: Partial<Record<Provider, string>> = { claude: 'Claude', codex: 'ChatGPT', opencode: 'OpenCode' }
@@ -137,9 +145,15 @@ export function isHiddenModel(connectionId: string, model: string): boolean {
 
 // Extra ids are served on top of `models` by the engine, so they are always on.
 // OpenCode's list is the box's live reading of its catalog when there is one, the snapshot this build
-// was cut with otherwise.
+// was cut with otherwise. A custom endpoint's is what it last listed at `/models`, ids as labels.
+function catalogOf(source: BoxConnection): CatalogModel[] {
+    if (source.providerModels) return source.providerModels.map(m => ({ id: m.id, label: m.label }))
+    if (source.discoveredModels) return source.discoveredModels.map(m => ({ id: m.id, label: m.id }))
+    return catalogFor(source.provider).models
+}
+
 export function offeredModels(source: BoxConnection): CatalogModel[] {
-    const catalog = source.providerModels ? source.providerModels.map(m => ({ id: m.id, label: m.label })) : catalogFor(source.provider).models
+    const catalog = catalogOf(source)
     const catalogIds = new Set(catalog.map(m => m.id))
     // A model the connection still offers that the catalog no longer lists (retired between two
     // deploys) has to stay switchable off.
@@ -312,13 +326,16 @@ export function sourceSummary(source: BoxConnection, credit: RerunCredit): strin
     if (planWindows.length) return planWindows.map(window => `${planWindowName(window, source.provider)} ${planWindowPercent(window)}`).join(' · ')
     const count = enabledModels(source).length
     const models = count === 1 ? '1 model' : `${count} models`
-    return `${KIND_LABEL[sourceKind(source.provider)]} · ${models}`
+    return `${source.provider === 'custom' ? PROVIDER_PITCH.custom.title : KIND_LABEL[sourceKind(source.provider)]} · ${models}`
 }
 
 // "Claude", then "Claude 2": a name is what tells two subscriptions of the same provider apart in
 // every model picker, so it must never come out identical to one already there.
 export function suggestName(provider: Provider, taken: string[]): string {
-    const base = PLAN_NAMES[provider] ?? PROVIDER_LABELS[provider]
+    return uniqueName(PLAN_NAMES[provider] ?? PROVIDER_LABELS[provider], taken)
+}
+
+export function uniqueName(base: string, taken: string[]): string {
     if (!taken.includes(base)) return base
     for (let n = 2; ; n += 1) {
         const candidate = `${base} ${n}`

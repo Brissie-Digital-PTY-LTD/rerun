@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelMessage } from 'ai'
-import { agentConfigSchema } from '@rerun/contracts'
+import { agentConfigSchema, quickRepliesOf, quickReplyDraft, quickReplyPromisesValue } from '@rerun/contracts'
 import { QuickRepliesSplitter, createQuickRepliesCapture, offersQuickReplies, parseQuickRepliesBlock, quickRepliesCall, withoutQuickRepliesCalls } from './quick-replies-stream.js'
 
 const BLOCK = '<quick_replies>\nFind 100 more\nExport them as CSV\n</quick_replies>'
@@ -180,5 +180,45 @@ describe('withoutQuickRepliesCalls', () => {
         expect(withoutQuickRepliesCalls(plain)).toBe(plain)
         const parts = { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } as ModelMessage
         expect(withoutQuickRepliesCalls(parts)).toBe(parts)
+    })
+})
+
+describe('quick reply that announces a value', () => {
+    // The replies of the 03/11 case: "Here is the repo URL" went out alone and the coworker had to ask again.
+    it('reaches the chat as a reply to finish in the composer, not one to send', () => {
+        const { blocks } = split(['Please send the repository URL.\n\n', "<quick_replies>\nHere is the repo URL\nI'll upload a local clone\nUse the last release as the start\n</quick_replies>"])
+        const call = quickRepliesCall({ toolCallId: 'qr-1', replies: blocks[0] })
+        const chips = quickRepliesOf({ role: 'assistant', parts: [{ type: `tool-${call.toolName}`, toolCallId: call.toolCallId, state: 'input-available', input: call.input }] })
+        expect(chips).toEqual(['Here is the repo URL', 'Use the last release as the start'])
+        expect(chips.map(quickReplyDraft)).toEqual(['Here is the repo URL: ', null])
+    })
+})
+
+describe('quickReplyPromisesValue', () => {
+    it('spots a reply that only promises to send something later', () => {
+        for (const reply of ["It's on GitHub, I'll send the URL", "I'll upload a local clone", 'I’ll paste it now', 'I will share access', "Je t'envoie l'URL", 'Je vais vous envoyer le lien', 'Je colle le lien', "I'll send you the link", "Je te donne l'accès"]) expect(quickReplyPromisesValue(reply)).toBe(true)
+    })
+
+    it('keeps a reply the user can send as is', () => {
+        for (const reply of ['Since the last release', 'Send it to my inbox', 'Share it with my team', 'Last 20 merged PRs', "I'll do it myself", 'Envoie-le à mon équipe', "I'll send it myself", "I'll share it with the team myself", "I'll give it a try", 'Je donne mon accord', 'Je te donne le feu vert', "I'll add a chart"]) expect(quickReplyPromisesValue(reply)).toBe(false)
+    })
+})
+
+describe('quickReplyDraft', () => {
+    it('turns an announcement into the start of a message', () => {
+        expect(quickReplyDraft('Here is the repo URL')).toBe('Here is the repo URL: ')
+        expect(quickReplyDraft("Here's my email")).toBe("Here's my email: ")
+        expect(quickReplyDraft('Here are the IDs')).toBe('Here are the IDs: ')
+        expect(quickReplyDraft('Voici le lien')).toBe('Voici le lien: ')
+    })
+
+    it('takes a reply ending on a mark that waits for a value', () => {
+        expect(quickReplyDraft('Here is the repo URL…')).toBe('Here is the repo URL: ')
+        expect(quickReplyDraft('My company name is...')).toBe('My company name is: ')
+        expect(quickReplyDraft('Le lien du dépôt :')).toBe('Le lien du dépôt: ')
+    })
+
+    it('leaves a reply that stands on its own to be sent', () => {
+        for (const reply of ['Find 100 more', 'Export them as CSV', 'Use the last release as the start', "I'll upload a local clone", 'Thereafter weekly', '…', "Voilà, c'est fait", 'Here you go, all set!', 'Voici, c’est bon']) expect(quickReplyDraft(reply)).toBeNull()
     })
 })

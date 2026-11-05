@@ -2,6 +2,7 @@
 
 import { BaseUrlField } from '@/components/connections/BaseUrlField'
 import { CustomModelList } from '@/components/connections/CustomModelList'
+import { CustomEndpointSettings } from '@/components/connections/custom/CustomEndpointSettings'
 import { DeleteConnectionButton, type DeleteResult } from '@/components/connections/DeleteConnectionButton'
 import { DetailBlock } from '@/components/connections/DetailBlock'
 import { ModelBuckets } from '@/components/connections/ModelBuckets'
@@ -25,6 +26,12 @@ import { toast } from 'sonner'
 
 type MutationResult = { success: boolean; error?: string }
 
+const CUSTOM_MODEL_HINT = (
+    <>
+        Add a model the server serves but does not list (e.g. <span className="font-mono">llama3.3:70b</span>).
+    </>
+)
+
 type ConnectionDetailProps = {
     connection: BoxConnection
     credit: RerunCredit
@@ -45,6 +52,7 @@ export function ConnectionDetail({ connection, credit, defaultModel, reconnectRe
     const [error, setError] = useState<string | null>(null)
     const rejected = reconnectRequested || connection.credentialRejected
     const isOpenRouter = connection.provider === 'openrouter'
+    const isCustom = connection.provider === 'custom'
     const catalog = catalogFor(connection.provider)
 
     const patch = useCallback(
@@ -85,6 +93,8 @@ export function ConnectionDetail({ connection, credit, defaultModel, reconnectRe
                 )}
                 {isOpenRouter && <BaseUrlField baseUrl={connection.baseUrl ?? ''} onCommit={value => void patch({ baseUrl: value })} />}
                 {isOpenRouter && connection.connected && <CustomModelList models={connection.extraModels} onChange={extraModels => void patch({ extraModels })} reserved={catalog.models.map(m => m.id)} />}
+                {isCustom && <CustomModelList hint={CUSTOM_MODEL_HINT} placeholder="model id" models={connection.extraModels} onChange={extraModels => void patch({ extraModels })} reserved={[...connection.models, ...(connection.discoveredModels ?? []).map(m => m.id)]} />}
+                {isCustom && <CustomEndpointSettings key={connection.id} connection={connection} onPatch={next => void patch(next)} />}
             </PanelScroller>
             {connection.id !== RERUN_CONNECTION_ID && (
                 <div className="border-t p-3">

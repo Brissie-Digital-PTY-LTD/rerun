@@ -60,7 +60,7 @@ export const NO_VISION_MODEL =
 // same connection that can, or null when it has none.
 function visionModelFor(ctx: RunContext): ModelOverride | undefined | null {
     const { provider, model, connection } = ctx.agent.resolved
-    if (modelSeesImages(provider, model)) return undefined
+    if (modelSeesImages(provider, model, connection)) return undefined
     const seeing = opencodeVisionModel(connection)
     return seeing ? { model: seeing } : null
 }

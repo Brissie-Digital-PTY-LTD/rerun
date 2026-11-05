@@ -3,8 +3,10 @@ import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { assertModelEntitled } from '@/app/api/_services/engine-plan.service'
 import { ensureWorkspaceEngine, findWorkspaceEngine, getWorkspaceConnection } from '@/app/api/_services/workspace-engine.service'
 import { isPremiumModelEntitled } from '@/cloud/billing'
+import { RERUN_CLOUD } from '@/cloud/edition'
 import {
     KEY_PROVIDERS,
+    keyProviders,
     planProviders,
     PROVIDER_GUIDE,
     PROVIDER_PITCH,
@@ -33,6 +35,8 @@ import {
     createConnection as engineCreateConnection,
     deleteConnection as engineDeleteConnection,
     getConnectionUsage as engineGetConnectionUsage,
+    probeCustomEndpoint as engineProbeCustomEndpoint,
+    supportsCustomProvider,
     supportsOpencode,
     listConnections as engineListConnections,
     patchConnection as enginePatchConnection,
@@ -45,7 +49,7 @@ import type { BoxConnection, BoxConnectionsList, BoxConnectionUsage, BoxDefault,
 import { providerKeyProblem } from '@/lib/engine/verify-provider-key'
 import { assertPublicUrl } from '@/lib/net/public-fetch'
 import { OPENCODE_ENABLED } from '@/lib/features'
-import { CONNECTION_TOKEN_KEY, DEFAULT_CONNECTION_MODELS, RERUN_CONNECTION_ID, canonicalModelId, canonicalModelIds, claudeTokenProblem, type AddableProvider, type AiConnectionView, type AiConnectionsView } from '@rerun/contracts'
+import { CONNECTION_TOKEN_KEY, DEFAULT_CONNECTION_MODELS, RERUN_CONNECTION_ID, canonicalModelId, canonicalModelIds, claudeTokenProblem, type AddableProvider, type AiConnectionView, type AiConnectionsView, type CustomProbeInput, type CustomProbeResult } from '@rerun/contracts'
 
 // The AI providers of a workspace, for both the web dialog's server actions and the app's /api/v1
 // routes. They live at the root of the engine's data dir, never under a Box: the workspace is the
@@ -109,10 +113,11 @@ function assertValidClaudeToken(keys: Record<string, string> | undefined): void 
     if (problem) throw new ConnectionInputError(problem)
 }
 
-// The machine sends the user's key to this address: a private one would turn the Box into a probe of
-// the host's own network.
+// The machine sends the user's key to this address: on Rerun Cloud a private one would turn the Box
+// into a probe of the host's own network. A self-hosted install runs on its owner's network, and the
+// model it most often points at (Ollama, LM Studio) listens on that very machine.
 async function assertPublicBaseUrl(baseUrl: string | undefined): Promise<void> {
-    if (!baseUrl) return
+    if (!baseUrl || !RERUN_CLOUD) return
     try {
         await assertPublicUrl(baseUrl)
     } catch {
@@ -131,7 +136,20 @@ export async function isOpencodeOfferedTo(workspaceId: number): Promise<boolean>
     return isOpencodeOffered((await findWorkspaceEngine(workspaceId))?.conn)
 }
 
+// A custom endpoint is run by the engine's own loop too, and probed by it: an older engine would
+// refuse the provider outright.
+export async function isCustomOffered(conn: EngineConnection | null | undefined): Promise<boolean> {
+    return !!conn && (await supportsCustomProvider(conn))
+}
+
+export async function isCustomOfferedTo(workspaceId: number): Promise<boolean> {
+    return isCustomOffered((await findWorkspaceEngine(workspaceId))?.conn)
+}
+
+const CUSTOM_NEEDS_UPDATE = 'Custom endpoints arrive with the next update of this machine. Try again in a little while.'
+
 async function assertProviderOffered(provider: CreateBoxConnectionInput['provider'], conn: EngineConnection): Promise<void> {
+    if (provider === 'custom' && !(await supportsCustomProvider(conn))) throw new ConnectionInputError(CUSTOM_NEEDS_UPDATE)
     if (provider !== 'opencode') return
     if (!OPENCODE_ENABLED) throw new ConnectionInputError('OpenCode is not available yet.')
     if (!(await supportsOpencode(conn))) throw new ConnectionInputError('OpenCode arrives with the next update of this machine. Try again in a little while.')
@@ -147,6 +165,15 @@ export async function createAiConnection(workspaceId: number, params: CreateBoxC
     const keyProblem = await providerKeyProblem(params.provider, params.keys, params.baseUrl)
     if (keyProblem) throw new ConnectionInputError(keyProblem)
     return engineCreateConnection(conn, params)
+}
+
+// Asked of the machine, which is what will call the endpoint: on a self-hosted install it sits on a
+// network the hub may not see.
+export async function probeCustomEndpoint(workspaceId: number, input: CustomProbeInput): Promise<CustomProbeResult> {
+    await assertPublicBaseUrl(input.baseUrl)
+    const conn = await connectionForCreate(workspaceId)
+    if (!(await supportsCustomProvider(conn))) throw new ConnectionInputError(CUSTOM_NEEDS_UPDATE)
+    return engineProbeCustomEndpoint(conn, input)
 }
 
 export async function updateAiConnection(workspaceId: number, id: string, patch: UpdateBoxConnectionInput): Promise<BoxConnection> {
@@ -211,9 +238,9 @@ export async function codexKeysWhenApproved(deviceAuthId: string, userCode: stri
 
 // What the app adds: the connection takes the name the web would suggest and the provider's
 // default models, the way the web dialog creates one.
-export async function addAiConnection(workspaceId: number, provider: AddableProvider, keys: Record<string, string>, options: { name?: string; baseUrl?: string } = {}): Promise<string> {
+export async function addAiConnection(workspaceId: number, provider: AddableProvider, keys: Record<string, string>, options: { name?: string; baseUrl?: string; models?: string[] } = {}): Promise<string> {
     const name = options.name ?? suggestName(provider, await takenNames(workspaceId))
-    const created = await createAiConnection(workspaceId, { name, provider, models: DEFAULT_CONNECTION_MODELS[provider], extraModels: [], baseUrl: options.baseUrl, keys })
+    const created = await createAiConnection(workspaceId, { name, provider, models: options.models ?? DEFAULT_CONNECTION_MODELS[provider], extraModels: [], baseUrl: options.baseUrl, keys })
     return created.id
 }
 
@@ -270,7 +297,7 @@ export async function readAiConnectionsView(ctx: WorkspaceContext): Promise<AiCo
         connections: pinFirst(list.connections, connection => connection.id === RERUN_CONNECTION_ID).map(source => connectionView(source, list, credit, premiumAllowed)),
         default: { ...pick, label: modelName(pick.connectionId, pick.model) },
         credit: { percent: credit.percent, usedUp: isCreditUsedUp(credit), backOn: creditResetPhrase(credit) },
-        addable: [...planProviders(await isOpencodeOffered(engine?.conn)), ...KEY_PROVIDERS].map(provider => ({
+        addable: [...planProviders(await isOpencodeOffered(engine?.conn)), ...keyProviders(await isCustomOffered(engine?.conn))].map(provider => ({
             provider,
             kind: sourceKind(provider),
             ...PROVIDER_PITCH[provider],

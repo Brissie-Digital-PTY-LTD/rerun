@@ -2,23 +2,22 @@
 
 import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { KEY_PROVIDERS, PLAN_PROVIDERS, PROVIDER_PITCH, type AddableProvider } from '@/lib/engine/ai-sources'
+import { PROVIDER_PITCH, type AddableProvider } from '@/lib/engine/ai-sources'
 import { ProviderIcon } from '@/lib/engine/provider-icons'
 import { useState, type ReactNode } from 'react'
 
 type ProviderPickerProps = {
-    only: 'plan' | 'key'
     // Providers already plugged in are still offered, since two people can bring two Claude plans.
     taken: Set<string>
     onPick: (provider: AddableProvider) => void
-    // The plans on offer: OpenCode only joins Claude and ChatGPT where it can run.
-    planProviders?: AddableProvider[]
+    // What this machine can run: OpenCode only joins the plans, and a custom endpoint the API keys,
+    // where the engine knows them.
+    providers: AddableProvider[]
     children: ReactNode
 }
 
-export function ProviderPicker({ only, taken, onPick, planProviders = PLAN_PROVIDERS, children }: ProviderPickerProps) {
+export function ProviderPicker({ taken, onPick, providers, children }: ProviderPickerProps) {
     const [open, setOpen] = useState(false)
-    const providers = only === 'plan' ? planProviders : KEY_PROVIDERS
 
     return (
         <Popover open={open} onOpenChange={setOpen}>

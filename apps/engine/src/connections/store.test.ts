@@ -119,3 +119,17 @@ describe('patch and delete', () => {
         await expect(getConnection(cnx.id)).rejects.toMatchObject({ status: 404 })
     })
 })
+
+describe('a custom connection', () => {
+    it('needs an address to be created, and keeps it', async () => {
+        await expect(createConnection({ name: 'Ollama', provider: 'custom', models: ['qwen3:4b'], extraModels: [], keys: {} })).rejects.toThrow('A custom connection needs a base URL')
+        const cnx = await createConnection({ name: 'Ollama', provider: 'custom', models: ['qwen3:4b'], baseUrl: 'http://localhost:11434/v1', extraModels: [], contextWindow: 32_768, vision: false, keys: {} })
+        expect(cnx.config).toMatchObject({ provider: 'custom', baseUrl: 'http://localhost:11434/v1', contextWindow: 32_768, vision: false })
+        await expect(patchConnection(cnx.id, { baseUrl: '' })).rejects.toThrow('A custom connection needs a base URL')
+    })
+
+    it('clears its context window with null', async () => {
+        const cnx = await createConnection({ name: 'vLLM', provider: 'custom', models: [], baseUrl: 'http://gpu.lan:8000/v1', extraModels: [], contextWindow: 65_536, keys: {} })
+        expect((await patchConnection(cnx.id, { contextWindow: null })).config.contextWindow).toBeNull()
+    })
+})

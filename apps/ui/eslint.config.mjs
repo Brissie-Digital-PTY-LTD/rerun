@@ -6,6 +6,21 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          property: 'randomUUID',
+          message: "crypto.randomUUID is undefined outside a secure context (a self-host opened over plain HTTP on a LAN IP). Use randomUuid() from '@/lib/random-uuid'.",
+        },
+      ],
+    },
+  },
+  {
+    files: ['lib/random-uuid.ts', 'lib/random-uuid.test.ts'],
+    rules: { 'no-restricted-properties': 'off' },
+  },
+  {
     files: ['**/*actions.ts'],
     rules: {
       'no-restricted-syntax': [

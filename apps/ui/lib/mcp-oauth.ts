@@ -219,6 +219,10 @@ const PRE_REGISTERED_CLIENTS: PreRegisteredClient[] = [
     { mcpOrigin: 'https://mcp.asana.com', clientIdEnv: 'RERUN_ASANA_MCP_CLIENT_ID', clientSecretEnv: 'RERUN_ASANA_MCP_CLIENT_SECRET', engineRefreshes: true },
 ]
 
+// Their registration endpoint answers every caller with one shared client and keeps its own
+// redirect URIs, echoing ours back without registering it: HeyGen hands out "HeyGen MCP Default".
+const CLIENT_METADATA_DOCUMENT_FIRST = ['https://mcp.heygen.com']
+
 function preRegisteredClient(mcpUrl: string): { clientId: string; clientSecret: string; engineRefreshes: boolean } | null {
     const origin = new URL(mcpUrl).origin
     const entry = PRE_REGISTERED_CLIENTS.find(client => client.mcpOrigin === origin)
@@ -230,6 +234,10 @@ function preRegisteredClient(mcpUrl: string): { clientId: string; clientSecret: 
 export async function resolveClient(metadata: DiscoveredMetadata, mcpUrl: string, req: Request): Promise<ClientInfo | null> {
     const preRegistered = preRegisteredClient(mcpUrl)
     if (preRegistered) return { clientId: preRegistered.clientId }
+
+    if (metadata.clientIdMetadataDocumentSupported && CLIENT_METADATA_DOCUMENT_FIRST.includes(new URL(mcpUrl).origin)) {
+        return { clientId: clientMetadataDocumentUrl(req) }
+    }
 
     if (metadata.registrationEndpoint) {
         try {

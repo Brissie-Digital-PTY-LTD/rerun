@@ -66,7 +66,7 @@ vi.mock('../lib/logger.js', () => ({ logger: { info() {}, warn() {} } }))
 
 const { afterEach, beforeEach, describe, expect, it } = await import('vitest')
 const { withKeyedLock } = await import('../lib/lock.js')
-const { activeTakeovers, finishTakeover, holdBrowser, joinableBrowser, startTakeover } = await import('./takeover.js')
+const { activeTakeovers, finishTakeover, handBackTakeover, holdBrowser, holdOpenBrowser, joinableBrowser, startTakeover } = await import('./takeover.js')
 
 const contexts = () => state.contexts as FakeContext[]
 
@@ -278,6 +278,72 @@ describe('a browser held by a run', () => {
         release()
         await vi.waitFor(() => expect(activeTakeovers()).toEqual([]))
         expect(state.holds).toBe(0)
+    })
+})
+
+describe('a browser handed back', () => {
+    it('stays on the screen on the page the person left it on', async () => {
+        await startTakeover('a1', 'https://site.example/login')
+        state.url = 'https://site.example/inbox'
+        expect(await handBackTakeover('a1')).toEqual({ url: 'https://site.example/inbox', open: true })
+        expect(contexts()[0]!.closed).toBe(false)
+        expect(activeTakeovers()).toEqual(['a1'])
+        expect(await joinableBrowser('a1')).toBe(contexts()[0])
+    })
+
+    it('waits a few minutes for the run it resumes, then closes once nobody watches it', async () => {
+        vi.useFakeTimers()
+        await startTakeover('a1', 'https://site.example/login')
+        await handBackTakeover('a1')
+        await vi.advanceTimersByTimeAsync(170_000)
+        expect(activeTakeovers()).toEqual(['a1'])
+        await vi.advanceTimersByTimeAsync(40_000)
+        expect(activeTakeovers()).toEqual([])
+        expect(contexts()[0]!.closed).toBe(true)
+    })
+
+    it('is kept by the run that works in it, past its fifteen minutes, and closes when that run lets go', async () => {
+        vi.useFakeTimers()
+        await startTakeover('a1', 'https://site.example/login')
+        await handBackTakeover('a1')
+        const release = holdOpenBrowser('a1')
+        await vi.advanceTimersByTimeAsync(20 * 60_000)
+        expect(activeTakeovers()).toEqual(['a1'])
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(activeTakeovers()).toEqual([])
+    })
+
+    it('gets fifteen minutes of its own from the hand back', async () => {
+        vi.useFakeTimers()
+        state.viewers = 1
+        await startTakeover('a1', 'https://site.example/login')
+        await vi.advanceTimersByTimeAsync(14 * 60_000)
+        await handBackTakeover('a1')
+        await vi.advanceTimersByTimeAsync(14 * 60_000)
+        expect(activeTakeovers()).toEqual(['a1'])
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(activeTakeovers()).toEqual([])
+    })
+
+    it('reports a closed browser when there is no window left to keep', async () => {
+        expect(await handBackTakeover('a1')).toEqual({ url: null })
+        expect(state.launches).toEqual([])
+    })
+
+    it('closes a window left on no page, which has nothing to carry on in', async () => {
+        await startTakeover('a1')
+        expect(await handBackTakeover('a1')).toEqual({ url: null })
+        expect(contexts()[0]!.closed).toBe(true)
+        expect(activeTakeovers()).toEqual([])
+    })
+})
+
+describe('holdOpenBrowser', () => {
+    it('opens nothing when no browser is on the screen', () => {
+        holdOpenBrowser('a1')()
+        expect(state.launches).toEqual([])
+        expect(activeTakeovers()).toEqual([])
     })
 })
 

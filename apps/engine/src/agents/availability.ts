@@ -1,7 +1,7 @@
 import { DEFAULT_PROVIDER_MODEL, RERUN_CONNECTION_ID, RERUN_MODEL, cliServesModel, opencodeServesModel, type AgentConfig, type Provider } from '@rerun/contracts'
 import { liveOpencodeProviderModels } from '../connections/opencode-catalog.js'
 import { readCliModels } from '../connections/cli-models.js'
-import { readBoxDefault } from '../connections/default.js'
+import { readBoxDefault, writeBoxDefault } from '../connections/default.js'
 import { allowedModel } from '../connections/plan.js'
 import { findConnection, listConnections } from '../connections/registry.js'
 import { isConnected } from '../connections/loader.js'
@@ -14,11 +14,21 @@ import type { LoadedAgent } from './types.js'
 // The pair a run actually bills. `model` is never null here: this is the answer, not the setting.
 export type RunModel = { connection: LoadedConnection | null; provider: Provider; model: string }
 
-// A connection can run a model when its credential is present and the model is one it offers.
-// Both halves matter: a connected subscription still fails on a model the user switched off, and a
-// curated model list means nothing without a token behind it.
+// What the subscription behind the connection accepts, past the list the box owner curated: Codex
+// answers for the account (a ChatGPT plan without the model refuses it with a 400), OpenCode for
+// the models it still publishes. Without a reading nothing is refused.
+function servedByProvider(connection: LoadedConnection, model: string): boolean {
+    const { provider } = connection.config
+    const opencodeModels = provider === 'opencode' ? liveOpencodeProviderModels() : null
+    return cliServesModel(provider, readCliModels(connection.id), model) && opencodeServesModel(provider, opencodeModels, model)
+}
+
+// A connection can run a model when its credential is present, the model is one it offers and its
+// subscription serves it. Each part matters: a connected subscription still fails on a model the
+// user switched off or the plan leaves out, and a curated list means nothing without a token.
 export function isUsable(connection: LoadedConnection | null, model: string | null | undefined): boolean {
-    return !!connection && isConnected(connection) && servesModel(connection, model)
+    if (!connection || !model) return false
+    return isConnected(connection) && servesModel(connection, model) && servedByProvider(connection, model)
 }
 
 // What the connection would run if no model were named. Its own first entry rather than the
@@ -30,10 +40,21 @@ export function defaultModelOf(connection: LoadedConnection): string {
     const { provider, models, extraModels } = connection.config
     const offered = [...models, ...extraModels]
     const runsAsIs = (model: string): boolean => allowedModel(provider, model) === model
-    const cliModels = readCliModels(connection.id)
-    const opencodeModels = provider === 'opencode' ? liveOpencodeProviderModels() : null
-    const served = (model: string): boolean => cliServesModel(provider, cliModels, model) && opencodeServesModel(provider, opencodeModels, model)
-    return offered.find(model => runsAsIs(model) && served(model)) ?? offered.find(runsAsIs) ?? offered[0] ?? DEFAULT_PROVIDER_MODEL[provider]
+    return offered.find(model => runsAsIs(model) && servedByProvider(connection, model)) ?? offered.find(runsAsIs) ?? offered[0] ?? DEFAULT_PROVIDER_MODEL[provider]
+}
+
+// A default starred before the subscription said which models it serves (or before the plan
+// changed) names a model every agent following it fails on. It moves to the first model the same
+// connection serves: the bill stays where the owner put it, only the model changes. Nothing is
+// written while no served model is known, a wrong guess would be worse than the stored pick.
+export async function repairBoxDefault(connection: LoadedConnection): Promise<void> {
+    const stored = await readBoxDefault()
+    if (!stored || stored.connectionId !== connection.id || !isConnected(connection)) return
+    if (servedByProvider(connection, stored.model)) return
+    const model = defaultModelOf(connection)
+    if (model === stored.model || !isUsable(connection, model)) return
+    await writeBoxDefault({ connectionId: connection.id, model })
+    logger.warn({ connection: connection.id, from: stored.model, to: model }, 'box default not served by the subscription, moved')
 }
 
 function pick(connection: LoadedConnection, model: string): RunModel {
@@ -50,6 +71,12 @@ export async function boxDefaultModel(): Promise<RunModel> {
     const configured = await readBoxDefault()
     const direct = await findConnection(configured?.connectionId)
     if (configured && isUsable(direct, configured.model)) return pick(direct!, configured.model)
+    // The owner's connection is fine, only its model is refused: walking the ladder would start on
+    // the keyless Rerun connection and move the bill.
+    if (configured && direct && isConnected(direct) && servesModel(direct, configured.model)) {
+        const model = defaultModelOf(direct)
+        if (isUsable(direct, model)) return pick(direct, model)
+    }
 
     const all = await listConnections()
     const rerun = all.find(c => c.id === RERUN_CONNECTION_ID)

@@ -56,6 +56,13 @@ export function toGroup(connection: BoxConnection, premiumAllowed: boolean): Con
 }
 
 
+// Why the subscription behind the pair the next turn bills refuses its model, when it does: a
+// ChatGPT plan without it answers with a 400, so the composer holds the message back instead.
+export function refusedModelReason(group: Pick<ConnectionGroup, 'models'> | undefined, model: string | null | undefined): string | undefined {
+    if (!group || !model) return undefined
+    return group.models.find(m => m.id === model)?.unavailable
+}
+
 // The groups every picker offers, Rerun first: shared by the web hook and the app's /api/v1 route.
 export function connectionGroups(connections: BoxConnection[], premiumAllowed: boolean): ConnectionGroup[] {
     return pinFirst(

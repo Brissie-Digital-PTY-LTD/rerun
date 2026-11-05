@@ -11,6 +11,7 @@ const MAX_TAKEOVER_MS = 15 * 60_000
 const OPEN_TIMEOUT_MS = 30_000
 const UNWATCHED_CHECK_MS = 30_000
 const UNWATCHED_CHECKS_BEFORE_CLOSE = 2
+const HANDBACK_GRACE_MS = 3 * 60_000
 
 type Takeover = {
     finish: () => void
@@ -18,6 +19,9 @@ type Takeover = {
     ready: Promise<void>
     context: BrowserContext | null
     endWhenUnwatched: boolean
+    // Until then a window handed back waits for the run it resumes, watched or not.
+    keptUntil: number
+    rearmExpiry: () => void
     runHolds: number
     expired: boolean
     closing: boolean
@@ -70,7 +74,7 @@ export async function startTakeover(agentId: string, url?: string, { endWhenUnwa
         failed = reject
     })
 
-    const takeover: Takeover = { finish, closed: Promise.resolve({ url: null }), ready, context: null, endWhenUnwatched, runHolds: 0, expired: false, closing: false }
+    const takeover: Takeover = { finish, closed: Promise.resolve({ url: null }), ready, context: null, endWhenUnwatched, keptUntil: 0, rearmExpiry: () => {}, runHolds: 0, expired: false, closing: false }
     takeover.closed = withKeyedLock(`browser:${agentId}`, async (): Promise<TakeoverResult> => {
         let context: BrowserContext | undefined
         let timer: NodeJS.Timeout | undefined
@@ -82,13 +86,19 @@ export async function startTakeover(agentId: string, url?: string, { endWhenUnwa
             const page = context.pages()[0] ?? (await context.newPage())
             if (url && (await openable(url))) await page.goto(url, { waitUntil: 'domcontentloaded', timeout: OPEN_TIMEOUT_MS }).catch(() => {})
             takeover.context = context
+            takeover.rearmExpiry = () => {
+                clearTimeout(timer)
+                takeover.expired = false
+                timer = setTimeout(() => {
+                    takeover.expired = true
+                    if (takeover.runHolds === 0) finish()
+                }, MAX_TAKEOVER_MS)
+            }
+            takeover.rearmExpiry()
             opened()
-            timer = setTimeout(() => {
-                takeover.expired = true
-                if (takeover.runHolds === 0) finish()
-            }, MAX_TAKEOVER_MS)
             watch = setInterval(() => {
-                unwatchedChecks = takeover.endWhenUnwatched && takeover.runHolds === 0 && viewersOf(agentId) === 0 ? unwatchedChecks + 1 : 0
+                const unwatched = takeover.endWhenUnwatched && takeover.runHolds === 0 && Date.now() >= takeover.keptUntil && viewersOf(agentId) === 0
+                unwatchedChecks = unwatched ? unwatchedChecks + 1 : 0
                 if (unwatchedChecks >= UNWATCHED_CHECKS_BEFORE_CLOSE) finish()
             }, UNWATCHED_CHECK_MS)
             await finishing
@@ -131,10 +141,30 @@ export async function finishTakeover(agentId: string): Promise<TakeoverResult> {
     return takeover.closed
 }
 
+// The person is done but the window stays on the agent's screen, where the run they resume picks it
+// up: reopening it would land on an empty screen, and a web app like WhatsApp starts its sync over.
+// From then on it is the agent's, closed like one it opened itself once nobody uses it. A window left
+// on no page has nothing to carry on in, and closes.
+export async function handBackTakeover(agentId: string): Promise<TakeoverResult> {
+    const takeover = active.get(agentId)
+    const context = takeover && !takeover.closing ? takeover.context : null
+    const url = context && lastUrl(context)
+    if (!takeover || !url) return finishTakeover(agentId)
+    takeover.endWhenUnwatched = true
+    takeover.keptUntil = Date.now() + HANDBACK_GRACE_MS
+    takeover.rearmExpiry()
+    return { url, open: true }
+}
+
 // For a run that drives the browser with its own hands. Letting go closes a browser nobody is
 // looking at; one a person watches or asked for stays theirs to close.
 export async function holdBrowser(agentId: string, url?: string): Promise<() => void> {
     await startTakeover(agentId, url, { endWhenUnwatched: true })
+    return holdOpenBrowser(agentId)
+}
+
+// Holds the window already open, if any, without opening one.
+export function holdOpenBrowser(agentId: string): () => void {
     const takeover = active.get(agentId)
     if (!takeover || takeover.closing) return () => {}
     takeover.runHolds++

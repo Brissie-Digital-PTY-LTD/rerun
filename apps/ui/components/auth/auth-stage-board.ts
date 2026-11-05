@@ -29,7 +29,7 @@ import type { SpacePublic } from '@/lib/board/types'
 const ICON_BASE = '/services'
 
 // URLs relevées telles quelles dans `services.icon` en prod, comme le font déjà le board de
-// /brand/motion et les stages OG. Le `?tone=dark` est la marque d'une icône qui se perdrait sur
+// /brand/ui/foundations et les stages OG. Le `?tone=dark` est la marque d'une icône qui se perdrait sur
 // fond sombre : connectorTileStyle le lit et la passe en silhouette blanche.
 //
 // Le catalogue est exactement ce que le script utilise, et chaque outil n'apparaît qu'une fois sur

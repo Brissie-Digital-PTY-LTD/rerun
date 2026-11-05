@@ -250,6 +250,13 @@ describe('how an OpenCode model behaves', () => {
         expect(modelSeesImages('openrouter', 'deepseek/deepseek-v4-pro')).toBe(true)
     })
 
+    it('sees images on a custom endpoint only when its owner says the model does', () => {
+        const custom = (vision?: boolean) => ({ id: 'c', config: { name: 'c', provider: 'custom', models: [], extraModels: [], baseUrl: 'http://localhost:11434/v1', vision, createdAt: '' }, env: {} }) as any
+        expect(modelSeesImages('custom', 'llama3.2:3b', custom())).toBe(false)
+        expect(modelSeesImages('custom', 'llama3.2-vision', custom(true))).toBe(true)
+        expect(modelSeesImages('custom', 'any')).toBe(false)
+    })
+
     it('hands vision to the cheapest Go model of the connection that sees', () => {
         const agent = agentOn('go/deepseek-v4-pro', undefined, ['go/deepseek-v4-pro', 'go/kimi-k3.1-pro', 'go/claude-haiku-5-5', 'console/gpt-6-luna'])
         expect(opencodeVisionModel(agent.resolved.connection)).toBe('go/claude-haiku-5-5')

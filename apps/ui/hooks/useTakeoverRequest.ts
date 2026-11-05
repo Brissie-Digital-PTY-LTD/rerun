@@ -24,7 +24,7 @@ export function useTakeoverRequest(agentId: string, ask: TakeoverAskInput | null
     useEffect(() => {
         if (!callId || !handedBack || answeredRef.current === callId) return
         answeredRef.current = callId
-        onDone(serializeTakeoverResult(handedBack.url))
+        onDone(serializeTakeoverResult(handedBack))
     }, [callId, handedBack, onDone])
 
     if (!ask) return undefined
@@ -40,10 +40,10 @@ export function useTakeoverRequest(agentId: string, ask: TakeoverAskInput | null
     const finish = async () => {
         if (locked) return
         setFinishing(true)
-        const result = await finishTakeoverAction(agentId)
+        const result = await finishTakeoverAction(agentId, { keepOpen: true })
         setFinishing(false)
         if (!result.ok) return void toast.error(result.error)
-        handBack(ask.callId, result.url)
+        handBack(ask.callId, { url: result.url, open: result.open })
     }
 
     const skip = () => {

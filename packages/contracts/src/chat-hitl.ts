@@ -3,6 +3,7 @@
 // strings sent back are a protocol the agent reads: two wordings would be two protocols.
 import { appendAttachmentsRef, attachmentDisplayName, buildAttachmentsRef, parseAttachments } from './chat-attachments.js'
 import { stripBridgePrefix } from './chat-tool-name.js'
+import type { TakeoverResult } from './desktop.js'
 
 export type QuestionOption = { label: string; description?: string }
 
@@ -217,11 +218,13 @@ export function pendingTakeover(input: Record<string, unknown>): TakeoverRequest
 }
 
 const TAKEOVER_HEADER = 'Browser handed back.'
-const TAKEOVER_TAIL = 'Whatever I did there is saved in your browser profile. The window is closed: open the page again with computer_open_app when you were working on your screen, with browser_navigate otherwise, and check what it shows before you go on.'
+const TAKEOVER_SAVED = 'Whatever I did there is saved in your browser profile.'
+const TAKEOVER_CLOSED = 'The window is closed: open the page again with computer_open_app when you were working on your screen, with browser_navigate otherwise, and check what it shows before you go on.'
+const TAKEOVER_LEFT_OPEN = 'The window is still open on your screen, on that page: take a screenshot to see where it stands before you go on. browser_navigate reads in that same window.'
 
 // The page the browser was on tells the agent whether the wall was passed, without it having to ask.
-export function serializeTakeoverResult(url: string | null): string {
-    return `${TAKEOVER_HEADER}\n${url ? `I left your browser on ${url}` : 'I closed your browser.'}\n\n${TAKEOVER_TAIL}`
+export function serializeTakeoverResult({ url, open }: TakeoverResult): string {
+    return `${TAKEOVER_HEADER}\n${url ? `I left your browser on ${url}` : 'I closed your browser.'}\n\n${TAKEOVER_SAVED} ${url && open ? TAKEOVER_LEFT_OPEN : TAKEOVER_CLOSED}`
 }
 
 const TAKEOVER_RESULT = /^Browser handed back\.\n(?:I left your browser on (\S+)|I closed your browser\.)\n\nWhatever I did there is saved/

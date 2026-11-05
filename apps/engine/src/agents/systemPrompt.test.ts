@@ -6,7 +6,7 @@ process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-system-prompt-
 
 const { afterEach, describe, expect, it, vi } = await import('vitest')
 const { agentConfigSchema } = await import('@rerun/contracts')
-const { buildSystemPrompt: buildSystemPromptBlocks, systemPromptText, currentTimeNote, nowBlock, userLanguageBlock } = await import('./systemPrompt.js')
+const { buildSystemPrompt: buildSystemPromptBlocks, systemPromptText, currentTimeNote, nowBlock, userBlock, userLanguageBlock } = await import('./systemPrompt.js')
 
 // The tests read the prompt as the model does, both blocks joined.
 const buildSystemPrompt = async (...args: Parameters<typeof buildSystemPromptBlocks>) => systemPromptText(await buildSystemPromptBlocks(...args))
@@ -77,6 +77,7 @@ describe('operating notes', () => {
         expect(section).toContain('says what the user offers with the link to it')
         expect(section).toContain("is in the recipient's language")
         expect(section).toContain('carries no bracketed placeholder')
+        expect(section).toContain("is signed with the user's own name (the <user> block, or ask for it when you have none)")
     })
 
     it('tells the agent that nothing outlives its turn', async () => {
@@ -224,6 +225,12 @@ describe('current time', () => {
         expect(userLanguageBlock('French')).toMatch(/^<user_language>\nFrench: /)
         expect(userLanguageBlock(undefined)).toBe('')
     })
+
+    it('names the user in the turn block so what goes out under their name is signed with it', () => {
+        expect(userBlock('Yassine')).toMatch(/^<user>\nYassine: the person you are talking to/)
+        expect(userBlock('Yassine')).toContain('sign with it what goes out under their name')
+        expect(userBlock(undefined)).toBe('')
+    })
 })
 
 describe('buildSystemPrompt provider notes', () => {
@@ -349,6 +356,8 @@ describe('quick replies section', () => {
             expect(prompt).toContain('<quick_replies>')
             expect(prompt).toContain('one per line, between a <quick_replies> line and a </quick_replies> line, as the very last lines of your message')
             expect(prompt).toContain('a reply never stands in for telling the user that something failed')
+            expect(prompt).toContain('never when your message waits for something only the user has (a URL, an ID, a name, an email, a file, an access)')
+            expect(prompt).toContain('the block is left out entirely, even for the other questions of that message')
             expect(prompt).not.toContain('suggest_replies')
         }
     })

@@ -1,6 +1,7 @@
 'use client'
 
 import { AddProviderPage } from '@/components/connections/AddProviderPage'
+import { AddCustomProviderPage } from '@/components/connections/custom/AddCustomProviderPage'
 import { ConnectionDetail } from '@/components/connections/ConnectionDetail'
 import { DefaultModelPicker } from '@/components/connections/DefaultModelPicker'
 import { NoPlanNotice, useNeedsPlanToConnect } from '@/components/connections/NoPlanNotice'
@@ -15,7 +16,7 @@ import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { useRerunCredit } from '@/hooks/useRerunCredit'
 import { useWorkspaceConnections } from '@/hooks/useWorkspaceConnections'
 import {
-    KEY_PROVIDERS,
+    keyProviders,
     PLAN_LABELS,
     connectMethod,
     planProviders,
@@ -69,7 +70,7 @@ export function AiProvidersPanel({
     initialAddProvider?: AddableProvider | null
     onInitialAddProviderConsumed?: () => void
 }) {
-    const { connections, boxDefault, opencodeOffered, loading, create, update, updateKeys, remove, setDefault } = useWorkspaceConnections({ revalidate: true })
+    const { connections, boxDefault, opencodeOffered, customOffered, loading, create, update, updateKeys, remove, setDefault } = useWorkspaceConnections({ revalidate: true })
     const credit = useRerunCredit()
     const needsPlan = useNeedsPlanToConnect()
     const [page, setPage] = useState<ConnectionsPage>({ kind: 'list' })
@@ -113,7 +114,9 @@ export function AiProvidersPanel({
 
     return (
         <PanelSteps stepKey={stepKey} depth={stepKey === 'list' ? 0 : 1}>
-            {page.kind === 'add' ? (
+            {page.kind === 'add' && page.provider === 'custom' ? (
+                <AddCustomProviderPage onBack={back} onCreate={createFromPage} onOpen={open} takenNames={connections.map(c => c.name)} willBecomeBoxDefault={willBecomeBoxDefault} />
+            ) : page.kind === 'add' ? (
                 <AddProviderPage key={page.provider} provider={page.provider} onBack={back} onCreate={createFromPage} onOpen={open} onRename={rename} takenNames={connections.map(c => c.name)} willBecomeBoxDefault={willBecomeBoxDefault} />
             ) : selected ? (
                 <ConnectionDetail
@@ -163,8 +166,8 @@ export function AiProvidersPanel({
                         taken={taken}
                         onOpen={open}
                         onAdd={needsPlan ? undefined : add}
-                        pitch="Pay your provider directly, per token."
-                        providers={KEY_PROVIDERS}
+                        pitch={customOffered ? 'Pay your provider directly, per token, or run your own model.' : 'Pay your provider directly, per token.'}
+                        providers={keyProviders(customOffered)}
                     />
 
                     {needsPlan && (
@@ -263,7 +266,7 @@ export function SourceGroup({ title, only, sources, credit, taken, onOpen, onAdd
     // The pitch already offers every provider, so the header's Add only shows once the group has entries.
     const addMenu =
         onAdd && sources.length > 0 ? (
-            <ProviderPicker only={only} taken={taken} onPick={onAdd} planProviders={only === 'plan' ? providers : undefined}>
+            <ProviderPicker taken={taken} onPick={onAdd} providers={providers}>
                 <AddButton label={only === 'plan' ? 'Add subscription' : 'Add API key'} />
             </ProviderPicker>
         ) : undefined

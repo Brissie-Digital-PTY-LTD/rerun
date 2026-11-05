@@ -2,7 +2,7 @@ import { assertAgentInWorkspace, requireWorkspaceContext } from '@/app/api/_auth
 import { desktopSocketUrl, resolveWorkspaceDesktop } from '@/app/api/_services/desktop.service'
 import * as engine from '@/lib/engine/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { openDesktopAction, startTakeoverAction } from './desktop.actions'
+import { finishTakeoverAction, openDesktopAction, startTakeoverAction } from './desktop.actions'
 
 vi.mock('@/app/api/_auth/ownership', () => ({ assertAgentInWorkspace: vi.fn(), requireWorkspaceContext: vi.fn() }))
 vi.mock('@/app/api/_services/desktop.service', () => ({
@@ -60,5 +60,26 @@ describe('startTakeoverAction', () => {
     it('opens the agent browser without a page when the one asked for is not a URL', async () => {
         await expect(startTakeoverAction('agent', 'not a url')).resolves.toEqual({ ok: true })
         expect(engine.startTakeover).toHaveBeenCalledWith(conn, 'engine-agent', undefined)
+    })
+})
+
+describe('finishTakeoverAction', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        vi.mocked(requireWorkspaceContext).mockResolvedValue({ authUser: { is_anonymous: false }, workspace: { id: 7 } } as never)
+        vi.mocked(assertAgentInWorkspace).mockResolvedValue({ workspace_id: 7, space_id: null, engine_agent_id: 'engine-agent' } as never)
+        vi.mocked(resolveWorkspaceDesktop).mockResolvedValue({ conn, socketBase: 'wss://host.test/box/10/desktop/ws' })
+    })
+
+    it('asks the machine to leave the window on the screen when the person hands it back to the run', async () => {
+        vi.mocked(engine.finishTakeover).mockResolvedValue({ url: 'https://web.whatsapp.com/', open: true })
+        await expect(finishTakeoverAction('agent', { keepOpen: true })).resolves.toEqual({ ok: true, url: 'https://web.whatsapp.com/', open: true })
+        expect(engine.finishTakeover).toHaveBeenCalledWith(conn, 'engine-agent', { keepOpen: true })
+    })
+
+    it('closes the window otherwise, and reports a machine that closed it anyway', async () => {
+        vi.mocked(engine.finishTakeover).mockResolvedValue({ url: 'https://web.whatsapp.com/' })
+        await expect(finishTakeoverAction('agent')).resolves.toEqual({ ok: true, url: 'https://web.whatsapp.com/', open: undefined })
+        expect(engine.finishTakeover).toHaveBeenCalledWith(conn, 'engine-agent', { keepOpen: false })
     })
 })

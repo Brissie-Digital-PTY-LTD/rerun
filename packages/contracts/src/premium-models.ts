@@ -19,8 +19,9 @@ const TRIAL_CLAUDE_MODEL: Partial<Record<Provider, string>> = {
 }
 
 // What a trial box runs in place of a premium model, one step down in the same family.
+// A custom endpoint is billed by its owner, never by Rerun, so a trial takes nothing away from it.
 export function trialModelFor(provider: Provider, model: string): string {
-    if (!isPremiumModel(model)) return model
+    if (provider === 'custom' || !isPremiumModel(model)) return model
     if (/astra/i.test(model)) return model.replace(/astra/i, 'sol')
     return TRIAL_CLAUDE_MODEL[provider] ?? model
 }

@@ -20,6 +20,7 @@ import { withConnectionLock } from './lock.js'
 import { forgetCliModels } from './cli-models.js'
 import { forgetPlanLimits } from './plan-limits.js'
 import { forgetOpencodePlanLimitsAttempt } from './opencode-plan-limits.js'
+import { forgetCustomCatalog } from './custom-catalog.js'
 import { getConnection, reloadConnection, unloadConnection } from './registry.js'
 import type { LoadedConnection } from './types.js'
 
@@ -30,6 +31,12 @@ async function writeConfig(id: string, config: ConnectionConfig): Promise<void> 
     await rename(tmp, target)
 }
 
+// A custom endpoint has no default address to fall back on: without one it would read as a
+// connection that can never be reached.
+function assertCustomHasBaseUrl(config: ConnectionConfig): void {
+    if (config.provider === 'custom' && !config.baseUrl) throw badRequest('A custom connection needs a base URL')
+}
+
 export async function createConnection(input: CreateConnectionInput, id = newId()): Promise<LoadedConnection> {
     const config = connectionConfigSchema.parse({
         name: input.name,
@@ -37,8 +44,11 @@ export async function createConnection(input: CreateConnectionInput, id = newId(
         models: input.models,
         baseUrl: input.baseUrl,
         extraModels: input.extraModels,
+        contextWindow: input.contextWindow,
+        vision: input.vision,
         createdAt: nowIso(),
     })
+    assertCustomHasBaseUrl(config)
     // Refused keys must fail before the folder exists, or the box lists a connection nobody created.
     serializeEnv(input.keys)
     await mkdir(connectionDir(id), { recursive: true, mode: 0o700 })
@@ -55,7 +65,9 @@ export async function patchConnection(id: string, patch: UpdateConnectionInput):
     return withConnectionLock(id, async () => {
         const current = await getConnection(id)
         const next = connectionConfigSchema.parse({ ...current.config, ...patch })
+        assertCustomHasBaseUrl(next)
         await writeConfig(id, next)
+        if (next.baseUrl !== current.config.baseUrl) forgetCustomCatalog(id)
         return reloadConnection(id)
     })
 }
@@ -72,6 +84,7 @@ export async function updateConnectionKeys(id: string, { set, remove }: UpdateCo
         forgetPlanLimits(id)
         forgetCliModels(id)
         forgetOpencodePlanLimitsAttempt(id)
+        forgetCustomCatalog(id)
         forgetCredentialRejected(id)
         await reloadConnection(id)
         return Object.keys(next).sort()
@@ -90,6 +103,7 @@ export async function deleteConnection(id: string): Promise<void> {
     forgetPlanLimits(id)
     forgetCliModels(id)
     forgetOpencodePlanLimitsAttempt(id)
+    forgetCustomCatalog(id)
     forgetCredentialRejected(id)
     await rm(connectionDir(id), { recursive: true, force: true })
 }

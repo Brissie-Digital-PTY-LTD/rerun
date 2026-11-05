@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CliModels } from '@rerun/contracts'
 import { cliUnavailableReason } from './ai-sources'
-import { toGroup } from './model-groups'
+import { refusedModelReason, toGroup } from './model-groups'
 import type { BoxConnection } from './types'
 
 const reading = (models: string[], outdated: boolean): CliModels => ({ models, version: outdated ? '0.156.1' : '0.166.0', outdated, capturedAt: '2026-11-03T08:00:00.000Z' })
@@ -19,6 +19,7 @@ function codex(cliModels: CliModels | null, extraModels: string[] = []): BoxConn
         planLimits: null,
         cliModels,
         providerModels: null,
+        discoveredModels: null,
     }
 }
 
@@ -53,5 +54,20 @@ describe('toGroup', () => {
 
     it('keeps the first model as default without a reading', () => {
         expect(toGroup(codex(null), true).defaultModel).toBe('gpt-6.1-sol')
+    })
+})
+
+describe('refusedModelReason', () => {
+    const plan = toGroup(codex(reading(['gpt-6-luna'], false)), true)
+
+    it('names why the plan refuses the model the next turn would run', () => {
+        expect(refusedModelReason(plan, 'gpt-6-sol')).toBe('Not in your ChatGPT plan')
+    })
+
+    it('holds nothing back on a served model, an unread CLI or no pick at all', () => {
+        expect(refusedModelReason(plan, 'gpt-6-luna')).toBeUndefined()
+        expect(refusedModelReason(toGroup(codex(null), true), 'gpt-6-sol')).toBeUndefined()
+        expect(refusedModelReason(undefined, 'gpt-6-sol')).toBeUndefined()
+        expect(refusedModelReason(plan, null)).toBeUndefined()
     })
 })

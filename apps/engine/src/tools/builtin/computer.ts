@@ -6,12 +6,13 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { tool, type ToolSet } from 'ai'
 import { desktopAppSchema, type DesktopApp } from '@rerun/contracts'
 import { z } from 'zod'
+import type { LoadedConnection } from '../../connections/types.js'
 import { CLI_PROVIDERS, type AgentConfig } from '../../agents/types.js'
 import type { Provider } from '@rerun/contracts'
 import { openDesktopApp } from '../../desktop/apps.js'
 import { ControlRefusal, captureScreen, click, controlScreen, drag, movePointer, pressKeys, scroll, typeText, type ScreenControl, type Screenshot } from '../../desktop/control.js'
 import { computerAvailable, holdDesktop, humanDriving } from '../../desktop/session.js'
-import { holdBrowser } from '../../desktop/takeover.js'
+import { holdBrowser, holdOpenBrowser } from '../../desktop/takeover.js'
 import { withKeyedLock } from '../../lib/lock.js'
 import type { RunContext } from '../../runtime/context.js'
 import { newId } from '../../lib/ids.js'
@@ -58,8 +59,8 @@ export function offersComputer(config: AgentConfig): boolean {
 
 // Decided on the model the run uses, not on the agent's setting: driving a screen means reading its
 // screenshots, and an OpenCode model without vision never gets them.
-export function runOffersComputer(config: AgentConfig, provider: Provider, model: string): boolean {
-    return offersComputer(config) && modelSeesImages(provider, model)
+export function runOffersComputer(config: AgentConfig, provider: Provider, model: string, connection?: LoadedConnection | null): boolean {
+    return offersComputer(config) && modelSeesImages(provider, model, connection)
 }
 
 // One screen per agent and runs of one agent can overlap (a chat, a schedule): the first to touch
@@ -154,7 +155,8 @@ export function computerTools(ctx: RunContext): { tools: ToolSet; release: () =>
         if (owner && owner !== ctx) return refused('Another run of this coworker is using the screen right now. Carry on without it, or tell the user to retry once that run is over.')
         if (!owner) {
             screenOwners.set(id, ctx)
-            releases.push(holdDesktop(id), () => {
+            // A browser already on the screen (handed back after a sign-in) is what the run looks at.
+            releases.push(holdDesktop(id), holdOpenBrowser(id), () => {
                 if (screenOwners.get(id) === ctx) screenOwners.delete(id)
             })
         }

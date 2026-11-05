@@ -1,17 +1,19 @@
 import { Hono } from 'hono'
-import { RERUN_CONNECTION_ID, boxDefaultModelSchema, createConnectionSchema, updateConnectionKeysSchema, updateConnectionSchema } from '@rerun/contracts'
+import { RERUN_CONNECTION_ID, boxDefaultModelSchema, createConnectionSchema, customProbeInputSchema, updateConnectionKeysSchema, updateConnectionSchema } from '@rerun/contracts'
 import { connectionExists, isConnected, toSummary } from '../../connections/loader.js'
 import { findConnection, getConnection, listConnections } from '../../connections/registry.js'
 import { assertConnectionDeletable, createConnection, deleteConnection, patchConnection, updateConnectionKeys } from '../../connections/store.js'
 import { connectionUsage, releaseConnection } from '../../connections/release.js'
 import { clearBoxDefault, readBoxDefault, writeBoxDefault } from '../../connections/default.js'
 import { servesModel } from '../../connections/resolve.js'
-import { defaultModelOf } from '../../agents/availability.js'
+import { defaultModelOf, repairBoxDefault } from '../../agents/availability.js'
 import { refreshCodexPlanLimits, refreshStaleCodexPlanLimits } from '../../connections/codex-plan-limits.js'
 import { refreshOpencodeCatalog, refreshStaleOpencodeCatalog } from '../../connections/opencode-catalog.js'
 import { refreshOpencodePlanLimits, refreshStaleOpencodePlanLimits } from '../../connections/opencode-plan-limits.js'
+import { probeCustomEndpoint, refreshCustomCatalog, refreshStaleCustomCatalogs } from '../../connections/custom-catalog.js'
 import type { LoadedConnection } from '../../connections/types.js'
 import { sendNotification } from '../../runtime/notify.js'
+import { logger } from '../../lib/logger.js'
 
 export const connectionRoutes = new Hono()
 
@@ -24,9 +26,15 @@ function announceConnected(connection: LoadedConnection): void {
 
 connectionRoutes.get('/', async c => {
     const connections = await listConnections()
+    // Off the reading already held, so the star the list returns is one the subscription serves. A
+    // repair that fails (two lists writing the star at once) leaves the stored one for the next list.
+    for (const connection of connections) {
+        await repairBoxDefault(connection).catch(err => logger.warn({ err: String(err), connection: connection.id }, 'box default repair failed'))
+    }
     refreshStaleCodexPlanLimits(connections)
     refreshStaleOpencodePlanLimits(connections)
     if (connections.some(connection => connection.config.provider === 'opencode')) refreshStaleOpencodeCatalog()
+    refreshStaleCustomCatalogs(connections)
     return c.json({ connections: connections.map(toSummary), default: await readBoxDefault() })
 })
 
@@ -45,6 +53,13 @@ connectionRoutes.delete('/default', async c => {
     return c.json({ default: null })
 })
 
+// Asked from the box rather than from the hub: on a self-hosted install the endpoint sits on the
+// owner's machine or network, which only the engine can reach. The hub vets the address first.
+connectionRoutes.post('/probe', async c => {
+    const input = customProbeInputSchema.parse(await c.req.json())
+    return c.json(await probeCustomEndpoint(input))
+})
+
 connectionRoutes.post('/', async c => {
     const body = createConnectionSchema.parse(await c.req.json())
     const connection = await createConnection(body)
@@ -59,6 +74,7 @@ connectionRoutes.patch('/:id', async c => {
     if (!connectionExists(id)) return c.json({ error: 'connection not found' }, 404)
     const patch = updateConnectionSchema.parse(await c.req.json())
     const connection = await patchConnection(id, patch)
+    if (patch.baseUrl !== undefined) await refreshCustomCatalog(connection)
     // Switching off the model the box default names would leave every agent that picked nothing
     // dropping to Rerun with nothing on screen saying so. This is the one write that can see it.
     const boxDefault = await readBoxDefault()
@@ -104,6 +120,7 @@ connectionRoutes.delete('/:id', async c => {
 async function readCliModelsBeforeAdopting(connection: LoadedConnection): Promise<void> {
     if (connection.config.provider === 'codex') await refreshCodexPlanLimits(connection)
     if (connection.config.provider === 'opencode') await Promise.all([refreshOpencodeCatalog(), refreshOpencodePlanLimits(connection)])
+    if (connection.config.provider === 'custom') await refreshCustomCatalog(connection)
 }
 
 // Plugging the first credential into a box is the whole setup, and on its own it changes nothing:

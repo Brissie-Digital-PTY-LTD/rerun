@@ -382,15 +382,28 @@ describe('browser takeover', () => {
     })
 
     it('round-trips the page the browser was handed back on', () => {
-        expect(parseHitlReply(serializeTakeoverResult('https://www.linkedin.com/feed/'))).toEqual({ kind: 'takeover', url: 'https://www.linkedin.com/feed/' })
-        expect(parseHitlReply(serializeTakeoverResult(null))).toEqual({ kind: 'takeover', url: null })
+        expect(parseHitlReply(serializeTakeoverResult({ url: 'https://www.linkedin.com/feed/' }))).toEqual({ kind: 'takeover', url: 'https://www.linkedin.com/feed/' })
+        expect(parseHitlReply(serializeTakeoverResult({ url: 'https://web.whatsapp.com/', open: true }))).toEqual({ kind: 'takeover', url: 'https://web.whatsapp.com/' })
+        expect(parseHitlReply(serializeTakeoverResult({ url: null }))).toEqual({ kind: 'takeover', url: null })
+    })
+
+    it('still reads the hand back of a conversation written before the window stayed open', () => {
+        const before = 'Browser handed back.\nI left your browser on https://www.linkedin.com/feed/\n\nWhatever I did there is saved in your browser profile: open the page again with browser_navigate and continue.'
+        expect(parseHitlReply(before)).toEqual({ kind: 'takeover', url: 'https://www.linkedin.com/feed/' })
     })
 
     it('tells the coworker its window is closed and which tool reopens the page', () => {
-        const text = serializeTakeoverResult('https://web.whatsapp.com/')
+        const text = serializeTakeoverResult({ url: 'https://web.whatsapp.com/' })
         expect(text).toContain('The window is closed')
         expect(text).toContain('computer_open_app when you were working on your screen')
         expect(text).toContain('browser_navigate otherwise')
+    })
+
+    it('tells the coworker the window is still on its screen when it was left open', () => {
+        const text = serializeTakeoverResult({ url: 'https://web.whatsapp.com/', open: true })
+        expect(text).toContain('The window is still open on your screen')
+        expect(text).toContain('browser_navigate reads in that same window')
+        expect(text).not.toContain('The window is closed')
     })
 
     it('tells a skipped takeover apart from a completed one', () => {

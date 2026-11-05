@@ -12,6 +12,7 @@ import type { MemberProfile } from '@rerun/contracts'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { ActionResult } from './space.actions'
+import { randomUuid } from '@/lib/random-uuid'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.rerun.build'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -76,7 +77,7 @@ export async function inviteToWorkspaceAction(rawEmail: string): Promise<ActionR
                 return { ok: false, error: 'This workspace has reached its seat limit.' }
             }
 
-            token = crypto.randomUUID()
+            token = randomUuid()
             const { error } = await supabase.from('workspace_invitations').insert<Database['public']['Tables']['workspace_invitations']['Insert']>({
                 workspace_id: workspace.id,
                 email,

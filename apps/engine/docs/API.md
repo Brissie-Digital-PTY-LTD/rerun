@@ -227,6 +227,49 @@ served on (Anthropic messages, OpenAI responses, OpenAI chat, Google). Every req
 - On a model without vision, the `vision_analyze` tool asks another model of the connection that
   sees, and the computer tools are not offered.
 
+### Custom connections
+
+`provider: "custom"` is any server that speaks the OpenAI chat format: Ollama, LM Studio, vLLM,
+LiteLLM, Groq, Together, Mistral, DeepSeek, a router of your own. `baseUrl` is required (the `/v1`
+root, `/chat/completions` is appended) and the key is optional, stored as `CUSTOM_API_KEY` and sent
+as `Authorization: Bearer`. The connection counts as connected as soon as it has an address.
+
+- Requests carry nothing of OpenRouter's dialect (`reasoning`, `usage`, `provider`, `cache_control`,
+  `prompt_cache_key`). A `reasoning_content` the server streams back shows as the model's thought.
+- `GET {baseUrl}/models` is read at boot, on `GET /connections` when older than 30 minutes, on
+  create and when `baseUrl` changes. `discoveredModels` on the summary lists what it answered, with
+  the window when the server states one (`context_length`, `max_model_len`). A failed read keeps the
+  previous one.
+- Compaction budgets against the listed window, then the connection's `contextWindow`, then 128k.
+- `vision` (default `false`) says whether the models see images: without it no screenshot is sent
+  and the computer tools are not offered.
+- A run that cannot reach the server fails with "Could not reach the custom endpoint at
+  host:port (ECONNREFUSED)".
+
+```json
+{ "name": "Ollama", "provider": "custom", "baseUrl": "http://localhost:11434/v1", "models": ["qwen3:4b"], "contextWindow": 32768, "vision": false, "keys": {} }
+```
+
+### `POST /connections/probe`
+
+Asks an endpoint before a connection exists, from the box rather than the hub: on a self-hosted
+install the server sits on the owner's machine or network, which only the engine reaches.
+
+```json
+{ "baseUrl": "http://localhost:11434/v1", "apiKey": "optional", "model": "optional" }
+```
+
+Without `model` it reads `GET /models`; with one it also asks that model for one token, for a
+server that does not list its models. A loopback address that does not answer is tried again as
+`host.docker.internal`, and `baseUrl` in the answer is the address that answered.
+
+```json
+{ "baseUrl": "http://host.docker.internal:11434/v1", "models": [{ "id": "qwen3:4b", "contextWindow": null }], "problem": null, "detail": null }
+```
+
+`problem` is `unreachable`, `unauthorized`, `not_listed` or `model_refused`, with the server's
+answer in `detail`. Advertised by the `connections.custom` capability on `GET /health`.
+
 ### `PATCH /connections/:id/keys`
 
 ```json

@@ -11,6 +11,7 @@ export type KitCategory = {
 }
 
 export const KIT_CATEGORIES: KitCategory[] = [
+    { host: 'landing', slug: 'foundations', label: 'Foundations', blurb: 'Color, type, shape, motion and the isometric projection, with every value the product uses and the rules behind them.' },
     { host: 'landing', slug: 'primitives', label: 'Primitives and controls', blurb: 'Buttons, badges, icons, switches, cards, tables, the small pieces everything else is built from.' },
     { host: 'landing', slug: 'forms', label: 'Forms', blurb: 'Field, inputs, selects, the dropzone, and what a form looks like when it goes wrong.' },
     { host: 'landing', slug: 'chat-blocks', label: 'Conversation blocks', blurb: 'The shared chat vocabulary: messages, tool calls, reasoning, approvals, questions.' },

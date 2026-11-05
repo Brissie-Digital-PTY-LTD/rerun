@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({
     failure: null as Error | null,
     screenHolds: 0,
     browserHolds: 0,
+    openBrowser: false,
+    openBrowserHolds: 0,
     browserUrls: [] as Array<string | undefined>,
     apps: [] as string[],
     sleeps: [] as number[],
@@ -57,6 +59,13 @@ vi.mock('../../desktop/session.js', () => ({
 }))
 
 vi.mock('../../desktop/takeover.js', () => ({
+    holdOpenBrowser: () => {
+        if (!state.openBrowser) return () => {}
+        state.openBrowserHolds++
+        return () => {
+            state.openBrowserHolds--
+        }
+    },
     holdBrowser: async (_agentId: string, url?: string) => {
         state.browserHolds++
         state.browserUrls.push(url)
@@ -104,6 +113,7 @@ beforeEach(() => {
     state.driving = false
     state.drivingAfterTyped = null
     state.drivingForPolls = 0
+    state.openBrowser = false
 })
 
 afterEach(() => {
@@ -204,6 +214,16 @@ describe('computer', () => {
         expect(state.screenHolds).toBe(1)
         built.release()
         expect(state.screenHolds).toBe(0)
+    })
+
+    it('holds the browser already on the screen, a window handed back after a sign-in, until the run lets go', async () => {
+        state.openBrowser = true
+        const built = build(ctxWith())
+        await settled(act(built, { action: 'screenshot' }))
+        await settled(act(built, { action: 'screenshot' }))
+        expect(state.openBrowserHolds).toBe(1)
+        built.release()
+        expect(state.openBrowserHolds).toBe(0)
     })
 
     it('gives the screen to the first run of an agent and tells the others why they wait', async () => {

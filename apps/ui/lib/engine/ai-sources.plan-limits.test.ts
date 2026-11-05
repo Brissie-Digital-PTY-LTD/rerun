@@ -21,6 +21,7 @@ function plan(windows: PlanLimitWindow[] | null): BoxConnection {
         planLimits: windows && { windows, capturedAt: '2026-10-05T11:55:00.000Z' },
         cliModels: null,
         providerModels: null,
+        discoveredModels: null,
     }
 }
 

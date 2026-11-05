@@ -8,6 +8,7 @@ import { isCredentialRejected } from './credential-rejections.js'
 import { readCliModels } from './cli-models.js'
 import { readPlanLimits } from './plan-limits.js'
 import { opencodeProviderModels } from './opencode-catalog.js'
+import { customDiscoveredModels } from './custom-catalog.js'
 import type { LoadedConnection } from './types.js'
 
 export function connectionExists(id: string): boolean {
@@ -34,6 +35,8 @@ export function isConnected(connection: LoadedConnection): boolean {
         const { RERUN_HUB_BASE_URL, RERUN_API_KEY } = env()
         return !!RERUN_HUB_BASE_URL && !!RERUN_API_KEY
     }
+    // A custom endpoint is reached by its address; the key is optional, a local server takes none.
+    if (connection.config.provider === 'custom') return !!connection.config.baseUrl
     const key = CONNECTION_TOKEN_KEY[connection.config.provider]
     return !!key && !!connection.env[key]
 }
@@ -47,5 +50,6 @@ export function toSummary(connection: LoadedConnection): ConnectionSummary {
         planLimits: readPlanLimits(connection.id),
         cliModels: readCliModels(connection.id),
         providerModels: connection.config.provider === 'opencode' ? opencodeProviderModels() : null,
+        discoveredModels: connection.config.provider === 'custom' ? customDiscoveredModels(connection.id) : null,
     }
 }

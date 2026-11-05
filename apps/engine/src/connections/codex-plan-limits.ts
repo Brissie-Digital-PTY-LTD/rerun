@@ -4,6 +4,7 @@ import { CONNECTION_TOKEN_KEY } from '@rerun/contracts'
 import { codexHomeDir } from '../config/paths.js'
 import { childProcessEnv } from '../lib/child-env.js'
 import { logger } from '../lib/logger.js'
+import { repairBoxDefault } from '../agents/availability.js'
 import { codexCommand, codexOffPin, parseCodexVersion } from '../runtime/codex-cli.js'
 import { recordCliModels } from './cli-models.js'
 import { ensureCodexAuth, syncCodexAuth } from './codex-auth.js'
@@ -107,6 +108,7 @@ export function refreshCodexPlanLimits(connection: LoadedConnection | null): Pro
         await syncCodexAuth(connection)
         recordPlanLimits(connection.id, planLimitWindowsFromCodex(session?.rateLimits ?? null))
         if (session) recordCliModels(connection.id, session.models, session.version, codexOffPin(session.version))
+        await repairBoxDefault(connection)
     })()
         .catch(err => logger.warn({ connection: connection.id, err: (err as Error).message }, 'codex plan limits read failed'))
         .finally(() => inFlight.delete(connection.id))

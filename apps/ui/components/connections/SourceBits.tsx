@@ -101,7 +101,7 @@ function sourceSubtitle(source: BoxConnection) {
     if (source.id === RERUN_CONNECTION_ID) return 'Included with your plan'
     const pitch = PROVIDER_PITCH[source.provider as AddableProvider]
     if (!pitch) return source.provider
-    return sourceKind(source.provider) === 'plan' ? pitch.title : `${pitch.title} API key`
+    return sourceKind(source.provider) === 'plan' || source.provider === 'custom' ? pitch.title : `${pitch.title} API key`
 }
 
 export function DetailHeader({ source, credit, onBack, onRename }: { source: BoxConnection; credit: RerunCredit; onBack: () => void; onRename: (name: string) => void }) {
