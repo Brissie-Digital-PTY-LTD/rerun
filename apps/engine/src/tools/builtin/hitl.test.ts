@@ -139,6 +139,24 @@ describe('ask_user input schema', () => {
         expect(result.success).toBe(true)
     })
 
+    it('accepts a header and options written as a label with its description', () => {
+        const parsed = askUserSchema().parse({
+            questions: [{ question: 'Which format?', header: 'Format', options: [{ label: 'One-pager', description: 'A single page' }, { label: 'Deck', description: null }, 'Spreadsheet'] }],
+        })
+        expect(parsed.questions[0].header).toBe('Format')
+        expect(parsed.questions[0].options).toEqual([{ label: 'One-pager', description: 'A single page' }, { label: 'Deck', description: undefined }, 'Spreadsheet'])
+    })
+
+    it('accepts a header that came back as an explicit null', () => {
+        const parsed = askUserSchema().parse({ questions: [{ question: 'x', header: null, options: ['a', 'b'] }] })
+        expect(parsed.questions[0].header).toBeUndefined()
+    })
+
+    it('rejects an option object without a label', () => {
+        const result = askUserSchema().safeParse({ questions: [{ question: 'x', options: [{ description: 'no label' }, 'b'] }] })
+        expect(result.success).toBe(false)
+    })
+
     it('rejects a non-JSON string for questions', () => {
         const result = askUserSchema().safeParse({ questions: 'not json' })
         expect(result.success).toBe(false)

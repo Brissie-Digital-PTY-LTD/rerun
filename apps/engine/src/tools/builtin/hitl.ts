@@ -185,6 +185,14 @@ export function offersTakeover(config: AgentConfig): boolean {
 const askUserDescription = (cards: boolean) =>
     `Ask the user one or more questions at once, then END YOUR TURN until they reply. Use it only when you cannot proceed without their input. Anything they are asked to review or choose among (a hook, slides, images) must be in the turn that asks, in full, even when you showed it earlier or are asking again: its text in your message${cards ? ', its files in a card_file call made before this one' : ''}. Put every open question in the questions array, not across several turns. A question offers short options as buttons, or none for a free-text answer: options only when concrete choices help, never for a value only the user knows (a URL, a name, a number). Set multiple: true when the options combine. The user can always type a custom answer, attach files (they arrive as workspace paths) or skip a question. Keep each question to one short line and each option to a few words: longer explanations go in your message.`
 
+const questionOption = z.union([
+    z.string().min(1),
+    z.object({
+        label: z.string().min(1),
+        description: nullTolerantOptional(z.string().min(1)).describe('One line on what picking it implies, only when the label does not say it.'),
+    }),
+])
+
 export function askUserTool(ctx: RunContext): ToolSet {
     return {
         ask_user: hitlTool(
@@ -196,7 +204,8 @@ export function askUserTool(ctx: RunContext): ToolSet {
                         .array(
                             z.object({
                                 question: z.string().min(1).describe('The question alone, one short line: no greeting, lead-in or context, those go in your message.'),
-                                options: nullTolerantOptional(z.array(z.string().min(1)).min(2)).describe('Omit for a free-text question. Otherwise at least two short labels shown as buttons, six or fewer unless the set is genuinely enumerated (every channel, every account). Never a catch-all like "Other" or "All of the above": the free field already covers it, and every option is a real answer to the question.'),
+                                header: nullTolerantOptional(z.string().min(1)).describe('One or two words shown above the question, e.g. "Format".'),
+                                options: nullTolerantOptional(z.array(questionOption).min(2)).describe('Omit for a free-text question. Otherwise at least two short labels shown as buttons, six or fewer unless the set is genuinely enumerated (every channel, every account). Never a catch-all like "Other" or "All of the above": the free field already covers it, and every option is a real answer to the question.'),
                                 multiple: nullTolerantOptional(z.boolean()).describe('Set true when the user may tick several options at once; ignored without options. Defaults to false.'),
                                 suggestions: nullTolerantOptional(z.array(z.string().min(1)).min(2)).describe('Deprecated alias of options.'),
                             }),

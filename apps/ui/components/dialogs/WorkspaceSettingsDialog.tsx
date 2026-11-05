@@ -36,7 +36,7 @@ type LogoDraft = { kind: 'current' } | { kind: 'blob'; file: string } | { kind: 
 
 const VISIBLE_ILLUSTRATIONS = 10
 
-export function WorkspaceSettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function WorkspaceSettingsDialog({ open, onOpenChange, fallbackIconUrl }: { open: boolean; onOpenChange: (open: boolean) => void; fallbackIconUrl?: string }) {
     const { workspace, refreshWorkspace } = useSession()
     const publishedAccess = usePublishedAccessEnabled()
     const policy = usePublishPolicyDraft(open && publishedAccess && !!workspace && !workspace.is_sandbox)
@@ -59,13 +59,13 @@ export function WorkspaceSettingsDialog({ open, onOpenChange }: { open: boolean;
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-                {open && <WorkspaceSettingsForm workspace={workspace} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} />}
+                {open && <WorkspaceSettingsForm workspace={workspace} fallbackIconUrl={fallbackIconUrl} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} />}
             </DialogContent>
         </Dialog>
     )
 }
 
-export function WorkspaceSettingsForm({ workspace, onSave, onCancel, extra }: { workspace: { name: string | null; icon_url: string | null }; onSave: (formData: FormData) => Promise<ActionResult>; onCancel: () => void; extra?: ReactNode }) {
+export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCancel, extra }: { workspace: { name: string | null; icon_url: string | null }; fallbackIconUrl?: string; onSave: (formData: FormData) => Promise<ActionResult>; onCancel: () => void; extra?: ReactNode }) {
     const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { name: workspace.name ?? '' } })
     const {
         formState: { isSubmitting },
@@ -75,6 +75,7 @@ export function WorkspaceSettingsForm({ workspace, onSave, onCancel, extra }: { 
     const [logo, setLogo] = useState<LogoDraft>({ kind: 'current' })
     const [linkInput, setLinkInput] = useState('')
     const [brokenSrc, setBrokenSrc] = useState<string | null>(null)
+    const [brokenPreviewSrc, setBrokenPreviewSrc] = useState<string | null>(null)
 
     const uploadPreviewUrl = logo.kind === 'upload' ? logo.previewUrl : null
     useEffect(() => {
@@ -86,6 +87,7 @@ export function WorkspaceSettingsForm({ workspace, onSave, onCancel, extra }: { 
     const logoSrc = logoDraftSrc(logo, currentSrc)
     const linkBroken = logo.kind === 'link' && brokenSrc === logoSrc
     const previewSrc = linkBroken ? currentSrc : logoSrc
+    const shownPreviewSrc = previewSrc && brokenPreviewSrc !== previewSrc ? previewSrc : fallbackIconUrl
     const selectedBlobUrl = logo.kind === 'blob' ? getBlobByFile(logo.file)?.url : logo.kind === 'current' ? currentSrc : undefined
 
     const changeLink = (value: string) => {
@@ -134,7 +136,7 @@ export function WorkspaceSettingsForm({ workspace, onSave, onCancel, extra }: { 
                             <FileDropzone onFiles={files => upload(files[0])} accept={LOGO_ACCEPT} overlayLabel="" className="shrink-0">
                                 {({ inputId }) => (
                                     <label htmlFor={inputId} aria-label="Upload a logo" className="group relative block size-16 cursor-pointer">
-                                        <img src={previewSrc} alt="" className="size-full rounded-2xl bg-muted object-cover" />
+                                        {shownPreviewSrc ? <img src={shownPreviewSrc} alt="" onError={() => setBrokenPreviewSrc(previewSrc)} className="size-full rounded-2xl bg-muted object-cover" /> : <span className="block size-full rounded-2xl bg-muted" />}
                                         <span className="absolute -right-1 -bottom-1 flex size-6 items-center justify-center rounded-full border bg-background shadow-sm transition-colors group-hover:bg-muted">
                                             <UploadIcon className="size-3.5" />
                                         </span>
@@ -164,9 +166,11 @@ export function WorkspaceSettingsForm({ workspace, onSave, onCancel, extra }: { 
                             </div>
                         </Field>
 
-                        <Field label="Or pick an illustration">
-                            <IllustrationGrid selectedUrl={selectedBlobUrl} onPick={pickBlob} />
-                        </Field>
+                        {BLOB_ILLUSTRATIONS.length > 0 && (
+                            <Field label="Or pick an illustration">
+                                <IllustrationGrid selectedUrl={selectedBlobUrl} onPick={pickBlob} />
+                            </Field>
+                        )}
 
                         {extra}
 

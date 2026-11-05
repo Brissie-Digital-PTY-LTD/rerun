@@ -3472,7 +3472,7 @@ export type Database = {
           current_period_end: string | null
           custom_integrations: boolean
           first_paid_at: string | null
-          icon_url: string
+          icon_url: string | null
           id: number
           is_sandbox: boolean
           last_active_at: string | null
@@ -3509,7 +3509,7 @@ export type Database = {
           current_period_end?: string | null
           custom_integrations?: boolean
           first_paid_at?: string | null
-          icon_url: string
+          icon_url?: string | null
           id?: number
           is_sandbox?: boolean
           last_active_at?: string | null
@@ -3546,7 +3546,7 @@ export type Database = {
           current_period_end?: string | null
           custom_integrations?: boolean
           first_paid_at?: string | null
-          icon_url?: string
+          icon_url?: string | null
           id?: number
           is_sandbox?: boolean
           last_active_at?: string | null
