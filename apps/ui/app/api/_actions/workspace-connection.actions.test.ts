@@ -1,4 +1,4 @@
-import { requireWorkspaceId } from '@/app/api/_auth/ownership'
+import { requireAdminContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
 import { NoPlanError } from '@/app/api/_services/capacity.service'
 import { ensureWorkspaceEngine, findWorkspaceEngine, getWorkspaceConnection } from '@/app/api/_services/workspace-engine.service'
 import * as engine from '@/lib/engine/client'
@@ -6,7 +6,7 @@ import { providerKeyProblem } from '@/lib/engine/verify-provider-key'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createAiConnectionAction, updateAiConnectionKeysAction } from './workspace-connection.actions'
 
-vi.mock('@/app/api/_auth/ownership', () => ({ requireWorkspaceId: vi.fn() }))
+vi.mock('@/app/api/_auth/ownership', () => ({ requireAdminContext: vi.fn(), requireWorkspaceId: vi.fn() }))
 vi.mock('@/app/api/_services/engine-plan.service', () => ({ assertModelEntitled: vi.fn() }))
 vi.mock('@/app/api/_services/capacity.service', () => ({
     NoPlanError: class NoPlanError extends Error {
@@ -36,11 +36,19 @@ const created = { id: 'cnx', name: 'Anthropic', provider: 'anthropic', models: [
 beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(requireWorkspaceId).mockResolvedValue(7)
+    vi.mocked(requireAdminContext).mockResolvedValue({ workspace: { id: 7 }, role: 'admin' } as never)
     vi.mocked(providerKeyProblem).mockResolvedValue(null)
     vi.mocked(engine.createConnection).mockResolvedValue(created as never)
 })
 
 describe('createAiConnectionAction', () => {
+    it('refuses a member who is not an admin, before reaching the machine', async () => {
+        vi.mocked(requireAdminContext).mockRejectedValue(new Error('Only an admin can manage AI providers'))
+        await expect(createAiConnectionAction(params)).resolves.toEqual({ success: false, error: 'Only an admin can manage AI providers' })
+        expect(findWorkspaceEngine).not.toHaveBeenCalled()
+        expect(engine.createConnection).not.toHaveBeenCalled()
+    })
+
     it('creates on the machine the workspace already has', async () => {
         vi.mocked(findWorkspaceEngine).mockResolvedValue({ instanceId: 'i', conn, managed: true })
         await expect(createAiConnectionAction(params)).resolves.toEqual({ success: true, connection: created })

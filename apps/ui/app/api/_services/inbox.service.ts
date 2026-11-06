@@ -1,3 +1,4 @@
+import { actorFromContext, keepVisible, visibleSpaceIds } from '@/app/api/_auth/access'
 import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { markSessionsHandled } from '@/app/api/_services/conversation.service'
 import type { Database } from '@/app/api/database.types'
@@ -19,10 +20,11 @@ const ATTENTION_PAGE = 100
 // have not looked at yet, folded by scheduled task. Built from the same sources and the same rules as
 // `WorkspaceInbox`, so the two cannot disagree on what is news.
 export async function listWorkspaceInbox(ctx: WorkspaceContext): Promise<Inbox> {
-    const { data: agentRows, error: agentsError } = await selectMany(ctx.supabase, 'agents', ['id', 'name'] as const, { workspace_id: ctx.workspace.id })
+    const [{ data: agentRows, error: agentsError }, spaces] = await Promise.all([selectMany(ctx.supabase, 'agents', ['id', 'name', 'space_id'] as const, { workspace_id: ctx.workspace.id }), visibleSpaceIds(actorFromContext(ctx))])
     if (agentsError) throw agentsError
 
-    const namesById = new Map((agentRows ?? []).map(a => [a.id, a.name]))
+    // A finished run of a coworker outside the caller's Boxes drops out below, its name not found.
+    const namesById = new Map(keepVisible(agentRows ?? [], spaces, a => a.space_id).map(a => [a.id, a.name]))
     if (namesById.size === 0) return { items: [], running: 0 }
     const agentIds = [...namesById.keys()]
 

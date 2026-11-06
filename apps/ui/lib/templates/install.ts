@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Actor } from '@/app/api/_auth/access'
 import type { Database } from '@/app/api/database.types'
 import { deriveUniqueHandles, importAgent } from '@/app/api/_services/agent.service'
 import { selectMany, selectSingle } from '@/supabase/supabase-helpers'
@@ -39,7 +40,7 @@ async function anchorsInsideSpace(supabase: SupabaseClient<Database>, spaceId: s
 // Nothing here reads the tarball. The engine is the only side that opens it, so the connectors an
 // imported agent still needs are the ones its own registry already declares as needing auth, and
 // the Services tab renders them with nothing new to build.
-export async function installTemplate(supabase: SupabaseClient<Database>, slug: string, target: { workspaceId: number; spaceId: string; positions?: GridPosition[]; again?: boolean }): Promise<TemplateInstallOutcome> {
+export async function installTemplate(supabase: SupabaseClient<Database>, slug: string, target: { workspaceId: number; spaceId: string; actor: Actor; positions?: GridPosition[]; again?: boolean }): Promise<TemplateInstallOutcome> {
     const { data: template } = await selectSingle(supabase, 'templates', ['id', 'title', 'agents', 'agent_archives'] as const, { slug })
     if (!template) throw new Error(`No template found with slug "${slug}"`)
 
@@ -77,6 +78,7 @@ export async function installTemplate(supabase: SupabaseClient<Database>, slug: 
                 handle: handles[index],
                 workspaceId: target.workspaceId,
                 spaceId: target.spaceId,
+                actor: target.actor,
                 position: anchors[index],
                 templateId: template.id,
             })

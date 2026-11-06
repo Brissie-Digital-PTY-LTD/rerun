@@ -38,6 +38,7 @@ const CONTEXT: OAuthContext = {
 
 let agentWorkspace = SESSION_WORKSPACE
 let memberOfAgentWorkspace = true
+let role: 'admin' | 'member' = 'admin'
 let jar: Record<string, string> = {}
 
 const GRANT = (patch: { agentId?: string } = {}) => mintCallbackGrant({ agentId: CONTEXT.agentId, workspaceId: SESSION_WORKSPACE, userId: 'user-1', jti: 'row-1', ...patch })
@@ -60,10 +61,12 @@ beforeEach(() => {
     vi.stubEnv('MOBILE_OAUTH_TICKET_SECRET', 'test-secret')
     agentWorkspace = SESSION_WORKSPACE
     memberOfAgentWorkspace = true
+    role = 'admin'
     jar = {}
     const db = fakeSupabase(table => {
-        if (table === 'agents') return { data: { workspace_id: agentWorkspace, engine_agent_id: 'engine-agent', template_id: null, disabled_at: null, disabled_reason: null, workspaces: { subscription_status: 'active', is_sandbox: false } } }
-        if (table === 'workspace_members') return { data: memberOfAgentWorkspace ? { user_id: 'user-1' } : null }
+        if (table === 'agents') return { data: { workspace_id: agentWorkspace, space_id: 'space-1', engine_agent_id: 'engine-agent', template_id: null, disabled_at: null, disabled_reason: null, workspaces: { subscription_status: 'active', is_sandbox: false }, space: { visibility: 'workspace' } } }
+        if (table === 'spaces') return { data: { id: 'space-1', workspace_id: agentWorkspace, visibility: 'workspace' } }
+        if (table === 'workspace_members') return { data: memberOfAgentWorkspace ? { user_id: 'user-1', role, box_scope: 'all' } : null }
         return undefined
     })
     vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
@@ -168,6 +171,17 @@ describe('GET /api/mcp/oauth/callback', () => {
 
         expect(await res.text()).toContain('mcp-oauth-success')
         expect(putMcpToken).toHaveBeenCalledOnce()
+    })
+
+    it('writes no token for a member who only uses the Box of the coworker', async () => {
+        role = 'member'
+        withContext(CONTEXT)
+
+        const res = await callback({ code: 'code-1', state: STATE })
+
+        expect(await res.text()).toContain('Only an admin or a manager of this Box can do this')
+        expect(exchangeCode).not.toHaveBeenCalled()
+        expect(putMcpToken).not.toHaveBeenCalled()
     })
 
     it('writes no token when the caller has no session', async () => {

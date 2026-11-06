@@ -14,14 +14,14 @@ import { readAgentModel, useAgentModel } from '@/hooks/useAgentModel'
 import { useRunReconnect } from '@/hooks/useRunReconnect'
 import { contextStatsOf } from '@/lib/chat/context-stats'
 import { historyCovers, needsReconcile } from '@/lib/chat/transcript-reconcile'
-import { isWorkspaceApiEntitled } from '@/cloud/billing'
+import { isWorkspaceApiEntitled } from '@rerun/cloud/billing'
 import { lastUserText } from '@/lib/chat-payload'
-import { PHONE_REQUIRED_MESSAGE } from '@/cloud/phone'
+import { PHONE_REQUIRED_MESSAGE } from '@rerun/cloud/phone'
 import { findPendingEngineHitl, findPendingWidget, resumesAfterAnswer } from '@/lib/foreman/pending-widget'
 import type { ForemanBackend } from '@/lib/foreman/phase'
 import { sealPendingWidgets, withTypedAnswer } from '@/lib/foreman/seal-pending'
 import { selectForemanBackend, selectForemanOpen, useForemanStore } from '@/stores/foreman.store'
-import { useSession } from '@/supabase/session/SessionProvider'
+import { useIsWorkspaceAdmin, useSession } from '@/supabase/session/SessionProvider'
 
 // The foreman's chat, on whichever loop serves the conversation.
 //
@@ -53,14 +53,15 @@ export function useForemanChat() {
     const open = useForemanStore(selectForemanOpen)
     const engaged = useForemanStore(state => state.engaged)
     const { workspace, refreshPhoneStep } = useSession()
+    const isAdmin = useIsWorkspaceAdmin()
 
     // A client tool that opens a locked panel has to know it is locked, and the session is a React
     // context. Kept in a ref rather than read in the closure below: useChat holds on to the options
     // it was given, and a workspace read there would be the one of the first render forever.
-    const gates = useRef<ForemanClientGates>({ apiEntitled: false, isSandbox: false })
+    const gates = useRef<ForemanClientGates>({ apiEntitled: false, isSandbox: false, isAdmin: false })
     useEffect(() => {
-        gates.current = { apiEntitled: !!workspace && isWorkspaceApiEntitled(workspace), isSandbox: !!workspace?.is_sandbox }
-    }, [workspace])
+        gates.current = { apiEntitled: !!workspace && isWorkspaceApiEntitled(workspace), isSandbox: !!workspace?.is_sandbox, isAdmin }
+    }, [workspace, isAdmin])
 
     const transport = useMemo(
         () =>

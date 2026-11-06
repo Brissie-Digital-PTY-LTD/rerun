@@ -14,6 +14,7 @@ import { PanelSteps } from '@/components/ui/panel-steps'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { useRerunCredit } from '@/hooks/useRerunCredit'
+import { useIsWorkspaceAdmin } from '@/supabase/session/SessionProvider'
 import { useWorkspaceConnections } from '@/hooks/useWorkspaceConnections'
 import {
     keyProviders,
@@ -48,6 +49,7 @@ import { toast } from 'sonner'
 
 const BRAND_STRIPES = 'color-mix(in oklab, var(--color-brand) 6%, transparent)'
 const ORANGE_STRIPES = 'color-mix(in oklab, var(--color-orange-500) 6%, transparent)'
+export const AI_PROVIDERS_ADMIN_ONLY = 'Only an admin can change the AI providers'
 
 type ConnectionsPage = { kind: 'list' } | { kind: 'add'; provider: AddableProvider } | { kind: 'detail'; connectionId: string; reconnect?: boolean }
 
@@ -73,6 +75,8 @@ export function AiProvidersPanel({
     const { connections, boxDefault, opencodeOffered, customOffered, loading, create, update, updateKeys, remove, setDefault } = useWorkspaceConnections({ revalidate: true })
     const credit = useRerunCredit()
     const needsPlan = useNeedsPlanToConnect()
+    const workspaceAdmin = useIsWorkspaceAdmin()
+    const readOnlyReason = workspaceAdmin ? undefined : AI_PROVIDERS_ADMIN_ONLY
     const [page, setPage] = useState<ConnectionsPage>({ kind: 'list' })
 
     useEffect(() => {
@@ -129,13 +133,14 @@ export function AiProvidersPanel({
                     onUpdate={update}
                     onUpdateKeys={(id, body) => updateKeys(id, body, 'reconnect')}
                     onDelete={remove}
+                    readOnlyReason={readOnlyReason}
                 />
             ) : loading ? (
                 <ConnectionsSkeleton />
             ) : (
                 <PanelScroller className="space-y-6 p-4">
                     <Group title="Default model">
-                        <DefaultRow connections={connections} current={current} credit={credit} onPick={pickDefault} onFix={open} />
+                        <DefaultRow connections={connections} current={current} credit={credit} onPick={pickDefault} onFix={open} readOnlyReason={readOnlyReason} />
                     </Group>
 
                     <Group title="Included">
@@ -154,6 +159,7 @@ export function AiProvidersPanel({
                         taken={taken}
                         onOpen={open}
                         onAdd={needsPlan ? undefined : add}
+                        addDisabledReason={readOnlyReason}
                         pitch={opencodeOffered ? 'Already use Claude Code, Codex or OpenCode? Your coworkers can run on your plan.' : 'Already use Claude Code or Codex? Your coworkers can run on your plan.'}
                         providers={planProviders(opencodeOffered)}
                     />
@@ -166,6 +172,7 @@ export function AiProvidersPanel({
                         taken={taken}
                         onOpen={open}
                         onAdd={needsPlan ? undefined : add}
+                        addDisabledReason={readOnlyReason}
                         pitch={customOffered ? 'Pay your provider directly, per token, or run your own model.' : 'Pay your provider directly, per token.'}
                         providers={keyProviders(customOffered)}
                     />
@@ -199,9 +206,10 @@ type DefaultRowProps = {
     credit: RerunCredit
     onPick: (pick: BoxDefault) => void
     onFix: (connectionId: string) => void
+    readOnlyReason?: string
 }
 
-function DefaultRow({ connections, current, credit, onPick, onFix }: DefaultRowProps) {
+function DefaultRow({ connections, current, credit, onPick, onFix, readOnlyReason }: DefaultRowProps) {
     const source = connections.find(c => c.id === current.connectionId)
     const broken = source && !isUsable(source, credit)
     const creditGone = source && isCreditExhausted(source, credit)
@@ -227,13 +235,15 @@ function DefaultRow({ connections, current, credit, onPick, onFix }: DefaultRowP
                 actions={
                     <>
                         {broken && !creditGone && (
-                            <Button size="xs" variant="outline" onClick={() => onFix(source.id)}>
-                                {connectMethod(source.provider) === 'key' ? 'Add key' : 'Sign in again'}
-                            </Button>
+                            <TooltipDisabledReason reason={readOnlyReason}>
+                                <Button size="xs" variant="outline" disabled={!!readOnlyReason} onClick={() => onFix(source.id)}>
+                                    {connectMethod(source.provider) === 'key' ? 'Add key' : 'Sign in again'}
+                                </Button>
+                            </TooltipDisabledReason>
                         )}
-                        <TooltipDisabledReason reason={canChange ? undefined : 'No other model is ready. Add a plan or an API key first.'}>
+                        <TooltipDisabledReason reason={readOnlyReason ?? (canChange ? undefined : 'No other model is ready. Add a plan or an API key first.')}>
                             <DefaultModelPicker connections={connections} current={current} credit={credit} onPick={onPick}>
-                                <Button size="xs" variant={broken && canChange ? 'default' : 'outline'} disabled={!canChange}>
+                                <Button size="xs" variant={broken && canChange ? 'default' : 'outline'} disabled={!canChange || !!readOnlyReason}>
                                     Change
                                     <ChevronDownIcon className="size-3" />
                                 </Button>
@@ -256,19 +266,28 @@ type SourceGroupProps = {
     onOpen: (connectionId: string) => void
     // Absent for a workspace with no plan: what it already holds stays reachable, nothing new can be added.
     onAdd?: (provider: AddableProvider) => void
+    // Set for a member: the buttons stay in place, disabled, with this reason.
+    addDisabledReason?: string
     pitch: string
     providers: AddableProvider[]
 }
 
-export function SourceGroup({ title, only, sources, credit, taken, onOpen, onAdd, pitch, providers }: SourceGroupProps) {
+export function SourceGroup({ title, only, sources, credit, taken, onOpen, onAdd, addDisabledReason, pitch, providers }: SourceGroupProps) {
     if (!onAdd && sources.length === 0) return null
 
     // The pitch already offers every provider, so the header's Add only shows once the group has entries.
+    const addLabel = only === 'plan' ? 'Add subscription' : 'Add API key'
     const addMenu =
         onAdd && sources.length > 0 ? (
-            <ProviderPicker taken={taken} onPick={onAdd} providers={providers}>
-                <AddButton label={only === 'plan' ? 'Add subscription' : 'Add API key'} />
-            </ProviderPicker>
+            addDisabledReason ? (
+                <TooltipDisabledReason reason={addDisabledReason}>
+                    <AddButton label={addLabel} disabled />
+                </TooltipDisabledReason>
+            ) : (
+                <ProviderPicker taken={taken} onPick={onAdd} providers={providers}>
+                    <AddButton label={addLabel} />
+                </ProviderPicker>
+            )
         ) : undefined
 
     return (
@@ -285,10 +304,12 @@ export function SourceGroup({ title, only, sources, credit, taken, onOpen, onAdd
                 <EmptyPitch
                     text={pitch}
                     actions={providers.map(provider => (
-                        <Button key={provider} variant="outline" onClick={() => onAdd(provider)}>
-                            <ProviderIcon provider={provider} className="size-4" />
-                            {only === 'plan' ? PLAN_LABELS[provider] : PROVIDER_PITCH[provider].title}
-                        </Button>
+                        <TooltipDisabledReason key={provider} reason={addDisabledReason}>
+                            <Button variant="outline" disabled={!!addDisabledReason} onClick={() => onAdd(provider)}>
+                                <ProviderIcon provider={provider} className="size-4" />
+                                {only === 'plan' ? PLAN_LABELS[provider] : PROVIDER_PITCH[provider].title}
+                            </Button>
+                        </TooltipDisabledReason>
                     ))}
                 />
             )}

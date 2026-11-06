@@ -1,6 +1,7 @@
-import { resolveTransport } from './mcp.js'
+import { mcpToolNameFor, resolveTransport } from './mcp.js'
 import { loadToken } from './mcp-auth.js'
 import { connectorServerStates, type ConnectorServerState } from '../services/registry.js'
+import type { Provider } from '@rerun/contracts'
 import type { LoadedAgent } from '../agents/types.js'
 
 // Names the app behind a server, and which of its accounts when the agent holds several or the
@@ -26,7 +27,7 @@ function connectorAuth(state: ConnectorServerState, states: Map<string, Connecto
     return `connected (${app})`
 }
 
-export async function buildMcpIndex(agent: LoadedAgent): Promise<string> {
+export async function buildMcpIndex(agent: LoadedAgent, provider?: Provider): Promise<string> {
     if (agent.config.mcpServers.length === 0) return ''
     const states = await connectorServerStates(agent.id)
     const lines = await Promise.all(
@@ -50,5 +51,5 @@ export async function buildMcpIndex(agent: LoadedAgent): Promise<string> {
     const pendingNote = pending
         ? ` A server marked "not connected yet" or "not set up yet" belongs to an app the user has not connected: its tools are listed but every call fails, so do not call them and never tell the user that app is connected; ${connectStep}.`
         : ''
-    return `These MCP servers are already configured. Their tools are loaded as \`<name>_<tool>\`. For a server marked connected or authenticated, do NOT claim you lack credentials or session info; just call the tools.${pendingNote} Check live status with mcp_status.\n\n${lines.join('\n')}`
+    return `These MCP servers are already configured. Their tools are loaded as \`${mcpToolNameFor(provider, '<name>', '<tool>')}\`. For a server marked connected or authenticated, do NOT claim you lack credentials or session info; just call the tools.${pendingNote} Check live status with mcp_status.\n\n${lines.join('\n')}`
 }

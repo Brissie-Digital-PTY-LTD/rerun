@@ -26,6 +26,7 @@ import type { SpacePublic } from '@/lib/board/types'
 // donnait des tuiles qui clignotent ; une chaîne écrite donne quelque chose qu'on peut suivre des
 // yeux pendant qu'on remplit le formulaire.
 
+// Served by the app itself, from apps/ui/public/services, filled by scripts/public-export/refresh-catalog.mjs.
 const ICON_BASE = '/services'
 
 // URLs relevées telles quelles dans `services.icon` en prod, comme le font déjà le board de

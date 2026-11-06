@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { dispatchAccountTool } from '@/app/api/_services/mcp-account.service'
 import { executeDb, getAgent } from '@/lib/engine/client'
 import { hashApiKey } from '@/lib/mcp/api-keys'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
@@ -9,6 +10,10 @@ import { POST } from './route'
 
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
 vi.mock('@/lib/engine/client')
+vi.mock('@/app/api/_services/mcp-account.service', async importOriginal => {
+    const actual = await importOriginal<typeof import('@/app/api/_services/mcp-account.service')>()
+    return { ...actual, dispatchAccountTool: vi.fn(actual.dispatchAccountTool) }
+})
 vi.mock('@/app/api/_services/workspace-engine.service', () => ({
     findWorkspaceEngine: vi.fn(),
     getConnectionForAgent: vi.fn(),
@@ -23,10 +28,20 @@ const WORKSPACE_ID = 7
 const FOREIGN_WORKSPACE_ID = 99
 const LIVE_KEY = 'rk_live-key'
 const REVOKED_KEY = 'rk_revoked-key'
+const MEMBER_KEY = 'rk_member-key'
+const ORPHAN_KEY = 'rk_orphan-key'
+const MEMBER_ID = 'user-member'
+const GONE_ID = 'user-gone'
 
-const API_KEYS: Record<string, { id: string; workspace_id: number; revoked_at: string | null }> = {
-    [hashApiKey(LIVE_KEY)]: { id: 'key-1', workspace_id: WORKSPACE_ID, revoked_at: null },
-    [hashApiKey(REVOKED_KEY)]: { id: 'key-2', workspace_id: WORKSPACE_ID, revoked_at: '2026-09-01T00:00:00Z' },
+const API_KEYS: Record<string, { id: string; workspace_id: number; revoked_at: string | null; created_by_user_id: string | null }> = {
+    [hashApiKey(LIVE_KEY)]: { id: 'key-1', workspace_id: WORKSPACE_ID, revoked_at: null, created_by_user_id: null },
+    [hashApiKey(REVOKED_KEY)]: { id: 'key-2', workspace_id: WORKSPACE_ID, revoked_at: '2026-09-01T00:00:00Z', created_by_user_id: null },
+    [hashApiKey(MEMBER_KEY)]: { id: 'key-3', workspace_id: WORKSPACE_ID, revoked_at: null, created_by_user_id: MEMBER_ID },
+    [hashApiKey(ORPHAN_KEY)]: { id: 'key-4', workspace_id: WORKSPACE_ID, revoked_at: null, created_by_user_id: GONE_ID },
+}
+
+const MEMBERS: Record<string, { role: 'admin' | 'member'; box_scope: 'all' | 'assigned' }> = {
+    [`${MEMBER_ID}:${WORKSPACE_ID}`]: { role: 'member', box_scope: 'assigned' },
 }
 
 const AGENTS: Record<string, { workspace_id: number }> = {
@@ -48,6 +63,7 @@ function resolveRow(table: string, calls: readonly SupabaseCall[]) {
         return { data: row ? { ...row, engine_agent_id: 'engine-agent', template_id: null, disabled_at: null, disabled_reason: null, workspaces: { subscription_status: 'active', is_sandbox: false } } : null }
     }
     if (table === 'spaces') return { data: SPACES[eqValue(calls, 'id') as string] ?? null }
+    if (table === 'workspace_members') return { data: MEMBERS[`${eqValue(calls, 'user_id')}:${eqValue(calls, 'workspace_id')}`] ?? null }
     if (table === 'workspaces') return { data: { subscription_status: 'active', is_sandbox: false } }
     return undefined
 }
@@ -102,6 +118,25 @@ describe('POST /api/mcp/account', () => {
         expect(response.status).toBe(401)
         expect(eqValue(db.chainsOn('api_keys')[0], 'key_hash')).toBe(hashApiKey(REVOKED_KEY))
         expect(db.writes('api_keys')).toEqual([])
+    })
+
+    it('acts as the workspace for a key without a recorded creator', async () => {
+        await POST(mcpRequest(LIVE_KEY, toolCall('list_agents', {})))
+
+        expect(dispatchAccountTool).toHaveBeenCalledWith({ kind: 'workspace', workspaceId: WORKSPACE_ID }, 'list_agents', {}, { actorUserId: null })
+    })
+
+    it('acts with the access of the member who created the key', async () => {
+        await POST(mcpRequest(MEMBER_KEY, toolCall('list_agents', {})))
+
+        expect(dispatchAccountTool).toHaveBeenCalledWith({ kind: 'user', userId: MEMBER_ID, workspaceId: WORKSPACE_ID, role: 'member', boxScope: 'assigned' }, 'list_agents', {}, { actorUserId: MEMBER_ID })
+    })
+
+    it('refuses a key whose creator has left the workspace, without running the tool', async () => {
+        const response = await POST(mcpRequest(ORPHAN_KEY, toolCall('list_agents', {})))
+
+        expect(await response.json()).toEqual({ jsonrpc: '2.0', id: 1, error: { code: -32001, message: 'The member who created this key has left the workspace' } })
+        expect(dispatchAccountTool).not.toHaveBeenCalled()
     })
 
     it('scopes a call to the workspace of the key, not one named in the arguments', async () => {

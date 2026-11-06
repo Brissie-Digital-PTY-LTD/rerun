@@ -1,6 +1,7 @@
+import { workspaceActor } from '@/app/api/_auth/access'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createSchedule, createTrigger, getAgent, importSkill, listConnections, listSchedules, listSkills, listTriggers, patchAgent, updateSchedule, updateTrigger } from '@/lib/engine/client'
+import { chat as engineChat, createSchedule, createTrigger, getAgent, importSkill, listConnections, listSchedules, listSkills, listTriggers, patchAgent, updateSchedule, updateTrigger } from '@/lib/engine/client'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { fakeSupabase, type FakeSupabase, type SupabaseCall } from '@/test/supabase-fake'
 
@@ -33,16 +34,18 @@ vi.mock('./mcp-shares.service', () => ({ dispatchShareTool: vi.fn() }))
 
 const WORKSPACE_ID = 7
 const FOREIGN_WORKSPACE_ID = 99
+// The API key and the foreman act as the workspace itself, which reaches every Box.
+const ACTOR = { kind: 'workspace', workspaceId: WORKSPACE_ID }
 
 const AGENTS: Record<string, Record<string, unknown>> = {
-    'agent-own': { workspace_id: WORKSPACE_ID },
-    'agent-foreign': { workspace_id: FOREIGN_WORKSPACE_ID },
-    'agent-sealed': { workspace_id: WORKSPACE_ID },
+    'agent-own': { workspace_id: WORKSPACE_ID, space_id: 'box-own' },
+    'agent-foreign': { workspace_id: FOREIGN_WORKSPACE_ID, space_id: 'box-foreign' },
+    'agent-sealed': { workspace_id: WORKSPACE_ID, space_id: 'box-own' },
 }
 
 const SPACES = [
-    { id: 'box-own', name: 'Sales', workspace_id: WORKSPACE_ID },
-    { id: 'box-foreign', name: 'Theirs', workspace_id: FOREIGN_WORKSPACE_ID },
+    { id: 'box-own', name: 'Sales', workspace_id: WORKSPACE_ID, visibility: 'restricted' },
+    { id: 'box-foreign', name: 'Theirs', workspace_id: FOREIGN_WORKSPACE_ID, visibility: 'workspace' },
 ]
 
 function gmailManifest(multiInstance: boolean): ServiceManifest {
@@ -60,6 +63,7 @@ function eqValue(calls: readonly SupabaseCall[], column: string): unknown {
 
 function resolveRow(table: string, calls: readonly SupabaseCall[]) {
     if (table === 'agents') return { data: AGENTS[eqValue(calls, 'id') as string] ?? null }
+    if (table === 'spaces' && eqValue(calls, 'id') !== undefined && eqValue(calls, 'workspace_id') === undefined) return { data: SPACES.find(space => space.id === eqValue(calls, 'id')) ?? null }
     if (table === 'spaces') return { data: SPACES.filter(space => space.workspace_id === eqValue(calls, 'workspace_id')) }
     return undefined
 }
@@ -73,28 +77,51 @@ describe('dispatchAccountTool', () => {
         vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
     })
 
+    describe('send_message', () => {
+        const CONN = { baseUrl: 'https://engine.test', apiKey: null }
+        const member = { kind: 'user', userId: 'u-member', workspaceId: WORKSPACE_ID, role: 'member', boxScope: 'all' } as const
+
+        beforeEach(() => {
+            vi.mocked(resolveAgentTarget).mockResolvedValue({ conn: CONN, engineAgentId: 'engine-own', contentLocked: false } as never)
+            vi.mocked(engineChat).mockResolvedValue(new Response('down', { status: 503 }))
+        })
+
+        it('hands the engine the coworkers a member reaches, so the coworker cannot call into a Box closed to them', async () => {
+            await expect(dispatchAccountTool(member, 'send_message', { agentId: 'agent-own', message: 'hi' })).rejects.toThrow(/could not be reached/)
+
+            expect(vi.mocked(engineChat).mock.calls[0][2]).toMatchObject({ callableAgentIds: [] })
+        })
+
+        it('names nobody for an API key, which reaches every Box', async () => {
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'send_message', { agentId: 'agent-own', message: 'hi' })).rejects.toThrow(/could not be reached/)
+
+            expect(vi.mocked(engineChat).mock.calls[0][2]).toMatchObject({ callableAgentIds: undefined })
+        })
+    })
+
     describe('delete_agent', () => {
         it('refuses to delete without an explicit confirmation', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'delete_agent', { agentId: 'agent-own' })).rejects.toThrow(/confirm: true/)
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'delete_agent', { agentId: 'agent-own', confirm: 'yes' })).rejects.toThrow(/confirm: true/)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'delete_agent', { agentId: 'agent-own' })).rejects.toThrow(/confirm: true/)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'delete_agent', { agentId: 'agent-own', confirm: 'yes' })).rejects.toThrow(/confirm: true/)
 
             expect(deleteAgent).not.toHaveBeenCalled()
         })
 
         it('refuses an agent of another workspace even when confirmed', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'delete_agent', { agentId: 'agent-foreign', confirm: true })).rejects.toThrow('Coworker not found')
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'delete_agent', { agentId: 'agent-foreign', confirm: true })).rejects.toThrow('Coworker not found')
 
             expect(deleteAgent).not.toHaveBeenCalled()
         })
 
         it('refuses an agent that does not exist', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'delete_agent', { agentId: 'agent-missing', confirm: true })).rejects.toThrow('Coworker not found')
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'delete_agent', { agentId: 'agent-missing', confirm: true })).rejects.toThrow('Coworker not found')
 
             expect(deleteAgent).not.toHaveBeenCalled()
         })
 
         it('deletes a confirmed agent of the workspace', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'delete_agent', { agentId: 'agent-own', confirm: true })).resolves.toEqual({ agentId: 'agent-own', deleted: true })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'delete_agent', { agentId: 'agent-own', confirm: true })).resolves.toEqual({ agentId: 'agent-own', deleted: true })
+            expect(db.chainsOn('space_members')).toEqual([])
 
             expect(deleteAgent).toHaveBeenCalledWith('agent-own')
         })
@@ -102,7 +129,7 @@ describe('dispatchAccountTool', () => {
 
     describe('create_agent', () => {
         it('refuses a Box of another workspace', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'create_agent', { name: 'Scout', spaceId: 'box-foreign' })).rejects.toThrow('Box not found')
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'create_agent', { name: 'Scout', spaceId: 'box-foreign' })).rejects.toThrow('Box not found')
 
             expect(eqValue(db.chainsOn('spaces')[0], 'workspace_id')).toBe(WORKSPACE_ID)
             expect(createAgent).not.toHaveBeenCalled()
@@ -111,9 +138,9 @@ describe('dispatchAccountTool', () => {
         it('creates the agent in the Box of the workspace it names', async () => {
             vi.mocked(createAgent).mockResolvedValue({ id: 'agent-new', name: 'Scout', handle: 'scout', disabled_at: null } as never)
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'create_agent', { name: 'Scout', spaceId: 'box-own' })).resolves.toMatchObject({ agentId: 'agent-new', spaceId: 'box-own', active: true })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'create_agent', { name: 'Scout', spaceId: 'box-own' })).resolves.toMatchObject({ agentId: 'agent-new', spaceId: 'box-own', active: true })
 
-            expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: WORKSPACE_ID, spaceId: 'box-own' }))
+            expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: WORKSPACE_ID, spaceId: 'box-own', actor: ACTOR }))
         })
     })
 
@@ -128,7 +155,7 @@ describe('dispatchAccountTool', () => {
         })
 
         it('lists one row per account, keyed', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'list_agent_connectors', { agentId: 'agent-own' })).resolves.toEqual({
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'list_agent_connectors', { agentId: 'agent-own' })).resolves.toEqual({
                 connectors: [
                     { key: 'gmail', slug: 'gmail', name: 'Gmail', label: 'me@work.com', status: 'needs_auth', toolNames: [] },
                     { key: 'gmail@k3x9ab', slug: 'gmail', name: 'Gmail', label: 'Gmail 2', status: 'needs_auth', toolNames: [] },
@@ -139,52 +166,53 @@ describe('dispatchAccountTool', () => {
         it('declares the base account without newInstance', async () => {
             vi.mocked(loadManifest).mockResolvedValue(gmailManifest(true))
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'attach_connector', { agentId: 'agent-own', slug: 'gmail' })).resolves.toMatchObject({ key: 'gmail', slug: 'gmail', label: 'me@work.com' })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'attach_connector', { agentId: 'agent-own', slug: 'gmail' })).resolves.toMatchObject({ key: 'gmail', slug: 'gmail', label: 'me@work.com' })
 
             expect(allocateServiceInstance).not.toHaveBeenCalled()
-            expect(declareService).toHaveBeenCalledWith('agent-own', gmailManifest(true), WORKSPACE_ID, undefined)
+            expect(resolveAgentTarget).toHaveBeenCalledWith('agent-own', ACTOR, 'manage')
+            expect(declareService).toHaveBeenCalledWith('agent-own', gmailManifest(true), ACTOR, undefined)
         })
 
         it('declares another account of an app that supports several', async () => {
             vi.mocked(loadManifest).mockResolvedValue(gmailManifest(true))
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'attach_connector', { agentId: 'agent-own', slug: 'gmail', newInstance: true })).resolves.toMatchObject({
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'attach_connector', { agentId: 'agent-own', slug: 'gmail', newInstance: true })).resolves.toMatchObject({
                 key: 'gmail@k3x9ab',
                 slug: 'gmail',
                 label: 'Gmail 2',
                 status: 'needs_auth',
             })
 
-            expect(declareService).toHaveBeenCalledWith('agent-own', gmailManifest(true), WORKSPACE_ID, NEW_ACCOUNT)
+            expect(declareService).toHaveBeenCalledWith('agent-own', gmailManifest(true), ACTOR, NEW_ACCOUNT)
         })
 
         it('ignores newInstance on an app limited to one account', async () => {
             vi.mocked(loadManifest).mockResolvedValue(gmailManifest(false))
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'attach_connector', { agentId: 'agent-own', slug: 'gmail', newInstance: true })).resolves.toMatchObject({ key: 'gmail' })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'attach_connector', { agentId: 'agent-own', slug: 'gmail', newInstance: true })).resolves.toMatchObject({ key: 'gmail' })
 
             expect(allocateServiceInstance).not.toHaveBeenCalled()
-            expect(declareService).toHaveBeenCalledWith('agent-own', gmailManifest(false), WORKSPACE_ID, undefined)
+            expect(declareService).toHaveBeenCalledWith('agent-own', gmailManifest(false), ACTOR, undefined)
         })
 
         it('refuses an app the catalog does not know', async () => {
             vi.mocked(loadManifest).mockResolvedValue(null)
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'attach_connector', { agentId: 'agent-own', slug: 'nope' })).rejects.toThrow('Unknown app "nope"')
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'attach_connector', { agentId: 'agent-own', slug: 'nope' })).rejects.toThrow('Unknown app "nope"')
 
             expect(declareService).not.toHaveBeenCalled()
         })
 
         it('detaches one account by its key', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'detach_connector', { agentId: 'agent-own', key: 'gmail@k3x9ab', slug: 'gmail', confirm: true })).resolves.toEqual({ key: 'gmail@k3x9ab', detached: true })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'detach_connector', { agentId: 'agent-own', key: 'gmail@k3x9ab', slug: 'gmail', confirm: true })).resolves.toEqual({ key: 'gmail@k3x9ab', detached: true })
 
-            expect(uninstallService).toHaveBeenCalledWith('agent-own', 'gmail@k3x9ab', WORKSPACE_ID)
+            expect(uninstallService).toHaveBeenCalledWith('agent-own', 'gmail@k3x9ab', ACTOR)
         })
 
         it('detaches the base account by its slug', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'detach_connector', { agentId: 'agent-own', slug: 'gmail', confirm: true })).resolves.toEqual({ key: 'gmail', detached: true })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'detach_connector', { agentId: 'agent-own', slug: 'gmail', confirm: true })).resolves.toEqual({ key: 'gmail', detached: true })
 
-            expect(uninstallService).toHaveBeenCalledWith('agent-own', 'gmail', WORKSPACE_ID)
+            expect(uninstallService).toHaveBeenCalledWith('agent-own', 'gmail', ACTOR)
         })
     })
 
@@ -198,7 +226,7 @@ describe('dispatchAccountTool', () => {
         it('lists the identity fields a rename wrote in updated', async () => {
             vi.mocked(renameAgent).mockResolvedValue({ name: 'Worker B', handle: 'worker_b', handleChanged: true })
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', name: 'Worker B' })).resolves.toMatchObject({
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', name: 'Worker B' })).resolves.toMatchObject({
                 updated: ['name', 'handle'],
                 name: 'Worker B',
                 handle: 'worker_b',
@@ -208,7 +236,7 @@ describe('dispatchAccountTool', () => {
         it('leaves handle out of updated when the rename re-derives the same one', async () => {
             vi.mocked(renameAgent).mockResolvedValue({ name: 'Worker A!', handle: 'worker_a', handleChanged: false })
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', name: 'Worker A!' })).resolves.toMatchObject({
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', name: 'Worker A!' })).resolves.toMatchObject({
                 updated: ['name'],
                 name: 'Worker A!',
                 handle: 'worker_a',
@@ -217,7 +245,7 @@ describe('dispatchAccountTool', () => {
 
         it('refuses upsert_skill naming the same reference file in files and removeFiles, whatever the spelling', async () => {
             await expect(
-                dispatchAccountTool(WORKSPACE_ID, 'upsert_skill', { agentId: 'agent-own', name: 'Fixture', body: 'Body', files: [{ path: 'references/a.md', content: 'x' }], removeFiles: ['references/../references/a.md'] }),
+                dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_skill', { agentId: 'agent-own', name: 'Fixture', body: 'Body', files: [{ path: 'references/a.md', content: 'x' }], removeFiles: ['references/../references/a.md'] }),
             ).rejects.toThrow('in both files and removeFiles')
 
             expect(importSkill).not.toHaveBeenCalled()
@@ -226,11 +254,11 @@ describe('dispatchAccountTool', () => {
         it('lists the handle a handle change wrote in updated', async () => {
             vi.mocked(changeAgentHandle).mockResolvedValue({ name: 'Worker A', handle: 'custom_key' })
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', handle: 'custom_key' })).resolves.toMatchObject({ updated: ['handle'], handle: 'custom_key' })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', handle: 'custom_key' })).resolves.toMatchObject({ updated: ['handle'], handle: 'custom_key' })
         })
 
         it('keeps listing only the config fields of an update that leaves the identity alone', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', description: 'Finds leads' })).resolves.toMatchObject({ updated: ['description'] })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', description: 'Finds leads' })).resolves.toMatchObject({ updated: ['description'] })
 
             expect(renameAgent).not.toHaveBeenCalled()
             expect(changeAgentHandle).not.toHaveBeenCalled()
@@ -244,17 +272,17 @@ describe('dispatchAccountTool', () => {
             vi.mocked(listInstalledServices).mockResolvedValue({ services: [] } as never)
 
             vi.mocked(listSchedules).mockRejectedValueOnce(new Error('engine GET schedules failed: 500'))
-            const failed = await dispatchAccountTool(WORKSPACE_ID, 'get_agent', { agentId: 'agent-own' })
+            const failed = await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'get_agent', { agentId: 'agent-own' })
             expect(failed).toMatchObject({ schedules: [], unavailable: ['schedules'] })
 
             vi.mocked(listSchedules).mockResolvedValueOnce([])
-            const empty = await dispatchAccountTool(WORKSPACE_ID, 'get_agent', { agentId: 'agent-own' })
+            const empty = await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'get_agent', { agentId: 'agent-own' })
             expect(empty).toMatchObject({ schedules: [] })
             expect(empty).not.toHaveProperty('unavailable')
         })
 
         it('refuses upsert_skill removing the skill folder itself before the body is written', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_skill', { agentId: 'agent-own', name: 'Fixture', body: 'Changed body', removeFiles: ['.'] })).rejects.toThrow('not a file of the skill')
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_skill', { agentId: 'agent-own', name: 'Fixture', body: 'Changed body', removeFiles: ['.'] })).rejects.toThrow('not a file of the skill')
 
             expect(importSkill).not.toHaveBeenCalled()
         })
@@ -266,41 +294,41 @@ describe('dispatchAccountTool', () => {
         })
 
         it('refuses update_agent writing the soul of an agent whose template content is locked', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-sealed', soul: 'New soul', name: 'Renamed' })).rejects.toThrow(LOCKED_WRITE_ERROR)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-sealed', soul: 'New soul', name: 'Renamed' })).rejects.toThrow(LOCKED_WRITE_ERROR)
 
             expect(patchAgent).not.toHaveBeenCalled()
             expect(renameAgent).not.toHaveBeenCalled()
         })
 
         it('lets update_agent change the rest of a locked agent', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-sealed', description: 'Finds leads' })).resolves.toMatchObject({ updated: ['description'] })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-sealed', description: 'Finds leads' })).resolves.toMatchObject({ updated: ['description'] })
 
             expect(patchAgent).toHaveBeenCalledWith(expect.anything(), 'engine-sealed', { description: 'Finds leads' })
         })
 
         it('refuses upsert_skill writing a skill on an agent whose template content is locked', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_skill', { agentId: 'agent-sealed', name: 'Outreach', body: 'Rewritten' })).rejects.toThrow(LOCKED_WRITE_ERROR)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_skill', { agentId: 'agent-sealed', name: 'Outreach', body: 'Rewritten' })).rejects.toThrow(LOCKED_WRITE_ERROR)
 
             expect(importSkill).not.toHaveBeenCalled()
         })
 
         it('refuses upsert_schedule writing the body of a scheduled task on an agent whose template content is locked', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_schedule', { agentId: 'agent-sealed', slug: 'daily', body: 'Rewritten' })).rejects.toThrow(LOCKED_WRITE_ERROR)
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_schedule', { agentId: 'agent-sealed', name: 'Daily', cron: '0 9 * * *', body: 'New' })).rejects.toThrow(LOCKED_WRITE_ERROR)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_schedule', { agentId: 'agent-sealed', slug: 'daily', body: 'Rewritten' })).rejects.toThrow(LOCKED_WRITE_ERROR)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_schedule', { agentId: 'agent-sealed', name: 'Daily', cron: '0 9 * * *', body: 'New' })).rejects.toThrow(LOCKED_WRITE_ERROR)
 
             expect(updateSchedule).not.toHaveBeenCalled()
             expect(createSchedule).not.toHaveBeenCalled()
         })
 
         it('lets upsert_schedule pause a scheduled task of a locked agent', async () => {
-            await dispatchAccountTool(WORKSPACE_ID, 'upsert_schedule', { agentId: 'agent-sealed', slug: 'daily', enabled: false })
+            await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_schedule', { agentId: 'agent-sealed', slug: 'daily', enabled: false })
 
             expect(updateSchedule).toHaveBeenCalledWith(expect.anything(), 'engine-sealed', 'daily', expect.objectContaining({ enabled: false, body: undefined }))
         })
 
         it('refuses upsert_trigger writing the body of a trigger on an agent whose template content is locked', async () => {
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_trigger', { agentId: 'agent-sealed', slug: 'inbound', body: 'Rewritten' })).rejects.toThrow(LOCKED_WRITE_ERROR)
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_trigger', { agentId: 'agent-sealed', name: 'Inbound', body: 'New' })).rejects.toThrow(LOCKED_WRITE_ERROR)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_trigger', { agentId: 'agent-sealed', slug: 'inbound', body: 'Rewritten' })).rejects.toThrow(LOCKED_WRITE_ERROR)
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_trigger', { agentId: 'agent-sealed', name: 'Inbound', body: 'New' })).rejects.toThrow(LOCKED_WRITE_ERROR)
 
             expect(updateTrigger).not.toHaveBeenCalled()
             expect(createTrigger).not.toHaveBeenCalled()
@@ -309,7 +337,7 @@ describe('dispatchAccountTool', () => {
         it('lets upsert_trigger disable a trigger of a locked agent', async () => {
             vi.mocked(updateTrigger).mockResolvedValue({ slug: 'inbound', name: 'Inbound', enabled: false, token: null } as never)
 
-            await expect(dispatchAccountTool(WORKSPACE_ID, 'upsert_trigger', { agentId: 'agent-sealed', slug: 'inbound', enabled: false })).resolves.toMatchObject({ slug: 'inbound', enabled: false })
+            await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_trigger', { agentId: 'agent-sealed', slug: 'inbound', enabled: false })).resolves.toMatchObject({ slug: 'inbound', enabled: false })
 
             expect(updateTrigger).toHaveBeenCalledWith(expect.anything(), 'engine-sealed', 'inbound', expect.objectContaining({ enabled: false, body: undefined }))
         })

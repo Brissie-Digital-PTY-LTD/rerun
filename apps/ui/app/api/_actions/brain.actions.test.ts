@@ -41,7 +41,7 @@ describe('a workspace without a machine yet', () => {
     })
 
     it('lists no shared table and no shared file', async () => {
-        await expect(listWorkspaceTablesAction()).resolves.toEqual([])
+        await expect(listWorkspaceTablesAction()).resolves.toEqual({ success: true, tables: [] })
         await expect(listWorkspaceFilesAction('docs')).resolves.toEqual({ entries: [], path: 'docs' })
     })
 })
@@ -58,13 +58,32 @@ describe('a workspace with a machine', () => {
         await expect(loadBrainAction()).resolves.toEqual({ available: false, reason: 'outdated' })
     })
 
+    it('lists the shared tables', async () => {
+        vi.mocked(engine.listDbTables).mockResolvedValue([{ name: 'catalog', columns: [] }])
+        await expect(listWorkspaceTablesAction()).resolves.toEqual({ success: true, tables: [{ name: 'catalog', columns: [] }] })
+    })
+
+    it('names an engine that predates the shared database rather than calling it unreachable', async () => {
+        vi.mocked(engine.listDbTables).mockRejectedValue(new engine.EngineRequestError('rerun-engine GET /shared/db/tables failed: 404 Not Found', 404))
+        await expect(listWorkspaceTablesAction()).resolves.toEqual({
+            success: false,
+            error: 'This workspace runs on a machine that needs an engine update before it can host a shared database.',
+        })
+    })
+
+    it('passes on why the workspace cannot be reached rather than blaming its machine', async () => {
+        vi.mocked(requireWorkspaceConnection).mockRejectedValue(new Error('You are not a member of this workspace'))
+        await expect(listWorkspaceTablesAction()).resolves.toEqual({ success: false, error: 'You are not a member of this workspace' })
+        expect(engine.listDbTables).not.toHaveBeenCalled()
+    })
+
     it('still fails when the machine does not answer', async () => {
         vi.mocked(engine.listBrainPages).mockRejectedValue(new Error('fetch failed'))
         vi.mocked(engine.countBrainProposals).mockResolvedValue(0)
         vi.mocked(engine.listDbTables).mockRejectedValue(new Error('fetch failed'))
         vi.mocked(engine.listFiles).mockRejectedValue(new Error('fetch failed'))
         await expect(loadBrainAction()).rejects.toThrow('fetch failed')
-        await expect(listWorkspaceTablesAction()).rejects.toThrow('fetch failed')
+        await expect(listWorkspaceTablesAction()).resolves.toEqual({ success: false, error: 'Could not reach the machine of this workspace.' })
         await expect(listWorkspaceFilesAction()).rejects.toThrow('fetch failed')
     })
 })

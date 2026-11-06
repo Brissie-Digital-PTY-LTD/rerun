@@ -1,4 +1,4 @@
-import { activeAgentLimitFor, isSubscriptionEntitled } from '@/cloud/billing'
+import { activeAgentLimitFor, isSubscriptionEntitled } from '@rerun/cloud/billing'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { selectCount, selectSingle } from '@/supabase/supabase-helpers'
 

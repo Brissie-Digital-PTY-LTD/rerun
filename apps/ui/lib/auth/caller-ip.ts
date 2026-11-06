@@ -1,7 +1,7 @@
 const IPV6_GROUPS = 8
 const IPV6_NETWORK_GROUPS = 4
 
-// Railway's edge writes x-real-ip itself, where the first entry of x-forwarded-for is whatever the
+// The reverse proxy in front of the app (Traefik, under Dokploy) writes x-real-ip itself, where the first entry of x-forwarded-for is whatever the
 // caller sent.
 export function callerIp(headers: Headers): string {
     return headers.get('x-real-ip')?.trim() || headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'

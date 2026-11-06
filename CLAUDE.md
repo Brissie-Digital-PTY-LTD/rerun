@@ -52,6 +52,7 @@ app. Tests and the typecheck are not enough. Follow the `verify-in-app` skill wi
 Every Supabase **read** goes through the typed helpers (`selectSingle`, `selectMaybeSingle`, `selectFirst`, `selectMany`, `selectAll`, `selectCount`, `canRead`, and the `*WithJoins` variants). Never write a raw `.from(table).select(...)` for a read.
 
 - `apps/ui` imports them from `@/supabase/supabase-helpers`
+- `apps/landing` imports them from `@rerun/db`
 
 This applies everywhere: server components, server actions, route handlers, and client components. No exception for an existence check (`select('id')` as a guard) or for `select('*')` (extract a `XXX_COLUMNS = [...] as const` list instead).
 
@@ -70,6 +71,7 @@ supabase.from('experts').upsert<Database['public']['Tables']['experts']['Insert'
 Always this verbose form, never `TablesInsert<'x'>`. `upsert` takes `Insert`. `delete` has no payload, so no generic. A file-local alias (`type PoolUpdate = ...`) is fine when the same table is written 3+ times in one file.
 
 - `apps/ui` imports `Database` from `@/app/api/database.types`
+- `apps/landing` imports it from `@rerun/db`
 
 Every client is built with `<Database>`: `createClient<Database>`, `createServerClient<Database>`, `createBrowserClient<Database>`. An untyped client silently degrades every payload and every table name to `any`. Any function taking a client is typed `SupabaseClient<Database>`, never bare `SupabaseClient`.
 
@@ -87,10 +89,24 @@ An engine data-dir can be archived and restored weeks later onto a newer engine.
 
 Details in `apps/engine/README.md`.
 
-# The open source build
+# Open source and Rerun Cloud
 
-This repository is the open source build of Rerun. A few folders are stubs of what Rerun Cloud runs
-in their place: `apps/ui/cloud/` (billing, paid apps, emails, the machine pool), `apps/engine/src/cloud/`
-and two files of `packages/contracts` (`paid-data.ts`, `rewind.ts`). They keep the interface Rerun
-Cloud implements, with the behaviour of a self-hosted install. Code elsewhere imports from them like
-from any module; a pull request that changes what they export is unlikely to be merged.
+This repository is Rerun, AGPL-3.0. Rerun Cloud runs the same code with a private `cloud/` folder
+cloned inside it (git-ignored here): `@rerun/cloud/<domain>` resolves to `cloud/packages/cloud/src/<domain>`
+when that folder is there, and to `apps/ui/cloud-oss/<domain>` (the behaviour of a self-hosted install)
+otherwise. The `paths` fallback of `apps/ui/tsconfig.json` does it for tsc, Next and Trigger.dev, the alias
+of `apps/ui/vitest.config.ts` for the tests. A checkout without `cloud/` builds and runs as it is.
+
+- What Rerun Cloud runs differently (its machine pool, the plans it sells, its support chat) is
+  reached only through `@rerun/cloud/<domain>`. A new symbol there gets its self-hosted twin in
+  `apps/ui/cloud-oss/`, with the behaviour of a self-hosted install.
+- Directories named `ee` or `(ee)` (billing and plans, the Rerun credit and its managed models, the
+  template marketplace) are public under the commercial license of `apps/ui/ee/LICENSE`. The open
+  source build never switches them on: its `@rerun/cloud/billing` sells nothing.
+- A test of public code that checks Rerun Cloud's behaviour pins the `@rerun/cloud/*` module it reads
+  (`vi.mock`), so it passes with and without `cloud/`.
+
+# Commits and pull requests
+
+The repository is public: commit messages, pull request titles and descriptions are written in
+English, whatever the language of the conversation.

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { workspaceSummarySchema } from './board.js'
+import { workspaceRoleSchema, workspaceSummarySchema } from './board.js'
 
 export const meSchema = z.object({
     user: z.object({
@@ -13,11 +13,13 @@ export const meSchema = z.object({
 })
 export type Me = z.infer<typeof meSchema>
 
-// A member of the workspace as the chat signs their messages.
+// A member of the workspace as the chat signs their messages. The role is absent from a server older
+// than roles.
 export const memberProfileSchema = z.object({
     id: z.string(),
     name: z.string().nullable(),
     avatarUrl: z.string().nullable(),
+    role: workspaceRoleSchema.optional(),
 })
 export type MemberProfile = z.infer<typeof memberProfileSchema>
 

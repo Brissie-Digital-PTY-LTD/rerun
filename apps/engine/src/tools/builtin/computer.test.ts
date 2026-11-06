@@ -16,11 +16,15 @@ const state = vi.hoisted(() => ({
     driving: false,
     drivingAfterTyped: null as number | null,
     drivingForPolls: 0,
+    parkLongSleeps: false,
 }))
 
 vi.mock('node:timers/promises', () => ({
     setTimeout: async (ms: number, _value: unknown, options?: { signal?: AbortSignal }) => {
         state.sleeps.push(ms)
+        if (state.parkLongSleeps && ms >= 60_000) {
+            await new Promise((_, reject) => options?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+        }
         await Promise.resolve()
         if (options?.signal?.aborted) throw new Error('aborted')
     },
@@ -114,6 +118,7 @@ beforeEach(() => {
     state.drivingAfterTyped = null
     state.drivingForPolls = 0
     state.openBrowser = false
+    state.parkLongSleeps = false
 })
 
 afterEach(() => {
@@ -226,7 +231,7 @@ describe('computer', () => {
         expect(state.openBrowserHolds).toBe(0)
     })
 
-    it('gives the screen to the first run of an agent and tells the others why they wait', async () => {
+    it('gives the screen to the first run of an agent and tells the others why they gave up waiting', async () => {
         const first = build(ctxWith())
         const second = build(ctxWith())
         const other = build(ctxWith('a2'))
@@ -237,6 +242,46 @@ describe('computer', () => {
         expect(await settled(act(second, { action: 'screenshot' }))).toMatchObject({ status: 'refused' })
         first.release()
         expect((await settled(act(second, { action: 'screenshot' }))).status).toBe('done')
+        expect(state.sleeps).toContain(5 * 60_000)
+    })
+
+    it('hands the screen to a waiting run as soon as the holder ends, one waiter at a time', async () => {
+        state.parkLongSleeps = true
+        const first = build(ctxWith())
+        const second = build(ctxWith())
+        const third = build(ctxWith())
+        expect((await act(first, { action: 'screenshot' })).status).toBe('done')
+
+        const outcomes: string[] = []
+        const secondTurn = act(second, { action: 'screenshot' }).then((r: { status: string }) => outcomes.push(`second:${r.status}`))
+        const thirdTurn = act(third, { action: 'screenshot' }).then((r: { status: string }) => outcomes.push(`third:${r.status}`))
+        await new Promise(r => setImmediate(r))
+        expect(outcomes).toEqual([])
+
+        first.release()
+        await secondTurn
+        await new Promise(r => setImmediate(r))
+        expect(outcomes).toEqual(['second:done'])
+        expect(agentsOnScreen()).toEqual(['a1'])
+
+        second.release()
+        await thirdTurn
+        expect(outcomes).toEqual(['second:done', 'third:done'])
+    })
+
+    it('stops waiting for the screen when its run is cancelled', async () => {
+        state.parkLongSleeps = true
+        const first = build(ctxWith())
+        const controller = new AbortController()
+        const second = build(ctxWith('a1', {}, { abortSignal: controller.signal }))
+        expect((await act(first, { action: 'screenshot' })).status).toBe('done')
+
+        const waiting = act(second, { action: 'screenshot' })
+        await new Promise(r => setImmediate(r))
+        controller.abort()
+        await expect(waiting).rejects.toThrow('aborted')
+        first.release()
+        expect(agentsOnScreen()).toEqual([])
     })
 
     it('keeps its hands off while a person drives the screen, and takes it back when they stop', async () => {

@@ -1,6 +1,6 @@
 import { templateDocumentSchema, type TemplateDocument } from '@rerun/contracts'
 import { assertTemplateOwnedBy } from '@/app/api/_auth/expert'
-import { isPayoutReady } from '@/cloud/marketplace.server'
+import { isPayoutReady } from '@rerun/cloud/marketplace.server'
 import { slugify } from '@/lib/slugify'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { selectCount, selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'

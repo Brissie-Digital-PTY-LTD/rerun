@@ -5,7 +5,8 @@ import { normalizeNotificationPrefs } from '@/lib/notifications/prefs'
 
 vi.mock('server-only', () => ({}))
 const mocks = vi.hoisted(() => ({
-    selectMaybeSingle: vi.fn(),
+    assertAgentAccess: vi.fn(),
+    resolveAgentTarget: vi.fn(),
     renameAgent: vi.fn(),
     deleteAgent: vi.fn(),
     patchNotificationPrefs: vi.fn(),
@@ -16,18 +17,27 @@ const mocks = vi.hoisted(() => ({
     updateTrigger: vi.fn(),
     listFiles: vi.fn(),
 }))
-vi.mock('@/supabase/supabase-helpers', () => ({ selectMaybeSingle: mocks.selectMaybeSingle }))
+vi.mock('@/app/api/_auth/access', async importOriginal => ({ ...(await importOriginal<typeof import('@/app/api/_auth/access')>()), assertAgentAccess: mocks.assertAgentAccess }))
 vi.mock('@/app/api/_services/agent.service', () => ({ renameAgent: mocks.renameAgent, deleteAgent: mocks.deleteAgent }))
 vi.mock('@/app/api/_services/notification-prefs.service', () => ({ patchNotificationPrefs: mocks.patchNotificationPrefs, readNotificationPrefs: mocks.readNotificationPrefs }))
-vi.mock('@/app/api/_services/chat.service', () => ({ resolveAgentTarget: async () => ({ conn: { host: 'box' }, engineAgentId: 'eng-1', contentLocked: false }) }))
+vi.mock('@/app/api/_services/chat.service', () => ({ resolveAgentTarget: mocks.resolveAgentTarget }))
 vi.mock('@/lib/engine/client', () => ({ listFiles: mocks.listFiles, listSchedules: mocks.listSchedules, listTriggers: mocks.listTriggers, updateSchedule: mocks.updateSchedule, updateTrigger: mocks.updateTrigger }))
 
+const { AccessDeniedError } = await import('@/app/api/_auth/access')
+const { AuthorizationError } = await import('@/app/api/_auth/ownership')
 const { deleteCoworker, listCoworkerFiles, listCoworkerRoutines, readCoworkerNotifications, renameCoworker, setCoworkerNotifications, setCoworkerRoutineEnabled } = await import('./coworker-details.service')
 
-const ctx = { userId: 'u1', workspace: { id: 7 }, supabase: {} } as unknown as WorkspaceContext
+const ctx = { userId: 'u1', role: 'member', boxScope: 'all', workspace: { id: 7 }, supabase: {} } as unknown as WorkspaceContext
+const actor = { kind: 'user', userId: 'u1', workspaceId: 7, role: 'member', boxScope: 'all' }
 
-function rowsAre({ agentWorkspace = 7, prefs = null }: { agentWorkspace?: number | null; prefs?: unknown }) {
-    mocks.selectMaybeSingle.mockResolvedValue({ data: agentWorkspace === null ? null : { workspace_id: agentWorkspace } })
+// What the caller reaches on the coworker's Box: `none` stands for a coworker of another workspace,
+// of a Box closed to them, or one that is gone.
+function rowsAre({ access = 'manage', prefs = null }: { access?: 'none' | 'use' | 'manage'; prefs?: unknown }) {
+    mocks.assertAgentAccess.mockImplementation(async (_agentId: string, need: 'use' | 'manage') => {
+        if (access === 'none') throw new AuthorizationError('Coworker not found')
+        if (need === 'manage' && access !== 'manage') throw new AccessDeniedError()
+        return { actor, access, agent: { workspace_id: 7, space_id: 'box', engine_agent_id: 'eng-1' } }
+    })
     mocks.readNotificationPrefs.mockResolvedValue(normalizeNotificationPrefs(prefs))
 }
 
@@ -36,19 +46,21 @@ const storedPrefs = (coworkers: Record<string, unknown>) => ({ version: 2, scope
 describe('coworker details', () => {
     beforeEach(() => {
         Object.values(mocks).forEach(mock => mock.mockReset())
+        mocks.resolveAgentTarget.mockResolvedValue({ conn: { host: 'box' }, engineAgentId: 'eng-1', contentLocked: false })
         rowsAre({})
     })
 
-    it('renames and deletes only a coworker of the caller workspace', async () => {
+    it('renames and deletes only a coworker whose Box the caller manages', async () => {
         await renameCoworker(ctx, 'a1', { name: 'Scout' })
         await deleteCoworker(ctx, 'a1')
         expect(mocks.renameAgent).toHaveBeenCalledWith('a1', 'Scout')
         expect(mocks.deleteAgent).toHaveBeenCalledWith('a1')
+        expect(mocks.assertAgentAccess).toHaveBeenCalledWith('a1', 'manage', actor)
 
-        rowsAre({ agentWorkspace: 99 })
-        await expect(renameCoworker(ctx, 'a2', { name: 'X' })).rejects.toMatchObject({ name: 'AuthorizationError' })
-        await expect(deleteCoworker(ctx, 'a2')).rejects.toMatchObject({ name: 'AuthorizationError' })
-        rowsAre({ agentWorkspace: null })
+        rowsAre({ access: 'use' })
+        await expect(renameCoworker(ctx, 'a2', { name: 'X' })).rejects.toBeInstanceOf(AccessDeniedError)
+        await expect(deleteCoworker(ctx, 'a2')).rejects.toBeInstanceOf(AccessDeniedError)
+        rowsAre({ access: 'none' })
         await expect(deleteCoworker(ctx, 'gone')).rejects.toMatchObject({ name: 'AuthorizationError' })
         expect(mocks.renameAgent).toHaveBeenCalledTimes(1)
         expect(mocks.deleteAgent).toHaveBeenCalledTimes(1)
@@ -75,6 +87,14 @@ describe('coworker details', () => {
         await setCoworkerRoutineEnabled(ctx, 'a1', 'trigger', 'stripe', true)
         expect(mocks.updateSchedule).toHaveBeenCalledWith({ host: 'box' }, 'eng-1', 'digest', { enabled: false })
         expect(mocks.updateTrigger).toHaveBeenCalledWith({ host: 'box' }, 'eng-1', 'stripe', { enabled: true })
+        expect(mocks.resolveAgentTarget).toHaveBeenCalledWith('a1', actor, 'manage')
+    })
+
+    it('reads the routines, skills and files at the use level', async () => {
+        mocks.listSchedules.mockResolvedValue([])
+        mocks.listTriggers.mockResolvedValue([])
+        await listCoworkerRoutines(ctx, 'a1')
+        expect(mocks.resolveAgentTarget).toHaveBeenCalledWith('a1', actor)
     })
 
     it('reads the default rule for a coworker the caller never set', async () => {
@@ -89,8 +109,14 @@ describe('coworker details', () => {
         expect(mocks.patchNotificationPrefs).toHaveBeenCalledWith('u1', { coworkers: { a1: { mode: 'muted', follow: true } } })
     })
 
-    it('never touches the rules of a coworker outside the workspace', async () => {
-        rowsAre({ agentWorkspace: 99 })
+    it('lets a member who only uses the Box set their own notifications for its coworker', async () => {
+        rowsAre({ access: 'use' })
+        await setCoworkerNotifications(ctx, 'a1', 'muted')
+        expect(mocks.patchNotificationPrefs).toHaveBeenCalled()
+    })
+
+    it('never touches the rules of a coworker outside the caller reach', async () => {
+        rowsAre({ access: 'none' })
         await expect(setCoworkerNotifications(ctx, 'a2', 'muted')).rejects.toMatchObject({ name: 'AuthorizationError' })
         await expect(readCoworkerNotifications(ctx, 'a2')).rejects.toMatchObject({ name: 'AuthorizationError' })
         expect(mocks.patchNotificationPrefs).not.toHaveBeenCalled()

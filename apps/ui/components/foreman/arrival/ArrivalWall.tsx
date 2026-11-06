@@ -4,7 +4,7 @@ import { track } from '@rerun/analytics/client'
 import { useEffect } from 'react'
 
 import { AuthTerms } from '@/components/auth/AuthShell'
-import { PhoneVerificationStep } from '@/cloud/phone.client'
+import { PhoneVerificationStep } from '@rerun/cloud/phone.client'
 import { useAnonymousSignUp } from '@/components/auth/useAnonymousSignUp'
 
 const SURFACE = 'ready_made_arrival'

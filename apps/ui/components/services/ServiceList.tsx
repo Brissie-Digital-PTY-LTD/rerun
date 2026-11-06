@@ -9,6 +9,7 @@ import { PanelRow } from '@/components/ui/panel-row'
 import { serviceIconProps } from '@/lib/services/icons'
 import type { ServiceSearchResult } from '@/lib/services/types'
 import { SplitButton } from '@/components/ui/split-button'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { Badge } from '@rerun/ui/primitives'
 import { Trash2Icon, UnplugIcon } from '@/lib/icons'
 
@@ -22,9 +23,12 @@ type ServiceListProps = {
     onUninstall?: (slug: string) => void
     // An installed app that takes several accounts offers to connect another one.
     onAddAccount?: (slug: string) => void
+    // Why installing, finishing or adding an account is out of reach: the buttons stay, disabled.
+    disabledReason?: string
 }
 
-export function ServiceList({ services, onInstall, onUninstall, onAddAccount }: ServiceListProps) {
+export function ServiceList({ services, onInstall, onUninstall, onAddAccount, disabledReason }: ServiceListProps) {
+    const disabled = !!disabledReason
     if (services.length === 0) {
         return (
             <EmptyState
@@ -69,9 +73,11 @@ export function ServiceList({ services, onInstall, onUninstall, onAddAccount }: 
                                     Installed
                                 </Badge>
                                 {onAddAccount && s.multiInstance && (
-                                    <Button size="sm" variant="outline" onClick={() => onAddAccount(s.slug)}>
-                                        Add account
-                                    </Button>
+                                    <TooltipDisabledReason reason={disabledReason}>
+                                        <Button size="sm" variant="outline" disabled={disabled} onClick={() => onAddAccount(s.slug)}>
+                                            Add account
+                                        </Button>
+                                    </TooltipDisabledReason>
                                 )}
                             </>
                         ) : s.installStatus ? (
@@ -79,22 +85,27 @@ export function ServiceList({ services, onInstall, onUninstall, onAddAccount }: 
                                 <Badge size="xs" tone="orange" glow={false}>
                                     {s.installStatus === 'needs_auth' ? 'Needs sign-in' : 'Needs setup'}
                                 </Badge>
-                                {onInstall &&
-                                    (onUninstall ? (
-                                        <SplitButton size="sm" variant="outline" onClick={() => onInstall(s.slug)} actions={[{ label: 'Remove app', icon: Trash2Icon, destructive: true, onSelect: () => onUninstall(s.slug) }]}>
-                                            Finish setup
-                                        </SplitButton>
-                                    ) : (
-                                        <Button size="sm" variant="outline" onClick={() => onInstall(s.slug)}>
-                                            Finish setup
-                                        </Button>
-                                    ))}
+                                {onInstall && (
+                                    <TooltipDisabledReason reason={disabledReason}>
+                                        {onUninstall ? (
+                                            <SplitButton size="sm" variant="outline" disabled={disabled} onClick={() => onInstall(s.slug)} actions={[{ label: 'Remove app', icon: Trash2Icon, destructive: true, onSelect: () => onUninstall(s.slug) }]}>
+                                                Finish setup
+                                            </SplitButton>
+                                        ) : (
+                                            <Button size="sm" variant="outline" disabled={disabled} onClick={() => onInstall(s.slug)}>
+                                                Finish setup
+                                            </Button>
+                                        )}
+                                    </TooltipDisabledReason>
+                                )}
                             </>
                         ) : (
                             onInstall && (
-                                <Button size="sm" variant="outline" onClick={() => onInstall(s.slug)}>
-                                    Install
-                                </Button>
+                                <TooltipDisabledReason reason={disabledReason}>
+                                    <Button size="sm" variant="outline" disabled={disabled} onClick={() => onInstall(s.slug)}>
+                                        Install
+                                    </Button>
+                                </TooltipDisabledReason>
                             )
                         )
                     }

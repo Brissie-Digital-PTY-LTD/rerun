@@ -14,6 +14,15 @@ export type DataFocus = { table: string; view?: string }
 
 type Result<T = object> = ({ success: true } & T) | { success: false; error: string }
 
+// Returned rather than thrown: Next.js redacts the message of an error thrown by a Server Action in
+// production, and an empty list would read as a database with no tables.
+export type TableListResult = Result<{ tables: EngineDbTable[] }>
+
+export function tablesOrThrow(result: TableListResult): EngineDbTable[] {
+    if (!result.success) throw new Error(result.error)
+    return result.tables
+}
+
 // The browser is handed bound server actions rather than an id and a scope flag, so it stays
 // unaware of who owns the database it renders: ownership is settled in the actions alone.
 export type DataSource = {
@@ -26,6 +35,8 @@ export type DataSource = {
     deleteRows: (table: string, rowids: (number | string)[]) => Promise<{ success: boolean; error?: string; deleted?: number }>
     dropTable: (table: string) => Promise<{ success: boolean; error?: string }>
     purgeTable: (table: string) => Promise<{ success: boolean; error?: string; deleted?: number }>
+    /** Why emptying or deleting a table, or deleting its rows, is out of reach for this viewer, who may still read and export. */
+    tableActionsReason?: string
     exportUrl: (table: string, params: DataExportParams) => string
     listViews: (table: string) => Promise<Result<{ views: TableView[] }>>
     saveView: (table: string, input: TableViewInput, id?: string) => Promise<Result<{ view: TableView }>>

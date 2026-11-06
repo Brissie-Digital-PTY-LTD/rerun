@@ -4,7 +4,8 @@ import { requireWorkspaceConnection } from '@/app/api/_auth/workspace-target'
 import { NoEngineError } from '@/app/api/_services/workspace-engine.service'
 import * as engine from '@/lib/engine/client'
 import type { ReadDbTableRowsParams } from '@/lib/engine/client'
-import type { EngineDbRows, EngineDbTable } from '@/lib/engine/types'
+import type { TableListResult } from '@/lib/data/source'
+import type { EngineDbRows } from '@/lib/engine/types'
 
 // An engine that predates the shared database answers a bare 404 on this route, which reads as
 // "unreachable" unless we name it: the workspace is fine, its machine is just behind.
@@ -18,13 +19,21 @@ function describe(err: unknown, fallback: string): string {
     return message || fallback
 }
 
-export async function listWorkspaceTablesAction(): Promise<EngineDbTable[]> {
+// Resolving the workspace fails with messages written for the user (not a member, signed out); the
+// engine call fails with transport details that are not.
+export async function listWorkspaceTablesAction(): Promise<TableListResult> {
+    let conn: Awaited<ReturnType<typeof requireWorkspaceConnection>>
     try {
-        const conn = await requireWorkspaceConnection()
-        return await engine.listDbTables(conn, engine.SPACE_DATA_BASE)
+        conn = await requireWorkspaceConnection()
     } catch (err) {
-        if (err instanceof NoEngineError) return []
-        throw new Error(describe(err, UNREACHABLE))
+        if (err instanceof NoEngineError) return { success: true, tables: [] }
+        return { success: false, error: err instanceof Error && err.message ? err.message : UNREACHABLE }
+    }
+    try {
+        return { success: true, tables: await engine.listDbTables(conn, engine.SPACE_DATA_BASE) }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : ''
+        return { success: false, error: /failed: 404\b/.test(message) ? OUTDATED_ENGINE : UNREACHABLE }
     }
 }
 

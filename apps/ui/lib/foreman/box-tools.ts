@@ -1,17 +1,19 @@
 import 'server-only'
 
+import { workspaceActor, type Actor } from '@/app/api/_auth/access'
 import { createBoxes, deleteBox, renameBox } from '@/app/api/_services/box.service'
 import { asStringArray, requireConfirmation, requireString } from '@/lib/mcp/args'
 
 // No MCP tool covers the Boxes, but the app's own server actions do: the engine foreman's Box tools
 // are dispatched onto them here (app/api/_services/foreman-hub.service.ts).
-export async function dispatchBoxTool(ctx: { workspaceId: number; userId: string }, name: string, args: Record<string, unknown>): Promise<unknown> {
+export async function dispatchBoxTool(ctx: { workspaceId: number; userId: string; actor?: Actor }, name: string, args: Record<string, unknown>): Promise<unknown> {
+    const actor = ctx.actor ?? workspaceActor(ctx.workspaceId)
     switch (name) {
         case 'create_boxes': {
             const names = asStringArray(args.names)
             if (!names.length) throw new Error('create_boxes needs at least one name: one per division of the organisation you are laying out.')
 
-            const results = await createBoxes({ workspaceId: ctx.workspaceId, userId: ctx.userId, names })
+            const results = await createBoxes({ workspaceId: ctx.workspaceId, userId: ctx.userId, actor, names })
             // A Box that failed is reported beside the ones that landed rather than thrown: half an
             // organisation on the board is a sentence the foreman has to say, not a turn that dies.
             const failed = results.flatMap((result, index) => (result.ok ? [] : [{ name: names[index], error: result.error }]))
@@ -23,12 +25,12 @@ export async function dispatchBoxTool(ctx: { workspaceId: number; userId: string
             return failed.length ? { boxes, failed } : { boxes }
         }
         case 'rename_box': {
-            await renameBox(ctx.workspaceId, requireString(args.boxId, 'boxId'), requireString(args.name, 'name'))
+            await renameBox(actor, requireString(args.boxId, 'boxId'), requireString(args.name, 'name'))
             return { ok: true }
         }
         case 'delete_box': {
             requireConfirmation(args, 'a Box')
-            await deleteBox(ctx.workspaceId, requireString(args.boxId, 'boxId'))
+            await deleteBox(actor, requireString(args.boxId, 'boxId'))
             return { ok: true }
         }
         default:

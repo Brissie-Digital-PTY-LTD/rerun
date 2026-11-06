@@ -21,7 +21,7 @@ type ToolOutput = { ok: true; note?: string } | { ok: false; error: string }
 
 // What the workspace menu knows and a tool call does not: which of its sections exist here. The
 // session lives in a React context, so the caller reads it and hands it over.
-export type ForemanClientGates = { apiEntitled: boolean; isSandbox: boolean }
+export type ForemanClientGates = { apiEntitled: boolean; isSandbox: boolean; isAdmin: boolean }
 
 function unknownTab(requested: string, labels: Record<string, string>, noun = 'tab'): string {
     const choices = Object.entries(labels).map(([id, label]) => `${id} ("${label}")`)
@@ -65,6 +65,9 @@ export function runForemanClientTool(name: ForemanClientToolName, input: unknown
             if (!requested) return { ok: false, error: 'open_settings needs panel.' }
             const panel = resolveTab(requested, SETTINGS_PANEL_LABELS)
             if (!panel) return { ok: false, error: unknownTab(requested, SETTINGS_PANEL_LABELS, 'panel') }
+            if ((panel === 'workspace' || panel === 'api_keys') && !gates.isAdmin) {
+                return { ok: false, error: `Only an admin of the workspace can open the ${SETTINGS_PANEL_LABELS[panel]} panel, and this user is a member. Say so, and suggest they ask an admin.` }
+            }
             if (panel === 'api_keys' && !gates.apiEntitled) {
                 return { ok: false, error: 'API keys and the MCP client need an active subscription, and this workspace has none. Say so, and offer to open the billing panel instead.' }
             }

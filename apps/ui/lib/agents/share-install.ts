@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Actor } from '@/app/api/_auth/access'
 import type { Database } from '@/app/api/database.types'
 import { deriveUniqueHandle, importAgent } from '@/app/api/_services/agent.service'
 import { downloadPrivateFile } from '@/lib/storage/private'
@@ -19,7 +20,7 @@ export type AgentShareInstallOutcome = { agentId: string; agentName: string; ina
 export async function installAgentShare(
     supabase: SupabaseClient<Database>,
     token: string,
-    target: { workspaceId: number; spaceId: string; position?: GridPosition },
+    target: { workspaceId: number; spaceId: string; actor: Actor; position?: GridPosition },
 ): Promise<AgentShareInstallOutcome> {
     if (!isOpaqueToken(token, AGENT_SHARE_TOKEN_LENGTH)) throw new Error(DEAD_LINK)
 
@@ -34,7 +35,7 @@ export async function installAgentShare(
 
     let imported
     try {
-        imported = await importAgent({ archive: blob, name, handle, workspaceId: target.workspaceId, spaceId: target.spaceId, position: target.position })
+        imported = await importAgent({ archive: blob, name, handle, workspaceId: target.workspaceId, spaceId: target.spaceId, actor: target.actor, position: target.position })
     } catch (err) {
         if (err instanceof Error && /\/agents\/import failed: 404/.test(err.message)) throw new Error(STALE_IMPORT_HINT)
         throw err

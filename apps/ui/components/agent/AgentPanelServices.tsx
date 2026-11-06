@@ -23,7 +23,9 @@ import { Chip } from '@/components/ui/chip'
 import { HScrollFade } from '@rerun/ui/primitives'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
-import { TooltipLabeled } from '@/components/ui/tooltip'
+import { TooltipDisabledReason, TooltipLabeled } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { serviceIconProps } from '@/lib/services/icons'
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS, type ServiceCategory } from '@/lib/services/manifest'
 import { MAX_OFFERED_ALTERNATIVES } from '@/lib/services/alternatives'
@@ -108,6 +110,8 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
     const [swapError, setSwapError] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [reconnecting, setReconnecting] = useState<string | null>(null)
+    const canManage = useCanManageAgent(agentId)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
 
     // Paginated browse accumulation (empty query). A ref tracks server rows fetched so
     // client-side dedup can't drift the offset, and a ref guard blocks the concurrent calls a
@@ -458,28 +462,37 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
                                                 actions={
                                                     <>
                                                         {s.status === 'needs_config' && (
-                                                            <Button size="sm" variant="outline" onClick={() => onInstall(s.key)}>
-                                                                Configure
-                                                            </Button>
+                                                            <TooltipDisabledReason reason={manageReason}>
+                                                                <Button size="sm" variant="outline" disabled={!canManage} onClick={() => onInstall(s.key)}>
+                                                                    Configure
+                                                                </Button>
+                                                            </TooltipDisabledReason>
                                                         )}
                                                         {s.status === 'needs_auth' && (
-                                                            <Button size="sm" variant="outline" onClick={() => onInstall(s.key)}>
-                                                                Connect
-                                                            </Button>
+                                                            <TooltipDisabledReason reason={manageReason}>
+                                                                <Button size="sm" variant="outline" disabled={!canManage} onClick={() => onInstall(s.key)}>
+                                                                    Connect
+                                                                </Button>
+                                                            </TooltipDisabledReason>
                                                         )}
                                                         {s.status === 'active' && (
-                                                            <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={reconnecting === s.key} onClick={() => onReconnect(s.key)}>
-                                                                {reconnecting === s.key ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
-                                                                {s.app ? 'Account' : 'Reconnect'}
-                                                            </Button>
+                                                            <TooltipDisabledReason reason={manageReason}>
+                                                                <Button size="sm" variant="ghost" className="text-muted-foreground" disabled={!canManage || reconnecting === s.key} onClick={() => onReconnect(s.key)}>
+                                                                    {reconnecting === s.key ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
+                                                                    {s.app ? 'Account' : 'Reconnect'}
+                                                                </Button>
+                                                            </TooltipDisabledReason>
                                                         )}
-                                                        <PanelDeleteButton
-                                                            label={`Uninstall ${s.label ? `${s.name} (${s.label})` : s.name}`}
-                                                            onClick={() => onUninstall(s.key)}
-                                                            confirmTitle={`Uninstall ${s.label ? `${s.name} (${s.label})` : s.name}?`}
-                                                            confirmDescription="The coworker loses this service and its tools. Its connection is revoked, so reinstalling means connecting again."
-                                                            confirmLabel="Uninstall"
-                                                        />
+                                                        <TooltipDisabledReason reason={manageReason}>
+                                                            <PanelDeleteButton
+                                                                label={`Uninstall ${s.label ? `${s.name} (${s.label})` : s.name}`}
+                                                                disabled={!canManage}
+                                                                onClick={() => onUninstall(s.key)}
+                                                                confirmTitle={`Uninstall ${s.label ? `${s.name} (${s.label})` : s.name}?`}
+                                                                confirmDescription="The coworker loses this service and its tools. Its connection is revoked, so reinstalling means connecting again."
+                                                                confirmLabel="Uninstall"
+                                                            />
+                                                        </TooltipDisabledReason>
                                                     </>
                                                 }
                                             />
@@ -493,13 +506,14 @@ export function AgentPanelServices({ agentId }: AgentPanelServicesProps) {
                                                 onConnect={() => setCustomStep({ kind: 'connect', server, popup: openPendingSignInPopup(server.displayName) })}
                                                 onEdit={() => onEditCustom(server.name)}
                                                 onRemove={() => onRemoveCustom(server.name)}
+                                                disabledReason={manageReason}
                                             />
                                         ))}
                                     </PanelList>
                                 </PanelSection>
                             )}
                             <PanelSection label="Library">
-                                {searchLoading ? <SkeletonPanelRows rows={6} leading className="p-0" /> : <ServiceList services={isSearchActive ? searchResults : browseWithInstalled} onInstall={onInstall} onUninstall={onUninstall} onAddAccount={onAddAccount} />}
+                                {searchLoading ? <SkeletonPanelRows rows={6} leading className="p-0" /> : <ServiceList services={isSearchActive ? searchResults : browseWithInstalled} onInstall={onInstall} onUninstall={onUninstall} onAddAccount={onAddAccount} disabledReason={manageReason} />}
                                 {!isSearchActive && (
                                     <>
                                         <div ref={sentinelRef} className="h-px" />

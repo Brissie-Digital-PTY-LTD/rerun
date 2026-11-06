@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { PanelRow } from '@/components/ui/panel-row'
 import { Skeleton } from '@/components/ui/skeleton'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { CheckIcon, CopyIcon, Trash2Icon } from '@/lib/icons'
 import type { WorkspaceShare } from '@/lib/agents/share-read'
 import { useCopy } from '@/lib/use-copy'
@@ -17,6 +20,7 @@ import { useCopy } from '@/lib/use-copy'
 // agent it came from, not only from the dialog that created it.
 export function SharedLinksSection({ agentId }: { agentId: string }) {
     const [shares, setShares] = React.useState<WorkspaceShare[] | null>(null)
+    const canManage = useCanManageAgent(agentId)
 
     React.useEffect(() => {
         let cancelled = false
@@ -47,14 +51,14 @@ export function SharedLinksSection({ agentId }: { agentId: string }) {
         <Field label="Share links" helperText="Anyone holding one can add a copy of this coworker to their own board.">
             <div className="flex flex-col gap-2">
                 {shares.map(share => (
-                    <ShareRow key={share.id} share={share} onRevoke={() => revoke(share.id)} />
+                    <ShareRow key={share.id} share={share} revokeDisabledReason={canManage ? undefined : BOX_MANAGE_REASON} onRevoke={() => revoke(share.id)} />
                 ))}
             </div>
         </Field>
     )
 }
 
-function ShareRow({ share, onRevoke }: { share: WorkspaceShare; onRevoke: () => void }) {
+function ShareRow({ share, revokeDisabledReason, onRevoke }: { share: WorkspaceShare; revokeDisabledReason?: string; onRevoke: () => void }) {
     const { copied, copy } = useCopy()
     const carried = [share.include.memories && 'Memories', share.include.database && 'Database', share.include.files && 'Files'].filter(Boolean) as string[]
 
@@ -68,16 +72,18 @@ function ShareRow({ share, onRevoke }: { share: WorkspaceShare; onRevoke: () => 
                     <Button size="icon-sm" variant="ghost" aria-label="Copy the share link" onClick={() => copy(share.url)}>
                         {copied ? <CheckIcon className="size-3.5 text-emerald-500" /> : <CopyIcon className="size-3.5" />}
                     </Button>
-                    <ConfirmDialog
-                        title="Revoke this share link?"
-                        description="The copy it carries is deleted right away. Anyone who already added the coworker keeps theirs."
-                        confirmLabel="Revoke"
-                        onConfirm={onRevoke}
-                    >
-                        <Button size="icon-sm" variant="ghost" aria-label="Revoke this link" className="text-destructive hover:text-destructive">
-                            <Trash2Icon className="size-3.5" />
-                        </Button>
-                    </ConfirmDialog>
+                    <TooltipDisabledReason reason={revokeDisabledReason}>
+                        <ConfirmDialog
+                            title="Revoke this share link?"
+                            description="The copy it carries is deleted right away. Anyone who already added the coworker keeps theirs."
+                            confirmLabel="Revoke"
+                            onConfirm={onRevoke}
+                        >
+                            <Button size="icon-sm" variant="ghost" aria-label="Revoke this link" disabled={!!revokeDisabledReason} className="text-destructive hover:text-destructive">
+                                <Trash2Icon className="size-3.5" />
+                            </Button>
+                        </ConfirmDialog>
+                    </TooltipDisabledReason>
                 </>
             }
         />

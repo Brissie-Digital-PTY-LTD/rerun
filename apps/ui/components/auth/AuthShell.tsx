@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Logo } from '@rerun/ui/logo'
 import type { ElementType, ReactNode } from 'react'
 import { AuthScene } from './AuthScene'
-import { RERUN_CLOUD } from '@/cloud/edition'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
 
 // Le cadre commun à toutes les entrées de compte : la scène iso occupe tout le fond, le
 // formulaire flotte au centre sans carte, l'en-tête (logo, titre, sous-titre) centré au-dessus,

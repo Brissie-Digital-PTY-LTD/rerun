@@ -13,6 +13,7 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
+import { useCanManageSpace } from '@/hooks/useBoxAccess'
 
 type DeleteSpaceDialogProps = {
     open: boolean
@@ -20,10 +21,14 @@ type DeleteSpaceDialogProps = {
     onConfirm: () => void
     spaceName?: string
     agentCount: number
+    // The Box being deleted: the dialog does not open for one the caller does not manage.
+    spaceId?: string
 }
 
-export function DeleteSpaceDialog({ open, onOpenChange, onConfirm, spaceName, agentCount }: DeleteSpaceDialogProps) {
+export function DeleteSpaceDialog({ open, onOpenChange, onConfirm, spaceName, agentCount, spaceId }: DeleteSpaceDialogProps) {
     const [confirmText, setConfirmText] = useState('')
+    const canManage = useCanManageSpace(spaceId)
+    const refused = !!spaceId && !canManage
 
     useEffect(() => {
         if (!open) setConfirmText('')
@@ -34,7 +39,7 @@ export function DeleteSpaceDialog({ open, onOpenChange, onConfirm, spaceName, ag
     const pronoun = agentCount === 1 ? 'it' : 'them'
 
     return (
-        <AlertDialog open={open} onOpenChange={onOpenChange}>
+        <AlertDialog open={open && !refused} onOpenChange={onOpenChange}>
             <AlertDialogContent size="sm">
                 <AlertDialogHeader>
                     <AlertDialogTitle>Delete Box?</AlertDialogTitle>

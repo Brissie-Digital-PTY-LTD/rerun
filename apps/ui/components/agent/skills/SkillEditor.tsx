@@ -8,6 +8,8 @@ import { SkillFilesSection } from '@/components/agent/skills/SkillFilesSection'
 import { TemplateContentLock } from '@/components/agent/TemplateContentLock'
 import { templateLockTooltip } from '@/lib/templates/content-lock'
 import { useTemplateContentLock } from '@/hooks/useTemplateContentLock'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,9 +33,11 @@ export function SkillEditor({ agentId, slug, readOnly: readOnlyProp, onDone, onB
     const locked = useTemplateContentLock(agentId) && isEdit
     // A sealed skill is shown, never edited: the body in this form is the filler the server sent,
     // so saving it would write that filler over the real procedure.
-    const readOnly = readOnlyProp || locked
-    const saveReason = locked ? templateLockTooltip('Editing this skill') : undefined
-    const deleteReason = locked ? templateLockTooltip('Deleting this skill') : undefined
+    const canManage = useCanManageAgent(agentId)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
+    const readOnly = readOnlyProp || locked || !canManage
+    const saveReason = locked ? templateLockTooltip('Editing this skill') : manageReason
+    const deleteReason = locked ? templateLockTooltip('Deleting this skill') : manageReason
     const [loading, setLoading] = useState(isEdit)
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
@@ -143,7 +147,7 @@ export function SkillEditor({ agentId, slug, readOnly: readOnlyProp, onDone, onB
                     <TemplateContentLock locked={locked} subject="skills">
                         <MarkdownTextarea label="Procedure" dialogTitle="Edit the procedure" value={body} onChange={setBody} disabled={readOnly} className="text-xs min-h-48 font-mono" placeholder={'1. Identify sources\n2. Fetch\n3. Summarize'} />
                     </TemplateContentLock>
-                    {isEdit && <SkillFilesSection agentId={agentId} slug={slug!} files={files} readOnly={readOnlyProp} addLockedReason={locked ? templateLockTooltip('Adding a bundled file') : undefined} deleteLockedReason={locked ? templateLockTooltip('Deleting a bundled file') : undefined} onOpen={setOpenFile} onChanged={load} />}
+                    {isEdit && <SkillFilesSection agentId={agentId} slug={slug!} files={files} readOnly={readOnlyProp} addLockedReason={locked ? templateLockTooltip('Adding a bundled file') : manageReason} deleteLockedReason={locked ? templateLockTooltip('Deleting a bundled file') : manageReason} onOpen={setOpenFile} onChanged={load} />}
                 </PanelEditorBody>
                 {!readOnlyProp && (
                     <PanelEditorFooter>
@@ -152,7 +156,7 @@ export function SkillEditor({ agentId, slug, readOnly: readOnlyProp, onDone, onB
                                 <PanelDeleteButton
                                     label="Delete skill"
                                     busy={deleting}
-                                    disabled={locked}
+                                    disabled={!!deleteReason}
                                     onClick={handleDelete}
                                     confirmTitle={`Delete ${name || 'this skill'}?`}
                                     confirmDescription="The skill and every file bundled with it are removed from the coworker. This cannot be undone."
@@ -160,7 +164,7 @@ export function SkillEditor({ agentId, slug, readOnly: readOnlyProp, onDone, onB
                             </TooltipDisabledReason>
                         )}
                         <TooltipDisabledReason reason={saveReason} className="flex-1">
-                            <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={locked || !name.trim()}>
+                            <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={!!saveReason || !name.trim()}>
                                 {isEdit ? 'Save changes' : 'Create skill'}
                             </Button>
                         </TooltipDisabledReason>

@@ -1,6 +1,7 @@
 'use server'
 
-import { assertAgentInWorkspace, requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { actorFromContext, assertAgentInWorkspace } from '@/app/api/_auth/access'
+import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { PLAIN_KICKOFF } from '@/lib/foreman/build-team'
 import { startAgentSetup, type HandoffResult } from '@/lib/foreman/setup-handoff'
 import { selectMany } from '@/supabase/supabase-helpers'
@@ -19,7 +20,7 @@ async function latestConversationId(ctx: WorkspaceContext, agentId: string): Pro
 export async function readLeadInstallAction(agentId: string): Promise<{ conversationId: string | null }> {
     try {
         const ctx = await requireWorkspaceContext()
-        await assertAgentInWorkspace(agentId)
+        await assertAgentInWorkspace(agentId, 'use', actorFromContext(ctx))
         return { conversationId: await latestConversationId(ctx, agentId) }
     } catch {
         return { conversationId: null }
@@ -32,7 +33,7 @@ export async function readLeadInstallAction(agentId: string): Promise<{ conversa
 export async function startLeadSetupAction(agentId: string): Promise<StartLeadSetupResult> {
     try {
         const ctx = await requireWorkspaceContext()
-        await assertAgentInWorkspace(agentId)
+        await assertAgentInWorkspace(agentId, 'use', actorFromContext(ctx))
 
         const existing = await latestConversationId(ctx, agentId)
         if (existing) return { ok: true, conversationId: existing, runId: null }

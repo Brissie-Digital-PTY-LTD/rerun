@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { compileService, decompileService } from '@/lib/services/compiler'
 import { type RegistryEntry, type ServiceRegistry, readRegistry, removeRegistryEntry, upsertRegistryEntry } from '@/lib/services/registry'
+import { resolveAgentTarget } from '@/app/api/_services/chat.service'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { fakeSupabase } from '@/test/supabase-fake'
-import { getServiceDetails, installService, installedFromRegistry, resetServiceConnection, searchServices, uninstallService } from './services.service'
+import { dispatchHubTool, getServiceDetails, installService, installedFromRegistry, listInstalledServices, markServiceAuthorized, resetServiceConnection, searchServices, uninstallService } from './services.service'
 
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
 vi.mock('@/app/api/_services/chat.service', () => ({ resolveAgentTarget: vi.fn(async () => ({ conn: {}, engineAgentId: 'engine-agent' })) }))
@@ -20,8 +21,8 @@ vi.mock('@/lib/services/registry', async importOriginal => ({
 }))
 vi.mock('@/lib/services/embed', () => ({ embedText: vi.fn(async () => null), toVectorLiteral: vi.fn() }))
 vi.mock('@/lib/services/rerank', () => ({ rerankRelevant: vi.fn() }))
-// The public build stubs `@/cloud` with no paid apps; the reset logic under test is the same in both.
-vi.mock('@/cloud/apps', () => ({ isAppSlug: (value: unknown) => value === 'whatsapp' }))
+// The open source build resolves `@rerun/cloud` to `cloud-oss`, with no paid apps; the reset logic under test is the same in both.
+vi.mock('@rerun/cloud/apps', () => ({ isAppSlug: (value: unknown) => value === 'whatsapp' }))
 
 const composioMethod = { id: 'composio', label: 'Connect', kind: 'composio', recommended: true, composio: { toolkit: 'gmail', authConfigId: 'ac', allowedTools: [] } }
 const MANIFESTS: Record<string, unknown> = {
@@ -173,5 +174,41 @@ describe('resetServiceConnection', () => {
         await expect(resetServiceConnection('agent', 'whatsapp-pro')).resolves.toEqual({ mode: 'auth', app })
         expect(vi.mocked(upsertRegistryEntry).mock.calls[0][3]).toMatchObject({ status: 'needs_auth', app })
         expect(vi.mocked(upsertRegistryEntry).mock.calls[0][3].app).not.toHaveProperty('accountLabel')
+    })
+})
+
+// A member who only uses the Box still sees the coworker's apps, and changes none of them.
+describe('access level', () => {
+    const MEMBER = { kind: 'user', userId: 'user-1', workspaceId: 7, role: 'member', boxScope: 'all' } as const
+
+    beforeEach(() => {
+        vi.mocked(resolveAgentTarget).mockClear()
+        useRegistry({ services: { gmail: entry() } })
+    })
+
+    it('reads the installed apps at use', async () => {
+        await listInstalledServices('agent', MEMBER)
+        await searchServices('agent', undefined, undefined, MEMBER)
+        await getServiceDetails('agent', 'gmail', MEMBER).catch(() => null)
+
+        for (const call of vi.mocked(resolveAgentTarget).mock.calls) expect(call).toEqual(['agent', MEMBER])
+    })
+
+    it('asks manage to install, reset, authorize or uninstall', async () => {
+        await uninstallService('agent', 'gmail', MEMBER)
+        await resetServiceConnection('agent', 'gmail', MEMBER)
+        await markServiceAuthorized('agent', 'gmail', MEMBER)
+
+        expect(vi.mocked(resolveAgentTarget).mock.calls).toEqual([
+            ['agent', MEMBER, 'manage'],
+            ['agent', MEMBER, 'manage'],
+            ['agent', MEMBER, 'manage'],
+        ])
+    })
+
+    it('runs a hub call from the engine as the workspace itself', async () => {
+        await dispatchHubTool('agent', 'service_list_installed', {}, 7)
+
+        expect(resolveAgentTarget).toHaveBeenCalledWith('agent', { kind: 'workspace', workspaceId: 7 })
     })
 })

@@ -1,4 +1,4 @@
-type RunHandle = { controller: AbortController; cancel?: () => void }
+type RunHandle = { controller: AbortController; agentId: string; cancel?: () => void }
 
 const controllers = new Map<string, RunHandle>()
 
@@ -11,9 +11,9 @@ type SessionClaim = { runId: string; claimedAt: number; authorId?: string }
 const sessionClaims = new Map<string, SessionClaim>()
 const claimedSessions = new Map<string, string>()
 
-export function registerRunAbort(runId: string): AbortController {
+export function registerRunAbort(runId: string, agentId: string): AbortController {
     const controller = new AbortController()
-    controllers.set(runId, { controller })
+    controllers.set(runId, { controller, agentId })
     return controller
 }
 
@@ -47,6 +47,11 @@ export function releaseSession(runId: string): void {
     if (!sessionId) return
     claimedSessions.delete(runId)
     if (sessionClaims.get(sessionId)?.runId === runId) sessionClaims.delete(sessionId)
+}
+
+export function agentHasLiveRun(agentId: string): boolean {
+    for (const handle of controllers.values()) if (handle.agentId === agentId) return true
+    return false
 }
 
 export function activeRunCount(): number {

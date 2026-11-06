@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { site } from "@/lib/site";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AffiliateTracking } from "@/cloud/support";
+import { AffiliateTracking } from "@rerun/cloud/support";
 import { AppChrome } from "@/components/layout/AppChrome";
 import { CookieConsent } from "@/components/layout/CookieConsent";
 import { DeployUpdateWatcher } from "@/components/deploy-update/DeployUpdateWatcher";

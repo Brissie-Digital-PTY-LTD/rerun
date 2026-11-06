@@ -1,4 +1,5 @@
-import { AuthorizationError, assertSpaceOwnedBy, requireWorkspaceId } from '@/app/api/_auth/ownership'
+import { assertSpaceAccess, spaceAccessMap, toVisibility, type AccessLevel, type Actor } from '@/app/api/_auth/access'
+import { AuthorizationError, requireWorkspaceId } from '@/app/api/_auth/ownership'
 import { findWorkspaceEngine, getWorkspaceConnection } from '@/app/api/_services/workspace-engine.service'
 import { buildBaseUrl } from '@/lib/engine/base-url'
 import type { Database } from '@/app/api/database.types'
@@ -42,32 +43,37 @@ export async function resolveSpaceTarget(spaceId: string, workspaceId?: number):
     return { spaceId, conn: await getWorkspaceConnection(callerWorkspaceId) }
 }
 
-// A Box read carries only what a Box is: a name and a rectangle's identity. `managed` describes
-// the machine the whole workspace runs on, kept on the public /api/v1/boxes contract that the
-// mobile app still reads.
-const BOX_COLUMNS = ['id', 'name', 'created_at'] as const
+// A Box read carries only what a Box is: a name, a rectangle's identity, who sees it and the
+// caller's level on it. `managed` describes the machine the whole workspace runs on, kept on the
+// public /api/v1/boxes contract that the mobile app still reads.
+const BOX_COLUMNS = ['id', 'name', 'created_at', 'visibility'] as const
 
 type BoxRow = Pick<Database['public']['Tables']['spaces']['Row'], (typeof BOX_COLUMNS)[number]>
 
-function boxFromRow(row: BoxRow, managed: boolean): Box {
-    return { id: row.id, name: row.name, createdAt: row.created_at, managed }
+function boxFromRow(row: BoxRow, managed: boolean, access: AccessLevel): Box {
+    return { id: row.id, name: row.name, createdAt: row.created_at, managed, visibility: toVisibility(row.visibility), access }
 }
 
-export async function listBoxes(workspaceId: number): Promise<Box[]> {
-    const [{ data, error }, engine] = await Promise.all([
-        selectMany(createServiceRoleClient(), 'spaces', BOX_COLUMNS, { workspace_id: workspaceId }, { column: 'created_at' }),
-        findWorkspaceEngine(workspaceId),
+// The Boxes the actor reaches, a Box closed to it left out.
+export async function listBoxes(actor: Actor): Promise<Box[]> {
+    const [{ data, error }, engine, accessBySpace] = await Promise.all([
+        selectMany(createServiceRoleClient(), 'spaces', BOX_COLUMNS, { workspace_id: actor.workspaceId }, { column: 'created_at' }),
+        findWorkspaceEngine(actor.workspaceId),
+        spaceAccessMap(actor),
     ])
     if (error) throw error
-    return (data ?? []).map(row => boxFromRow(row, !!engine?.managed))
+    return (data ?? []).flatMap(row => {
+        const access = accessBySpace.get(row.id) ?? 'none'
+        return access === 'none' ? [] : [boxFromRow(row, !!engine?.managed, access)]
+    })
 }
 
-export async function readBox(workspaceId: number, spaceId: string): Promise<Box> {
-    await assertSpaceOwnedBy(workspaceId, spaceId)
+export async function readBox(actor: Actor, spaceId: string): Promise<Box> {
+    const { access } = await assertSpaceAccess(spaceId, 'use', actor)
     const [{ data, error }, engine] = await Promise.all([
         selectSingle(createServiceRoleClient(), 'spaces', BOX_COLUMNS, { id: spaceId }),
-        findWorkspaceEngine(workspaceId),
+        findWorkspaceEngine(actor.workspaceId),
     ])
-    if (error || !data) throw error ?? new AuthorizationError('Box not found')
-    return boxFromRow(data, !!engine?.managed)
+    if (error || !data || access === 'none') throw error ?? new AuthorizationError('Box not found')
+    return boxFromRow(data, !!engine?.managed, access)
 }

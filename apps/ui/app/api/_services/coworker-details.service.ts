@@ -1,33 +1,28 @@
 import 'server-only'
-import { AuthorizationError, type WorkspaceContext } from '@/app/api/_auth/ownership'
+import { actorFromContext, assertAgentAccess } from '@/app/api/_auth/access'
+import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { deleteAgent, renameAgent } from '@/app/api/_services/agent.service'
 import { resolveAgentTarget } from '@/app/api/_services/chat.service'
 import { patchNotificationPrefs, readNotificationPrefs } from '@/app/api/_services/notification-prefs.service'
 import { listFiles, listSchedules, listSkillSummaries, listTriggers, updateSchedule, updateTrigger } from '@/lib/engine/client'
 import { coworkerRuleOf } from '@/lib/notifications/prefs'
 import { humanCron } from '@/lib/schedules/cron'
-import { selectMaybeSingle } from '@/supabase/supabase-helpers'
 import type { CoworkerFile, CoworkerFiles, CoworkerNotifications, CoworkerNotifyMode, RenameCoworkerInput, RoutineKind, RoutinesView, SkillSummariesView } from '@rerun/contracts'
 
 // Renaming and deleting reach a coworker the engine may not answer for (switched off, not set up),
-// so they only check the row belongs to the caller's workspace.
-async function assertCoworkerOwned(ctx: WorkspaceContext, agentId: string): Promise<void> {
-    const { data } = await selectMaybeSingle(ctx.supabase, 'agents', ['workspace_id'] as const, { id: agentId })
-    if (!data || data.workspace_id !== ctx.workspace.id) throw new AuthorizationError('Coworker not found')
-}
-
+// so they only check the caller's Box, without asking the engine.
 export async function renameCoworker(ctx: WorkspaceContext, agentId: string, input: RenameCoworkerInput): Promise<void> {
-    await assertCoworkerOwned(ctx, agentId)
+    await assertAgentAccess(agentId, 'manage', actorFromContext(ctx))
     await renameAgent(agentId, input.name)
 }
 
 export async function deleteCoworker(ctx: WorkspaceContext, agentId: string): Promise<void> {
-    await assertCoworkerOwned(ctx, agentId)
+    await assertAgentAccess(agentId, 'manage', actorFromContext(ctx))
     await deleteAgent(agentId)
 }
 
 export async function listCoworkerRoutines(ctx: WorkspaceContext, agentId: string): Promise<RoutinesView> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, ctx.workspace.id)
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actorFromContext(ctx))
     const [schedules, triggers] = await Promise.all([listSchedules(conn, engineAgentId), listTriggers(conn, engineAgentId)])
     return {
         routines: [
@@ -46,24 +41,24 @@ export async function listCoworkerRoutines(ctx: WorkspaceContext, agentId: strin
 }
 
 export async function listCoworkerSkills(ctx: WorkspaceContext, agentId: string): Promise<SkillSummariesView> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, ctx.workspace.id)
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actorFromContext(ctx))
     return { skills: await listSkillSummaries(conn, engineAgentId) }
 }
 
 export async function setCoworkerRoutineEnabled(ctx: WorkspaceContext, agentId: string, kind: RoutineKind, slug: string, enabled: boolean): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, ctx.workspace.id)
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actorFromContext(ctx), 'manage')
     if (kind === 'schedule') await updateSchedule(conn, engineAgentId, slug, { enabled })
     else await updateTrigger(conn, engineAgentId, slug, { enabled })
 }
 
 export async function readCoworkerNotifications(ctx: WorkspaceContext, agentId: string): Promise<CoworkerNotifications> {
-    await assertCoworkerOwned(ctx, agentId)
+    await assertAgentAccess(agentId, 'use', actorFromContext(ctx))
     return { mode: coworkerRuleOf(await readNotificationPrefs(ctx.userId), agentId).mode }
 }
 
 // Only the mode moves: whether the caller follows the coworker's scheduled tasks is kept as it was.
 export async function setCoworkerNotifications(ctx: WorkspaceContext, agentId: string, mode: CoworkerNotifyMode): Promise<void> {
-    await assertCoworkerOwned(ctx, agentId)
+    await assertAgentAccess(agentId, 'use', actorFromContext(ctx))
     const rule = coworkerRuleOf(await readNotificationPrefs(ctx.userId), agentId)
     await patchNotificationPrefs(ctx.userId, { coworkers: { [agentId]: { ...rule, mode } } })
 }
@@ -78,7 +73,7 @@ const kindOf = (name: string): CoworkerFile['kind'] => (MEDIA_EXTENSIONS.has(nam
 const isHidden = (name: string) => name.startsWith('.')
 
 export async function listCoworkerFiles(ctx: WorkspaceContext, agentId: string): Promise<CoworkerFiles> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, ctx.workspace.id)
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actorFromContext(ctx))
     const base = `/agents/${engineAgentId}/files`
     const files: CoworkerFile[] = []
     let level = ['']

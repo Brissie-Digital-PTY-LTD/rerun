@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
     removeAvatars: vi.fn(),
 }))
 
-vi.mock('@/cloud/account', () => ({ subscriptionStillCharges: mocks.subscriptionStillCharges, stopWorkspaceCharges: mocks.stopWorkspaceCharges, uninstallWorkspaceApps: mocks.uninstallWorkspaceApps }))
+vi.mock('@rerun/cloud/account', () => ({ subscriptionStillCharges: mocks.subscriptionStillCharges, stopWorkspaceCharges: mocks.stopWorkspaceCharges, uninstallWorkspaceApps: mocks.uninstallWorkspaceApps }))
 
 const { accountDeletionBlockers, anonymizeAccount, ACCOUNT_DELETED_REASON } = await import('./account-deletion.service')
 
@@ -24,10 +24,27 @@ const OWN: WorkspaceRow = { id: 2, name: 'Side project', is_sandbox: false, stri
 
 const filtersOn = (calls: readonly SupabaseCall[], column: string) => calls.some(call => (call.method === 'eq' || call.method === 'in') && call.args[0] === column)
 
-function world(workspaces: WorkspaceRow[], members: { workspace_id: number; user_id: string }[]): FakeSupabase {
+type MemberRow = { workspace_id: number; user_id: string; role?: 'admin' | 'member' }
+
+function membersMatching(members: MemberRow[], calls: readonly SupabaseCall[]) {
+    const rows = members.map(member => ({ role: 'admin', ...member }) as Record<string, unknown>)
+    const matching = rows.filter(row =>
+        calls.every(call => {
+            if (call.method === 'eq') return row[call.args[0] as string] === call.args[1]
+            if (call.method === 'neq') return row[call.args[0] as string] !== call.args[1]
+            if (call.method === 'in') return (call.args[1] as unknown[]).includes(row[call.args[0] as string])
+            return true
+        }),
+    )
+    if ((calls.find(call => call.method === 'select')?.args[1] as { head?: boolean } | undefined)?.head) return { count: matching.length }
+    if (calls.some(call => call.method === 'maybeSingle')) return { data: matching[0] ?? null }
+    return { data: matching }
+}
+
+function world(workspaces: WorkspaceRow[], members: MemberRow[]): FakeSupabase {
     const db = fakeSupabase((table, calls) => {
         if (writeMethodOf(calls) || table.startsWith('rpc:')) return undefined
-        if (table === 'workspace_members') return { data: filtersOn(calls, 'user_id') ? members.filter(member => member.user_id === USER) : members }
+        if (table === 'workspace_members') return membersMatching(members, calls)
         if (table === 'workspaces') return { data: workspaces }
         return undefined
     })
@@ -108,6 +125,40 @@ describe('anonymizeAccount', () => {
         expect(agents.payload).toMatchObject({ disabled_reason: ACCOUNT_DELETED_REASON })
         expect(agents.filters.map(call => call.args)).toContainEqual(['workspace_id', OWN.id])
         expect(db.writes('workspaces').map(write => write.filters[0].args)).toEqual([['id', OWN.id]])
+    })
+
+    it('hands a shared workspace to the earliest teammate when its last admin leaves', async () => {
+        const db = world(
+            [SHARED],
+            [
+                { workspace_id: SHARED.id, user_id: USER, role: 'admin' },
+                { workspace_id: SHARED.id, user_id: TEAMMATE, role: 'member' },
+            ]
+        )
+
+        await expect(anonymizeAccount(db.client, USER)).resolves.toEqual({ ok: true })
+
+        const [promote, leave] = db.writes('workspace_members')
+        expect(promote).toMatchObject({ method: 'update', payload: { role: 'admin' } })
+        expect(promote.filters.map(call => call.args)).toEqual([
+            ['workspace_id', SHARED.id],
+            ['user_id', TEAMMATE],
+        ])
+        expect(leave.method).toBe('delete')
+    })
+
+    it('promotes no one when another admin stays', async () => {
+        const db = world(
+            [SHARED],
+            [
+                { workspace_id: SHARED.id, user_id: USER, role: 'admin' },
+                { workspace_id: SHARED.id, user_id: TEAMMATE, role: 'admin' },
+            ]
+        )
+
+        await expect(anonymizeAccount(db.client, USER)).resolves.toEqual({ ok: true })
+
+        expect(db.writes('workspace_members').map(write => write.method)).toEqual(['delete'])
     })
 
     it('erases what points to the person, then files the auth row under a dead address, last', async () => {

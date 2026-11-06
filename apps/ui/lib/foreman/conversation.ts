@@ -37,6 +37,8 @@ const CONVERSATION_COLUMNS = ['id', 'title', 'messages', 'backend', 'engine_sess
 type ConversationUpdate = Database['public']['Tables']['foreman_conversations']['Update']
 type ConversationInsert = Database['public']['Tables']['foreman_conversations']['Insert']
 
+const UNIQUE_VIOLATION = '23505'
+
 function firstUserText(messages: UIMessage[]): string {
     // The message that starts a guided setup was written by the app, not by the user: naming the
     // conversation after it would put the marker itself in the sidebar.
@@ -162,7 +164,17 @@ export async function saveForemanConversation(ctx: WorkspaceContext, sessionId: 
             user_id: ctx.userId,
             messages: payload,
         })
-        if (error) throw new Error(error.message)
+        // Two requests of the same conversation finishing together both find no row and both insert.
+        // The later one writes over the earlier, scoped to its owner: the id comes from the browser.
+        if (error?.code === UNIQUE_VIOLATION) {
+            const { error: updateError } = await supabase
+                .from('foreman_conversations')
+                .update<ConversationUpdate>({ messages: payload, updated_at: new Date().toISOString() })
+                .eq('id', sessionId)
+                .eq('workspace_id', ctx.workspace.id)
+                .eq('user_id', ctx.userId)
+            if (updateError) throw new Error(updateError.message)
+        } else if (error) throw new Error(error.message)
     } else {
         const { error } = await supabase
             .from('foreman_conversations')

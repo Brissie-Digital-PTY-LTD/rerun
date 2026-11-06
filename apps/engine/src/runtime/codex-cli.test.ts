@@ -19,6 +19,7 @@ vi.mock('node:child_process', () => ({
 const { CODEX_VERSION, codexOffPin, codexPath, parseCodexVersion } = await import('./codex-cli.js')
 
 const ENGINE_DIR = resolve(import.meta.dirname, '../..')
+const BOX_INSTALLER = '../../cloud/infra/engine/install.sh'
 const pinsIn = (file: string): string[] => [...readFileSync(resolve(ENGINE_DIR, file), 'utf8').matchAll(/@openai\/codex@([^"\s]+)/g)].map(match => match[1]!)
 
 beforeEach(() => {
@@ -31,9 +32,9 @@ describe('CODEX_VERSION', () => {
         expect(pinsIn('Dockerfile')).toEqual([CODEX_VERSION])
     })
 
-    // install.sh stays out of the public export.
-    it.skipIf(!existsSync(resolve(ENGINE_DIR, 'scripts/install.sh')))('is the exact version a new box installs', () => {
-        expect(pinsIn('scripts/install.sh')).toEqual([CODEX_VERSION])
+    // The installer of Rerun Cloud's boxes lives in the private cloud/ folder.
+    it.skipIf(!existsSync(resolve(ENGINE_DIR, BOX_INSTALLER)))('is the exact version a new box installs', () => {
+        expect(pinsIn(BOX_INSTALLER)).toEqual([CODEX_VERSION])
     })
 })
 

@@ -1,5 +1,5 @@
 import type { Database } from '@/app/api/database.types'
-import { BASE_PLAN_SLUG, MICROS_PER_USD } from '@/cloud/billing'
+import { BASE_PLAN_SLUG, MICROS_PER_USD } from '@rerun/cloud/billing'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { ensureWorkspaceEngine } from '@/app/api/_services/workspace-engine.service'
 import { isSandboxLocked, SANDBOX_LOCKED_ERROR } from '@/lib/sandbox-idle/lock'
@@ -121,6 +121,7 @@ async function createSandboxWorkspace(userId: string): Promise<number | { ok: fa
     const { error: membershipError } = await supabase.from('workspace_members').insert<Database['public']['Tables']['workspace_members']['Insert']>({
         user_id: userId,
         workspace_id: workspaceId,
+        role: 'admin',
     })
     if (membershipError) return { ok: false, error: membershipError.message }
 

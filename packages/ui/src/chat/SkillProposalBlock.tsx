@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { Badge, Button, Icon, IconBadge, Stripes } from '../primitives'
 import { cn } from '../cn'
+import { TooltipDisabledReason } from '../Tooltip'
 import { BrainIcon, CheckIcon, ChevronDownIcon, XIcon } from '../icons'
 
 export type SkillProposalMode = 'create' | 'edit'
@@ -25,6 +26,8 @@ export type SkillProposalBlockProps = {
     pinned?: boolean
     onAccept?: () => void
     onDismiss?: () => void
+    // Why this viewer cannot decide: the card still shows, its buttons disabled.
+    decisionDisabledReason?: string
     onOpenSkill?: () => void
     className?: string
 }
@@ -45,7 +48,7 @@ function copyFor({ title, summary, state, instructions, error }: SkillProposalBl
  * never asks a question: accepting starts the writing on its own, and the same row reports it.
  */
 export function SkillProposalBlock(props: SkillProposalBlockProps) {
-    const { state, pending, pinned, onAccept, onDismiss, onOpenSkill, className } = props
+    const { state, pinned, onOpenSkill, className } = props
     const { headline, detail, accept, dismiss } = copyFor(props)
     const open = state === 'proposed' || state === 'failed'
     const done = state === 'applied'
@@ -73,20 +76,7 @@ export function SkillProposalBlock(props: SkillProposalBlockProps) {
                         )}
                     </>
                 )}
-                {open && (
-                    <div className="flex shrink-0 items-center gap-1">
-                        {onDismiss && dismiss && (
-                            <Button size="xs" variant="ghost" disabled={pending} onClick={onDismiss}>
-                                {dismiss}
-                            </Button>
-                        )}
-                        {onAccept && accept && (
-                            <Button size="xs" loading={pending} onClick={onAccept}>
-                                {accept}
-                            </Button>
-                        )}
-                    </div>
-                )}
+                {open && <DecisionButtons {...props} accept={accept} dismiss={dismiss} />}
             </div>
         </div>
     )
@@ -99,7 +89,8 @@ const COLLAPSED_DETAIL_HEIGHT = 18
  * The pinned card while it waits on a decision: the compact row of every other state, plus a
  * chevron. Unfolding turns its second line, in place, into the rules exactly as the agent worded them.
  */
-function PinnedDecision({ state, instructions = [], pending, onAccept, onDismiss, className, headline, detail, accept, dismiss }: SkillProposalBlockProps & Copy) {
+function PinnedDecision(props: SkillProposalBlockProps & Copy) {
+    const { state, instructions = [], className, headline, detail } = props
     const [expanded, setExpanded] = useState(false)
     // The full wording stays mounted until the card has folded back, so the closing has something to animate.
     const [unfolded, setUnfolded] = useState(false)
@@ -147,19 +138,28 @@ function PinnedDecision({ state, instructions = [], pending, onAccept, onDismiss
                         )}
                     </motion.span>
                 </button>
-                <div className="flex shrink-0 items-center gap-1">
-                    {onDismiss && dismiss && (
-                        <Button size="xs" variant="ghost" disabled={pending} onClick={onDismiss}>
-                            {dismiss}
-                        </Button>
-                    )}
-                    {onAccept && accept && (
-                        <Button size="xs" loading={pending} onClick={onAccept}>
-                            {accept}
-                        </Button>
-                    )}
-                </div>
+                <DecisionButtons {...props} />
             </div>
         </div>
+    )
+}
+
+function DecisionButtons({ pending, onAccept, onDismiss, decisionDisabledReason, accept, dismiss }: SkillProposalBlockProps & Pick<Copy, 'accept' | 'dismiss'>) {
+    const blocked = !!decisionDisabledReason
+    return (
+        <TooltipDisabledReason reason={decisionDisabledReason} className="shrink-0">
+            <div className="flex shrink-0 items-center gap-1">
+                {onDismiss && dismiss && (
+                    <Button size="xs" variant="ghost" disabled={pending || blocked} onClick={onDismiss}>
+                        {dismiss}
+                    </Button>
+                )}
+                {onAccept && accept && (
+                    <Button size="xs" loading={pending} disabled={blocked} onClick={onAccept}>
+                        {accept}
+                    </Button>
+                )}
+            </div>
+        </TooltipDisabledReason>
     )
 }

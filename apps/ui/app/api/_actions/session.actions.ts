@@ -1,6 +1,7 @@
 'use server'
 
-import { assertSessionInWorkspace, requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { assertSessionInWorkspace } from '@/app/api/_auth/access'
+import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { clearSessionAlert, findIdleSessions, findSessionActiveRun } from '@/app/api/_services/chat.service'
 import { adoptEngineSession, cancelSessionRuns, EMPTY_SESSION_SNAPSHOT, finalizeSession, listAgentSessions, readSessionMessages, readSessionSnapshot, searchWorkspaceConversations, type ConversationHit, type SessionHistoryEntry, type SessionSnapshot } from '@/app/api/_services/conversation.service'
 

@@ -1,9 +1,10 @@
 import { parseServiceRegistryKey, serviceRegistryKey } from '@rerun/contracts'
 
+import { workspaceActor, type Actor } from '@/app/api/_auth/access'
 import { AuthorizationError } from '@/app/api/_auth/ownership'
 import { resolveAgentTarget } from '@/app/api/_services/chat.service'
-import { unbindAgent } from '@/cloud/apps.server'
-import { isAppSlug, type AppSlug } from '@/cloud/apps'
+import { unbindAgent } from '@rerun/cloud/apps.server'
+import { isAppSlug, type AppSlug } from '@rerun/cloud/apps'
 import { deleteConnectedAccount } from '@/lib/composio/client'
 import { deleteMcpToken } from '@/lib/engine/client'
 import { getManagedProvider } from '@/lib/managed/registry'
@@ -83,9 +84,9 @@ export function toAuthMethodSummaries(manifest: ServiceManifest): AuthMethodSumm
 // Which services are installed is the AGENT's own state, read from its engine-side
 // registry (see lib/services/registry.ts) — never from the UI database. The status comes
 // along: a declared entry still waiting for a sign-in is not an installed connector.
-async function installedStatuses(agentId: string, workspaceId?: number): Promise<Map<string, AgentServiceStatus>> {
+async function installedStatuses(agentId: string, actor?: Actor): Promise<Map<string, AgentServiceStatus>> {
     try {
-        const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+        const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor)
         const reg = await readRegistry(conn, engineAgentId)
         const slugs = new Set(Object.keys(reg.services).map(key => parseServiceRegistryKey(key).slug))
         return new Map([...slugs].map(slug => [slug, primaryStatusOfSlug(reg, slug) as AgentServiceStatus]))
@@ -102,8 +103,8 @@ async function installedStatuses(agentId: string, workspaceId?: number): Promise
 // Mark a service as pending config in the agent registry without compiling anything
 // (used when an install is triggered but required inputs are still missing). Records the
 // chosen method so the config form re-opens on the right one.
-export async function markServiceNeedsConfig(agentId: string, key: string, authMethodId?: string, workspaceId?: number, seed?: { instanceId: string; label: string }): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function markServiceNeedsConfig(agentId: string, key: string, authMethodId?: string, actor?: Actor, seed?: { instanceId: string; label: string }): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     // Pending: no engine footprint yet (empty mcpServers/envKeys/skills).
     await upsertRegistryEntry(conn, engineAgentId, key, { status: 'needs_config', config: {}, authMethodId, mcpServers: [], envKeys: [], skills: [], ...seed, installedAt: new Date().toISOString() })
 }
@@ -112,8 +113,8 @@ export type ServiceInstanceSeed = ServiceInstanceTarget & { label: string }
 
 // A fresh key for another account of an app the coworker may already hold, labelled after the
 // accounts it already shows until its sign-in gives it an email.
-export async function allocateServiceInstance(agentId: string, manifest: ServiceManifest, workspaceId?: number): Promise<ServiceInstanceSeed> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function allocateServiceInstance(agentId: string, manifest: ServiceManifest, actor?: Actor): Promise<ServiceInstanceSeed> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const reg = await readRegistry(conn, engineAgentId)
     const taken = Object.keys(reg.services).flatMap(key => parseServiceRegistryKey(key).instanceId ?? [])
     const instanceId = newServiceInstanceId(taken)
@@ -150,8 +151,8 @@ function toSearchResult(s: CatalogRow, installed: Map<string, AgentServiceStatus
 // posts") is embedded and matched by cosine similarity against each service, so the right
 // service surfaces even with no shared keywords. Falls back to substring matching when
 // there's no query or no embedding key configured — nothing breaks before the backfill.
-export async function searchServices(agentId: string, query?: string, category?: string, workspaceId?: number): Promise<{ results: ServiceSearchResult[] }> {
-    const installed = await installedStatuses(agentId, workspaceId)
+export async function searchServices(agentId: string, query?: string, category?: string, actor?: Actor): Promise<{ results: ServiceSearchResult[] }> {
+    const installed = await installedStatuses(agentId, actor)
     return { results: await searchCatalog(installed, query, category) }
 }
 
@@ -338,7 +339,7 @@ export async function getServiceAlternatives(slugs: string[]): Promise<Record<st
     return alternatives
 }
 
-export async function getServiceDetails(agentId: string, slugOrKey: string, workspaceId?: number): Promise<ServiceDetails> {
+export async function getServiceDetails(agentId: string, slugOrKey: string, actor?: Actor): Promise<ServiceDetails> {
     const manifest = await loadManifest(slugOrKey)
     if (!manifest) throw new Error(`Service not found: ${slugOrKey}`)
 
@@ -354,7 +355,7 @@ export async function getServiceDetails(agentId: string, slugOrKey: string, work
     let label: string | undefined
     let instances: ServiceDetails['instances'] = []
     try {
-        const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+        const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor)
         const reg = await readRegistry(conn, engineAgentId)
         const entry = resolveRegistryEntry(reg, slugOrKey)?.entry
         label = entry?.label
@@ -403,22 +404,22 @@ export async function installService(
     slugOrKey: string,
     values: Record<string, string> = {},
     authMethodId?: string,
-    workspaceId?: number,
+    actor?: Actor,
     opts?: { newInstance?: boolean },
 ): Promise<InstallResult> {
     const manifest = await loadManifest(slugOrKey)
     if (!manifest) throw new Error(`Service not found: ${slugOrKey}`)
 
-    const instance = await installTarget(agentId, manifest, slugOrKey, Boolean(opts?.newInstance), workspaceId)
+    const instance = await installTarget(agentId, manifest, slugOrKey, Boolean(opts?.newInstance), actor)
     const key = instance?.key ?? manifest.slug
     const method = getMethod(manifest, authMethodId)
     const missing = missingRequiredInputs(method, values)
     if (missing.length > 0) {
-        await markServiceNeedsConfig(agentId, key, method.id, workspaceId, instance ? { instanceId: instance.instanceId, label: instance.label } : undefined)
+        await markServiceNeedsConfig(agentId, key, method.id, actor, instance ? { instanceId: instance.instanceId, label: instance.label } : undefined)
         return { status: 'needs_config', key, slug: manifest.slug, name: manifest.name, authMethods: toAuthMethodSummaries(manifest), authMethodId: method.id, message: `${manifest.name} needs configuration. A form has been shown to the user — ask them to fill it in.` }
     }
 
-    const { toolNames, oauth, managed, composio, app } = await compileService(agentId, manifest, values, method.id, workspaceId, instance ?? undefined)
+    const { toolNames, oauth, managed, composio, app } = await compileService(agentId, manifest, values, method.id, actor, instance ?? undefined)
     if (oauth) {
         return { status: 'needs_auth', key, slug: manifest.slug, name: manifest.name, oauth, message: `${manifest.name} needs the user to sign in. A Connect button has been shown to them.` }
     }
@@ -434,18 +435,18 @@ export async function installService(
         if (bound === null) {
             return { status: 'needs_auth', key, slug: manifest.slug, name: manifest.name, app, message: `${manifest.name} needs the user to pick the account you act with. A picker has been shown to them.` }
         }
-        await markAppAuthorized(agentId, key, bound || undefined, workspaceId)
+        await markAppAuthorized(agentId, key, bound || undefined, actor)
     }
     return { status: 'installed', key, slug: manifest.slug, name: manifest.name, toolNames, message: `${manifest.name} installed. Its tools become available on your next turn.` }
 }
 
 // Which registry entry an install writes: null for the base account, a fresh key for a new
 // account, or the existing extra account the caller addressed by its key (keeping its label).
-async function installTarget(agentId: string, manifest: ServiceManifest, slugOrKey: string, newInstance: boolean, workspaceId?: number): Promise<ServiceInstanceSeed | null> {
-    if (newInstance && manifest.multiInstance) return allocateServiceInstance(agentId, manifest, workspaceId)
+async function installTarget(agentId: string, manifest: ServiceManifest, slugOrKey: string, newInstance: boolean, actor?: Actor): Promise<ServiceInstanceSeed | null> {
+    if (newInstance && manifest.multiInstance) return allocateServiceInstance(agentId, manifest, actor)
     const { instanceId } = parseServiceRegistryKey(slugOrKey)
     if (!instanceId || !manifest.multiInstance) return null
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const reg = await readRegistry(conn, engineAgentId)
     return { key: slugOrKey, instanceId, label: reg.services[slugOrKey]?.label ?? ordinalInstanceLabel(manifest.name, reg, manifest.slug) }
 }
@@ -462,8 +463,8 @@ async function boundAccountLabel(agentId: string, appSlug: AppSlug): Promise<str
 }
 
 // Flip a paid app's service to active once the coworker has picked the account it acts with.
-export async function markAppAuthorized(agentId: string, key: string, accountLabel?: string, workspaceId?: number): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function markAppAuthorized(agentId: string, key: string, accountLabel?: string, actor?: Actor): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const entry = (await readRegistry(conn, engineAgentId)).services[key]
     if (!entry?.app) return
     const app = { appSlug: entry.app.appSlug, serverName: entry.app.serverName, ...(accountLabel ? { accountLabel } : {}) }
@@ -472,16 +473,16 @@ export async function markAppAuthorized(agentId: string, key: string, accountLab
 
 // Flip an OAuth service to active after the user completes the sign-in popup (the callback
 // route has already written the token to the engine token store).
-export async function markServiceAuthorized(agentId: string, key: string, workspaceId?: number): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function markServiceAuthorized(agentId: string, key: string, actor?: Actor): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const entry = (await readRegistry(conn, engineAgentId)).services[key]
     if (entry) await upsertRegistryEntry(conn, engineAgentId, key, { ...entry, status: 'active' })
 }
 
 // Flip a managed service to active and record the connected account label, after the managed
 // OAuth callback wrote the token to the engine token store.
-export async function markManagedAuthorized(agentId: string, key: string, accountEmail?: string, workspaceId?: number): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function markManagedAuthorized(agentId: string, key: string, accountEmail?: string, actor?: Actor): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const entry = (await readRegistry(conn, engineAgentId)).services[key]
     if (!entry) return
     const managed = { provider: entry.managed?.provider ?? '', serverName: entry.managed?.serverName ?? '', ...(accountEmail ? { accountEmail } : {}) }
@@ -490,8 +491,8 @@ export async function markManagedAuthorized(agentId: string, key: string, accoun
 
 // Flip a Composio service to active once its connected account is verified ACTIVE. The
 // connectedAccountId is what uninstall/reconnect later delete at Composio to revoke access.
-export async function markComposioAuthorized(agentId: string, key: string, connectedAccountId: string, accountLabel?: string, workspaceId?: number): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function markComposioAuthorized(agentId: string, key: string, connectedAccountId: string, accountLabel?: string, actor?: Actor): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const entry = (await readRegistry(conn, engineAgentId)).services[key]
     if (!entry) return
     const composio = { toolkit: entry.composio?.toolkit ?? '', serverName: entry.composio?.serverName ?? '', connectedAccountId, ...(accountLabel ? { accountLabel } : {}) }
@@ -503,8 +504,8 @@ export async function markComposioAuthorized(agentId: string, key: string, conne
 // the mcp servers / env keys / skills stay. A service with no sign-in (API key, stdio) has no
 // token to drop — it keeps working until the user actually submits new values, since
 // compileService is idempotent and the submit overwrites in place.
-export async function resetServiceConnection(agentId: string, key: string, workspaceId?: number): Promise<ResetConnectionResult> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function resetServiceConnection(agentId: string, key: string, actor?: Actor): Promise<ResetConnectionResult> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const entry = (await readRegistry(conn, engineAgentId)).services[key]
     if (!entry) return { mode: 'config' }
 
@@ -546,8 +547,8 @@ export async function resetServiceConnection(agentId: string, key: string, works
     return { mode: 'auth', oauth: entry.oauth, managed }
 }
 
-export async function listInstalledServices(agentId: string, workspaceId?: number): Promise<{ services: InstalledService[] }> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function listInstalledServices(agentId: string, actor?: Actor): Promise<{ services: InstalledService[] }> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor)
     return { services: await installedFromRegistry(await readRegistry(conn, engineAgentId)) }
 }
 
@@ -589,8 +590,8 @@ export async function installedFromRegistry(reg: ServiceRegistry): Promise<Insta
 // Full teardown: reverse exactly what the install added (per the registry footprint),
 // then drop the registry entry. needs_config entries have an empty footprint → no-op
 // teardown, just the registry removal.
-export async function uninstallService(agentId: string, key: string, workspaceId?: number): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function uninstallService(agentId: string, key: string, actor?: Actor): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const reg = await readRegistry(conn, engineAgentId)
     const entry = reg.services[key]
     if (entry) await decompileService(conn, engineAgentId, entry, { keepSkills: sharedSkillSlugs(reg, key) })
@@ -629,18 +630,19 @@ function asStringRecord(v: unknown): Record<string, string> {
 // resolve a workspace from: the route hands over the one it authenticated. Without it every
 // registry read below fails authorization and the agent is told its live connectors are absent.
 export async function dispatchHubTool(agentId: string, name: string, args: Record<string, unknown>, workspaceId: number): Promise<unknown> {
+    const actor = workspaceActor(workspaceId)
     switch (name) {
         case 'service_search':
-            return searchServices(agentId, asString(args.query), asString(args.category), workspaceId)
+            return searchServices(agentId, asString(args.query), asString(args.category), actor)
         case 'service_details':
-            return getServiceDetails(agentId, requireString(args.slug, 'slug'), workspaceId)
+            return getServiceDetails(agentId, requireString(args.slug, 'slug'), actor)
         case 'service_install':
-            return installService(agentId, requireString(args.slug, 'slug'), asStringRecord(args.values), asString(args.authMethodId), workspaceId)
+            return installService(agentId, requireString(args.slug, 'slug'), asStringRecord(args.values), asString(args.authMethodId), actor)
         case 'service_list_installed':
-            return listInstalledServices(agentId, workspaceId)
+            return listInstalledServices(agentId, actor)
         case 'service_uninstall': {
             const slug = requireString(args.slug, 'slug')
-            await uninstallService(agentId, slug, workspaceId)
+            await uninstallService(agentId, slug, actor)
             return { status: 'uninstalled', slug }
         }
         case 'publish_file':

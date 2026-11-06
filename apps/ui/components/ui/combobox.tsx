@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils'
 import { ChevronsUpDownIcon, GripVerticalIcon, XIcon } from '@/lib/icons'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 
-export type ComboboxOption = { value: string; label: string; keywords?: string[]; leading?: ReactNode }
+// A `disabled` option stays listed and cannot be picked; `hint` says why, on its right.
+export type ComboboxOption = { value: string; label: string; keywords?: string[]; leading?: ReactNode; disabled?: boolean; hint?: string }
 
 export type ComboboxGroup = { id: string; heading?: string; options: ComboboxOption[] }
 
@@ -168,12 +169,14 @@ export function Combobox(props: SingleProps | MultiProps) {
                                         value={option.value}
                                         keywords={option.keywords ?? [option.label]}
                                         onSelect={() => onSelectOption(option.value)}
+                                        disabled={option.disabled}
                                         data-checked={!props.multiple && selectedValues.includes(option.value) ? 'true' : undefined}
                                         className={cn('gap-2.5 py-1.5', props.multiple && '[&>svg:last-child]:hidden')}
                                     >
                                         {props.multiple && <SelectionBox />}
                                         {option.leading}
                                         <span className="flex-1 truncate">{option.label}</span>
+                                        {option.hint && <span className="shrink-0 text-xs text-muted-foreground">{option.hint}</span>}
                                     </CommandItem>
                                 ))}
                             </CommandGroup>

@@ -1,7 +1,7 @@
 import { defaultExcludedPaths } from '@rerun/contracts'
 import { z } from 'zod'
 import { requireSandboxAuthorKey, type TemplateAuthorScope } from '@/app/api/_auth/expert'
-import { isPayoutReady } from '@/cloud/marketplace.server'
+import { isPayoutReady } from '@rerun/cloud/marketplace.server'
 import { asString, asStringArray, requireConfirmation, requireString } from '@/lib/mcp/args'
 import {
     addAuthorTemplateImage,

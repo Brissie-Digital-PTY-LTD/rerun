@@ -2,10 +2,11 @@
 
 import { AGENT_TABS } from '@/components/agent/agent-tabs'
 import { useComputerEnabled } from '@/components/layout/FeatureFlagsProvider'
+import { useBoxViewer, useManageableSpaceIds } from '@/hooks/useBoxAccess'
 import { useIsTemplateAuthor } from '@/hooks/useIsTemplateAuthor'
 import { useModKeyLabel } from '@/hooks/useModKeyLabel'
 import { useWorkspaceAccess } from '@/hooks/useWorkspaceAccess'
-import { isWorkspaceApiEntitled } from '@/cloud/billing'
+import { isWorkspaceApiEntitled } from '@rerun/cloud/billing'
 import { ATTENTION_STATUSES } from '@/lib/board/attention'
 import { UNNAMED_BOX_LABEL, type AgentStatus, type IsoAgent } from '@/lib/board/types'
 import { buildControlCommands, type ControlCommand, type ControlCommandId } from '@/lib/control-center/commands'
@@ -23,7 +24,7 @@ import { selectForemanOpen, selectForemanVisible, useForemanStore } from '@/stor
 import { useNotificationsStore } from '@/stores/notifications.store'
 import { useShortcutsStore } from '@/stores/shortcuts.store'
 import { useWorkspaceSettingsStore } from '@/stores/workspace-settings.store'
-import { useSession } from '@/supabase/session/SessionProvider'
+import { useIsWorkspaceAdmin, useSession } from '@/supabase/session/SessionProvider'
 import type { BadgeTone } from '@rerun/ui/primitives'
 import { useTheme } from 'next-themes'
 import { useEffect, useState, type ComponentType } from 'react'
@@ -83,10 +84,13 @@ export function ControlCenter() {
     const recentAgentIds = useControlCenterStore(s => s.recentAgentIds)
     const agents = useBoardStore(s => s.agents)
     const spaces = useBoardStore(s => s.spaces)
+    const boxViewer = useBoxViewer()
+    const manageableSpaceIds = useManageableSpaceIds()
     const hydrated = useBoardStore(s => s.hydrated)
     const selectedAgentId = useBoardStore(s => s.selectedAgentId)
     const sessions = useBoardStore(s => s.sessions)
     const { workspace, session, isAnonymous } = useSession()
+    const workspaceAdmin = useIsWorkspaceAdmin()
     const { needsMachineReason } = useWorkspaceAccess()
     const desktopEnabled = useComputerEnabled()
     const isTemplateAuthor = useIsTemplateAuthor()
@@ -239,7 +243,7 @@ export function ControlCenter() {
     })
 
     function rootSections(): ControlSection[] {
-        const commands = buildControlCommands({ isSandbox: workspace?.is_sandbox ?? false, apiEntitled: workspace ? isWorkspaceApiEntitled(workspace) : false, needsMachineReason, assistantReady, hasChangelog, darkTheme })
+        const commands = buildControlCommands({ isSandbox: workspace?.is_sandbox ?? false, workspaceAdmin, apiEntitled: workspace ? isWorkspaceApiEntitled(workspace) : false, needsMachineReason, assistantReady, hasChangelog, darkTheme })
         // "Ask the assistant" with a query is the last row of the list, not an action among others.
         const listed = text ? commands.filter(command => command.id !== 'ask_assistant') : commands
         const commandSections: ControlSection[] = [
@@ -325,12 +329,12 @@ export function ControlCenter() {
         }
         if (!pageAgent) return []
         if (page.kind === 'agent') return agentSections(pageAgent)
-        const destinations = spaces.filter(space => space.id !== pageAgent.spaceId).map(space => ({ space, label: space.name || UNNAMED_BOX_LABEL }))
+        const destinations = spaces.filter(space => space.id !== pageAgent.spaceId && manageableSpaceIds.has(space.id)).map(space => ({ space, label: space.name || UNNAMED_BOX_LABEL }))
         return [
             {
                 id: 'move',
                 heading: 'Move to',
-                rows: searchItems(destinations, text).map(({ space, label }) => ({ id: `move-${space.id}`, label, leading: { kind: 'icon', icon: BoxIcon }, onSelect: run(() => useBoardStore.getState().moveAgentToBox(pageAgent.id, space.id)) })),
+                rows: searchItems(destinations, text).map(({ space, label }) => ({ id: `move-${space.id}`, label, leading: { kind: 'icon', icon: BoxIcon }, onSelect: run(() => useBoardStore.getState().moveAgentToBox(pageAgent.id, space.id, boxViewer)) })),
             },
         ]
     }

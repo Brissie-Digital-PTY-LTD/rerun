@@ -5,7 +5,7 @@ import { OAUTH_COOKIE_PATH, OAUTH_COOKIE_PREFIX, decodeContext, engineClientSecr
 import { appReturnUrl } from '@/lib/oauth/app-return'
 import { callbackGrant } from '@/lib/oauth/mobile-ticket'
 import { parkSignIn } from '@/lib/oauth/pending-grant'
-import { requireAgentWorkspaceId } from '@/app/api/_auth/ownership'
+import { requireAgentWorkspaceId, workspaceActor } from '@/app/api/_auth/access'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
@@ -56,7 +56,9 @@ export async function GET(req: Request) {
         serverName = ctx.serverName
         const grant = callbackGrant(ctx)
         const workspaceId = grant?.workspaceId ?? (await requireAgentWorkspaceId(ctx.agentId))
-        const { conn, engineAgentId } = await resolveAgentTarget(ctx.agentId, workspaceId)
+        // The session passed `manage` on the coworker's Box just above, or the grant was minted for someone who did.
+        const actor = workspaceActor(workspaceId)
+        const { conn, engineAgentId } = await resolveAgentTarget(ctx.agentId, actor, 'manage')
         const token = await exchangeCode(ctx, code)
         const bundle = {
             accessToken: token.accessToken,

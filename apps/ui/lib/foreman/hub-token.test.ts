@@ -22,42 +22,42 @@ afterEach(() => {
 
 describe('foreman hub token', () => {
     it('round-trips for the workspace it was minted for', () => {
-        expect(verifyForemanHubToken(mintForemanHubToken(WORKSPACE_ID), WORKSPACE_ID)).toBe(true)
+        expect(verifyForemanHubToken(mintForemanHubToken(WORKSPACE_ID), WORKSPACE_ID)).not.toBeNull()
     })
 
     it('refuses a token minted for another workspace', () => {
-        expect(verifyForemanHubToken(mintForemanHubToken(WORKSPACE_ID), 7)).toBe(false)
+        expect(verifyForemanHubToken(mintForemanHubToken(WORKSPACE_ID), 7)).toBeNull()
     })
 
     it('refuses a rewritten, truncated or empty token', () => {
         const token = mintForemanHubToken(WORKSPACE_ID)!
-        expect(verifyForemanHubToken(tamper(token, { ws: 7 }), 7)).toBe(false)
-        expect(verifyForemanHubToken(tamper(token, { exp: Date.now() + 10 * FOREMAN_HUB_TOKEN_TTL_MS }), WORKSPACE_ID)).toBe(false)
-        expect(verifyForemanHubToken(token.split('.')[0], WORKSPACE_ID)).toBe(false)
-        expect(verifyForemanHubToken(`${token}.extra`, WORKSPACE_ID)).toBe(false)
-        expect(verifyForemanHubToken('', WORKSPACE_ID)).toBe(false)
-        expect(verifyForemanHubToken(null, WORKSPACE_ID)).toBe(false)
+        expect(verifyForemanHubToken(tamper(token, { ws: 7 }), 7)).toBeNull()
+        expect(verifyForemanHubToken(tamper(token, { exp: Date.now() + 10 * FOREMAN_HUB_TOKEN_TTL_MS }), WORKSPACE_ID)).toBeNull()
+        expect(verifyForemanHubToken(token.split('.')[0], WORKSPACE_ID)).toBeNull()
+        expect(verifyForemanHubToken(`${token}.extra`, WORKSPACE_ID)).toBeNull()
+        expect(verifyForemanHubToken('', WORKSPACE_ID)).toBeNull()
+        expect(verifyForemanHubToken(null, WORKSPACE_ID)).toBeNull()
     })
 
     it('refuses a token signed with another secret', () => {
         const token = mintForemanHubToken(WORKSPACE_ID)
         vi.stubEnv('FOREMAN_HUB_TOKEN_SECRET', 'rotated-secret')
-        expect(verifyForemanHubToken(token, WORKSPACE_ID)).toBe(false)
+        expect(verifyForemanHubToken(token, WORKSPACE_ID)).toBeNull()
     })
 
     it('expires after twelve hours', () => {
         const token = mintForemanHubToken(WORKSPACE_ID)
         vi.advanceTimersByTime(FOREMAN_HUB_TOKEN_TTL_MS - 1_000)
-        expect(verifyForemanHubToken(token, WORKSPACE_ID)).toBe(true)
+        expect(verifyForemanHubToken(token, WORKSPACE_ID)).not.toBeNull()
         vi.advanceTimersByTime(2_000)
-        expect(verifyForemanHubToken(token, WORKSPACE_ID)).toBe(false)
+        expect(verifyForemanHubToken(token, WORKSPACE_ID)).toBeNull()
     })
 
     it('mints nothing and accepts nothing without a secret', () => {
         const token = mintForemanHubToken(WORKSPACE_ID)
         vi.stubEnv('FOREMAN_HUB_TOKEN_SECRET', '')
         expect(mintForemanHubToken(WORKSPACE_ID)).toBeNull()
-        expect(verifyForemanHubToken(token, WORKSPACE_ID)).toBe(false)
+        expect(verifyForemanHubToken(token, WORKSPACE_ID)).toBeNull()
     })
 
     it('is required as soon as the hub holds a secret, unless told to tolerate', () => {
@@ -70,5 +70,10 @@ describe('foreman hub token', () => {
         vi.stubEnv('FOREMAN_HUB_TOKEN_REQUIRED', '')
         vi.stubEnv('FOREMAN_HUB_TOKEN_SECRET', '')
         expect(foremanHubTokenRequired()).toBe(false)
+    })
+
+    it('carries the member the turn speaks for, and none for a workspace token', () => {
+        expect(verifyForemanHubToken(mintForemanHubToken(WORKSPACE_ID, 'user-7'), WORKSPACE_ID)?.uid).toBe('user-7')
+        expect(verifyForemanHubToken(mintForemanHubToken(WORKSPACE_ID), WORKSPACE_ID)?.uid).toBeUndefined()
     })
 })

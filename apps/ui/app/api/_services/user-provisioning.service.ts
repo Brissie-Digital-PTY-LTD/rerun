@@ -1,6 +1,6 @@
 import type { Database, Json } from '@/app/api/database.types'
-import { grantRerunTopup } from '@/cloud/billing.server'
-import { BASE_PLAN_SLUG, baseLimitsToColumns, SIGNUP_BUDGET_MICROS, type PriceArm } from '@/cloud/billing'
+import { grantRerunTopup } from '@rerun/cloud/billing.server'
+import { BASE_PLAN_SLUG, baseLimitsToColumns, SIGNUP_BUDGET_MICROS, type PriceArm } from '@rerun/cloud/billing'
 import { randomBlob } from '@/lib/blobs/catalog'
 import { DEFAULT_NOTIFICATION_PREFS } from '@/lib/notifications/prefs'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
@@ -83,6 +83,7 @@ export async function provisionUser(
     const { error: membershipError } = await serviceSupabase.from('workspace_members').insert<Database['public']['Tables']['workspace_members']['Insert']>({
         user_id: user.id,
         workspace_id: workspace.id,
+        role: 'admin',
     })
     if (membershipError) console.error('Error creating membership', membershipError)
 

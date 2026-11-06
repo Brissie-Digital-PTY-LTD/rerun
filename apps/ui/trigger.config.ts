@@ -5,6 +5,9 @@ import { defineConfig } from "@trigger.dev/sdk/v3";
 const CONTRACTS_SOURCE_ENTRY = fileURLToPath(
   new URL("../../packages/contracts/src/index.ts", import.meta.url),
 );
+const APP_DIR = fileURLToPath(new URL(".", import.meta.url));
+const EXTERNAL_PACKAGES = ["sharp", "apify-client", "ssh2"];
+const CLOUD_DIR = fileURLToPath(new URL("../../cloud/", import.meta.url));
 
 export default defineConfig({
   project: process.env.TRIGGER_PROJECT_REF ?? "",
@@ -26,7 +29,7 @@ export default defineConfig({
       randomize: true,
     },
   },
-  dirs: ["./trigger"],
+  dirs: ["./trigger", "./ee/trigger"],
   build: {
     // sharp (image rehost in import-expert) is a native module; keep it out of the bundle so
     // Trigger installs the platform binary in the deploy image instead of bundling the host one.
@@ -35,7 +38,7 @@ export default defineConfig({
     // undefined. Left external, Node resolves it normally.
     // ssh2 (Incus hosts) ships an optional native crypto binding; bundled, esbuild trips on it,
     // and its pure-JS fallback never loads.
-    external: ["sharp", "apify-client", "ssh2"],
+    external: EXTERNAL_PACKAGES,
     extensions: [
       // @rerun/contracts resolves to a gitignored dist/ that the GitHub integration's fresh clone
       // never builds; bundling its sources keeps deploys independent of a local build.
@@ -43,6 +46,19 @@ export default defineConfig({
         name: "rerun-contracts-from-source",
         setup(build) {
           build.onResolve({ filter: /^@rerun\/contracts$/ }, () => ({ path: CONTRACTS_SOURCE_ENTRY }));
+        },
+      }),
+      // The tasks of the private cloud/ folder take their packages from the app, the same copies its
+      // own tasks load, whether or not the build ran the install of cloud/.
+      esbuildPlugin({
+        name: "rerun-cloud-packages-from-the-app",
+        setup(build) {
+          build.onResolve({ filter: /^[^./]/ }, (args) => {
+            if (!args.importer.startsWith(CLOUD_DIR) || args.pluginData?.fromApp) return undefined;
+            if (/^(node:|@\/|@rerun\/(contracts|cloud)(\/|$))/.test(args.path)) return undefined;
+            if (EXTERNAL_PACKAGES.some((name) => args.path === name || args.path.startsWith(`${name}/`))) return undefined;
+            return build.resolve(args.path, { kind: args.kind, resolveDir: APP_DIR, pluginData: { fromApp: true } });
+          });
         },
       }),
     ],

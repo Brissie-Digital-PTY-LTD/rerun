@@ -592,6 +592,18 @@
         0 5px 14px rgb(0 0 0 / calc(0.55 * var(--iso-shadow-alpha)));
 }
 
+/* A pill closed to the viewer: it still says what the Box is for, without the light of an action. */
+.iso-placeholder-label[data-disabled] {
+    background: rgb(var(--iso-glint) / 0.12);
+    box-shadow: none;
+    scale: none;
+    cursor: not-allowed;
+}
+
+.iso-placeholder-label[data-disabled] .iso-placeholder-label-inner > * {
+    opacity: 0.6;
+}
+
 /* Letter-swap au hover : chaque lettre est doublée verticalement dans une fenêtre
    masquée d'une ligne de haut ; au hover la colonne glisse d'un cran, en cascade
    (transition-delay par lettre, posé inline dans SpaceBlock). */

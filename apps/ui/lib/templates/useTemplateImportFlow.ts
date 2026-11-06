@@ -1,6 +1,6 @@
 'use client'
 
-import { isSubscriptionEntitled } from '@/cloud/billing'
+import { isSubscriptionEntitled } from '@rerun/cloud/billing'
 import { useBillingStore } from '@/stores/billing.store'
 import { useBoardStore } from '@/stores/board.store'
 import { useSession } from '@/supabase/session/SessionProvider'

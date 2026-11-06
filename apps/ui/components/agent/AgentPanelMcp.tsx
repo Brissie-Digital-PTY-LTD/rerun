@@ -4,6 +4,9 @@ import { getAgentDetailAction, patchAgentMcpServersAction } from '@/app/api/_act
 import { McpServerEditor } from '@/components/agent/McpServerEditor'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { invalidateConnectorServices, useConnectorServices } from '@/hooks/useConnectorServices'
 import { refreshMcpServerStatuses } from '@/hooks/useMcpServerStatuses'
 import type { EngineMcpServer } from '@/lib/engine/types'
@@ -35,6 +38,7 @@ export function AgentPanelMcp({ agentId }: AgentPanelMcpProps) {
     const [loading, setLoading] = useState(true)
     const [unreachable, setUnreachable] = useState(false)
     const [view, setView] = useState<View>({ mode: 'list' })
+    const canManage = useCanManageAgent(agentId)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -108,9 +112,11 @@ export function AgentPanelMcp({ agentId }: AgentPanelMcpProps) {
     }
 
     const newButton = (
-        <Button size="sm" variant="outline" onClick={() => setView({ mode: 'create' })}>
-            <PlusIcon className="size-3.5 mr-1" /> New
-        </Button>
+        <TooltipDisabledReason reason={canManage ? undefined : BOX_MANAGE_REASON}>
+            <Button size="sm" variant="outline" disabled={!canManage} onClick={() => setView({ mode: 'create' })}>
+                <PlusIcon className="size-3.5 mr-1" /> New
+            </Button>
+        </TooltipDisabledReason>
     )
 
     return (

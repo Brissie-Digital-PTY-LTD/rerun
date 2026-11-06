@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { fakeSupabase, writeMethodOf, type FakeSupabase } from '@/test/supabase-fake'
-vi.mock('@/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
+vi.mock('@rerun/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
 
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
 
@@ -13,7 +13,7 @@ let keyRow: unknown
 let workspaceRow: unknown
 
 beforeEach(() => {
-    keyRow = { id: 'k1', workspace_id: 5, revoked_at: null, created_by: 'u1' }
+    keyRow = { id: 'k1', workspace_id: 5, revoked_at: null, created_by_user_id: 'u1' }
     workspaceRow = { subscription_status: 'active', is_sandbox: false }
     db = fakeSupabase((table, calls) => {
         if (writeMethodOf(calls)) return undefined
@@ -27,7 +27,7 @@ beforeEach(() => {
 describe('authenticateApiKey', () => {
     it('answers the workspace of a live key, and the member it acts for', async () => {
         const key = generateApiKey()
-        await expect(authenticateApiKey(key)).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdBy: 'u1' })
+        await expect(authenticateApiKey(key)).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdByUserId: 'u1' })
     })
 
     it('looks the key up by its hash, never by the raw key', async () => {
@@ -81,7 +81,7 @@ describe('authenticateApiKey', () => {
             },
         }
         vi.mocked(createServiceRoleClient).mockReturnValue(client as unknown as typeof db.client)
-        await expect(authenticateApiKey(generateApiKey())).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdBy: 'u1' })
+        await expect(authenticateApiKey(generateApiKey())).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdByUserId: 'u1' })
     })
 
     it('refuses a key once the workspace plan is cancelled', async () => {
@@ -94,7 +94,7 @@ describe('authenticateApiKey', () => {
 
     it('accepts a key on a workspace still in its trial', async () => {
         workspaceRow = { subscription_status: 'trialing', is_sandbox: false }
-        await expect(authenticateApiKey(generateApiKey())).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdBy: 'u1' })
+        await expect(authenticateApiKey(generateApiKey())).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdByUserId: 'u1' })
     })
 
     it('refuses a key whose workspace is gone', async () => {
@@ -104,6 +104,6 @@ describe('authenticateApiKey', () => {
 
     it('keeps accepting the key of a sandbox, whatever its plan says', async () => {
         workspaceRow = { subscription_status: 'canceled', is_sandbox: true }
-        await expect(authenticateApiKey(generateApiKey())).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdBy: 'u1' })
+        await expect(authenticateApiKey(generateApiKey())).resolves.toEqual({ keyId: 'k1', workspaceId: 5, createdByUserId: 'u1' })
     })
 })

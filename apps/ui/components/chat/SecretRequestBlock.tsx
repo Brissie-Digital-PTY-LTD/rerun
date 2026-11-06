@@ -1,12 +1,14 @@
 'use client'
 
-import { getAgentKeysAction, updateAgentKeysAction } from '@/app/api/_actions/agent.actions'
+import { answerSecretRequestAction, getAgentKeysAction, updateAgentKeysAction } from '@/app/api/_actions/agent.actions'
 import { serializeSecretResult } from '@/lib/chat-hitl'
 import { SecretRequestBlock as SecretRequestBlockBase, type SecretRequestItem } from '@rerun/ui/chat'
 import { useEffect, useState } from 'react'
 
 type SecretRequestBlockProps = {
     agentId: string
+    // The conversation that raised the request: answering it only takes the right to use the coworker.
+    sessionId: string | null
     secrets: SecretRequestItem[]
     reason?: string
     // Called once the credentials are stored on the engine, with the summary chat message that
@@ -17,7 +19,7 @@ type SecretRequestBlockProps = {
     inline?: boolean
 }
 
-export function SecretRequestBlock({ agentId, secrets, reason, onDone, onSkip, onDismiss, inline }: SecretRequestBlockProps) {
+export function SecretRequestBlock({ agentId, sessionId, secrets, reason, onDone, onSkip, onDismiss, inline }: SecretRequestBlockProps) {
     const [existingKeys, setExistingKeys] = useState<string[]>([])
 
     useEffect(() => {
@@ -37,7 +39,7 @@ export function SecretRequestBlock({ agentId, secrets, reason, onDone, onSkip, o
             existingKeys={existingKeys}
             inline={inline}
             onSubmit={async values => {
-                const result = await updateAgentKeysAction(agentId, { set: values })
+                const result = sessionId ? await answerSecretRequestAction(sessionId, values) : await updateAgentKeysAction(agentId, { set: values })
                 if (!result.success) throw new Error(result.error ?? 'Could not save the credentials')
                 onDone(serializeSecretResult(secrets, Object.keys(values)))
             }}

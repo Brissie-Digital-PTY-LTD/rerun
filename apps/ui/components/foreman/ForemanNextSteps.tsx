@@ -11,7 +11,7 @@ import { ForemanOutcomeRow } from '@/components/foreman/widgets/ForemanOutcomeRo
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { invalidateAgentContext } from '@/hooks/useAgentContext'
-import { BASE_PLAN_SLUG } from '@/cloud/billing'
+import { BASE_PLAN_SLUG } from '@rerun/cloud/billing'
 import { CircleCheckIcon } from '@/lib/icons'
 import type { ForemanNextStep } from '@/lib/foreman/next-steps'
 import { useBillingStore } from '@/stores/billing.store'

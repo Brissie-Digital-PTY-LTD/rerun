@@ -1,9 +1,11 @@
+import { callableEngineAgentIds } from '@/app/api/_auth/access'
 import { getAgentChatTarget, getExistingSession } from '@/app/api/_services/chat.service'
 import * as engine from '@/lib/engine/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from './route'
 
 vi.mock('@/app/api/_auth/ownership', () => ({ requireWorkspaceContext: vi.fn().mockResolvedValue({ userId: 'me', authUser: { app_metadata: {}, user_metadata: {} } }) }))
+vi.mock('@/app/api/_auth/access', () => ({ actorFromContext: vi.fn(() => ({ kind: 'user', userId: 'me', workspaceId: 7, role: 'member', boxScope: 'assigned' })), callableEngineAgentIds: vi.fn() }))
 vi.mock('@/app/api/_services/notification-audience.service', () => ({ recordSessionParticipant: vi.fn(), recordSessionRead: vi.fn() }))
 vi.mock('@/app/api/_services/chat.service', () => ({
     getAgentChatTarget: vi.fn(),
@@ -33,7 +35,8 @@ describe('POST /api/chat', () => {
         vi.clearAllMocks()
         vi.useFakeTimers()
         vi.mocked(getAgentChatTarget).mockResolvedValue({ engineAgentId: 'engine-agent', conn: { baseUrl: 'https://engine.test', apiKey: null }, contentLocked: false })
-        vi.mocked(getExistingSession).mockResolvedValue({ sessionId: 'session', engineSessionId: 'engine-session' })
+        vi.mocked(getExistingSession).mockResolvedValue({ sessionId: 'session', agentId: 'agent', engineSessionId: 'engine-session' })
+        vi.mocked(callableEngineAgentIds).mockResolvedValue(undefined)
     })
 
     afterEach(() => {
@@ -71,5 +74,43 @@ describe('POST /api/chat', () => {
         expect(response.headers.get('X-Run-Id')).toBe('run-1')
         expect(engine.chat).toHaveBeenCalledTimes(1)
         expect(engine.reconnectRun).toHaveBeenCalledOnce()
+    })
+
+    it('hands the engine the coworkers the author reaches', async () => {
+        vi.mocked(callableEngineAgentIds).mockResolvedValue(['engine-agent', 'engine-other'])
+        vi.mocked(engine.chat).mockImplementation(async () => streaming('run-3'))
+
+        const response = await settle(POST(request({})))
+
+        expect(response.status).toBe(200)
+        expect(vi.mocked(engine.chat).mock.calls[0][2]).toMatchObject({ callableAgentIds: ['engine-agent', 'engine-other'] })
+    })
+
+    it('refuses the send when what the author reaches cannot be read, rather than opening every coworker', async () => {
+        vi.mocked(callableEngineAgentIds).mockRejectedValue(new Error('database down'))
+
+        const response = await settle(POST(request({})))
+
+        expect(response.status).toBe(502)
+        expect(engine.chat).not.toHaveBeenCalled()
+    })
+
+    it('refuses a conversation of another coworker without reaching the engine', async () => {
+        vi.mocked(getExistingSession).mockResolvedValue({ sessionId: 'session', agentId: 'other-agent', engineSessionId: 'other-engine-session' })
+
+        const response = await settle(POST(request({})))
+
+        expect(response.status).toBe(404)
+        expect(await response.json()).toEqual({ error: 'session_not_found' })
+        expect(engine.chat).not.toHaveBeenCalled()
+    })
+
+    it('answers the engine refusing a session it does not hold with the same code, not its raw text', async () => {
+        vi.mocked(engine.chat).mockResolvedValue(Response.json({ error: 'session not found for this agent' }, { status: 404 }))
+
+        const response = await settle(POST(request({})))
+
+        expect(response.status).toBe(404)
+        expect(await response.json()).toEqual({ error: 'session_not_found' })
     })
 })

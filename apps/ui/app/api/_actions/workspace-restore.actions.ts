@@ -1,6 +1,6 @@
 'use server'
 
-import { requireWorkspaceId } from '@/app/api/_auth/ownership'
+import { AuthorizationError, requireAdminContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
 import { findWorkspaceEngine } from '@/app/api/_services/workspace-engine.service'
 import type { Database } from '@/app/api/database.types'
 import { restoreStageOf, type RestoreStage } from '@/lib/archive/restore-stage'
@@ -50,7 +50,12 @@ export async function getSandboxArchiveStateAction(): Promise<SandboxArchiveStat
 }
 
 export async function requestSandboxReactivationAction(note: string): Promise<{ ok: true } | { ok: false; error: string }> {
-    const workspaceId = await requireWorkspaceId()
+    const ctx = await requireAdminContext('Only an admin can ask to reactivate this sandbox').catch((err: unknown) => {
+        if (err instanceof AuthorizationError) return err
+        throw err
+    })
+    if (ctx instanceof AuthorizationError) return { ok: false, error: ctx.message }
+    const workspaceId = ctx.workspace.id
     const supabase = createServiceRoleClient()
 
     const trimmed = note.trim()

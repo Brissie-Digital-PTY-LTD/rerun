@@ -9,6 +9,7 @@
 import { getSpaceConnection } from '../app/api/_services/space.service'
 import { deleteAgent as engineDeleteAgent, getAgent as engineGetAgent, listSkills, listTriggers } from '../lib/engine/client'
 import { installTemplate } from '../lib/templates/install'
+import { workspaceActor } from '../app/api/_auth/access'
 import { createServiceRoleClient } from '../supabase/serviceRole'
 import { selectMany } from '@rerun/db/helpers'
 
@@ -43,12 +44,12 @@ const created: { id: string; engineAgentId: string | null }[] = []
 
 try {
     console.log(`\ninstallTemplate("${SLUG}") — first pass`)
-    const first = await installTemplate(supabase, SLUG, { workspaceId: WORKSPACE_ID, spaceId: SPACE_ID })
+    const first = await installTemplate(supabase, SLUG, { workspaceId: WORKSPACE_ID, spaceId: SPACE_ID, actor: workspaceActor(WORKSPACE_ID) })
     check('every agent imported', first.failed.length === 0, JSON.stringify(first.failed))
     check('at least one agent imported', first.imported > 0)
 
     console.log(`\ninstallTemplate("${SLUG}") — second pass, same space`)
-    const second = await installTemplate(supabase, SLUG, { workspaceId: WORKSPACE_ID, spaceId: SPACE_ID })
+    const second = await installTemplate(supabase, SLUG, { workspaceId: WORKSPACE_ID, spaceId: SPACE_ID, actor: workspaceActor(WORKSPACE_ID) })
     check('every agent imported again', second.failed.length === 0, JSON.stringify(second.failed))
 
     const after = (await agentsInSpace()).filter(a => !before.has(a.id))

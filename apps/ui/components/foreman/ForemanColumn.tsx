@@ -34,7 +34,7 @@ import { useForemanSheetResize } from '@/components/foreman/useForemanSheetResiz
 import { useForemanTurnNotification } from '@/components/foreman/useForemanTurnNotification'
 import { useMessageFeedback } from '@/hooks/useMessageFeedback'
 import { useQueuedMessage } from '@/hooks/useQueuedMessage'
-import { isSubscriptionEntitled } from '@/cloud/billing'
+import { isSubscriptionEntitled } from '@rerun/cloud/billing'
 import { classifyChatError, unwrapChatError } from '@/lib/chat-error'
 import { cn } from '@/lib/utils'
 import { shouldFlush } from '@/lib/chat/queued-message'

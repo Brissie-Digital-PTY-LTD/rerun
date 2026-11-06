@@ -1,10 +1,10 @@
 'use server'
 
 import type { Database } from '@/app/api/database.types'
-import { AuthorizationError, requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { AuthorizationError, requireAdminContext, requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { hasPendingCreatorTerms, isExpertAccount, requireSandboxWorkspaceId } from '@/app/api/_auth/expert'
-import { BASE_PLAN_SLUG, baseLimitsToColumns, SIGNUP_BUDGET_MICROS } from '@/cloud/billing'
-import { grantRerunTopup } from '@/cloud/billing.server'
+import { BASE_PLAN_SLUG, baseLimitsToColumns, SIGNUP_BUDGET_MICROS } from '@rerun/cloud/billing'
+import { grantRerunTopup } from '@rerun/cloud/billing.server'
 import { BLOB_ILLUSTRATIONS, getBlobByFile, randomBlob } from '@/lib/blobs/catalog'
 import { uploadPublicImage } from '@/lib/images/upload'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
@@ -46,7 +46,12 @@ export async function switchWorkspaceAction(workspaceId: number): Promise<Action
 // `icon_url` is rendered as a bare <img>, down to anonymous pages, so a file or a link is fetched and
 // re-hosted in our bucket here, and only that address is written.
 export async function updateWorkspaceAction(formData: FormData): Promise<ActionResult> {
-    const { workspace, supabase } = await requireWorkspaceContext()
+    const ctx = await requireAdminContext('Only an admin can change the workspace settings').catch((err: unknown) => {
+        if (err instanceof AuthorizationError) return err
+        throw err
+    })
+    if (ctx instanceof AuthorizationError) return { ok: false, error: ctx.message }
+    const { workspace, supabase } = ctx
 
     const name = String(formData.get('name') ?? '').trim()
     if (!name) return { ok: false, error: 'Name is required' }
@@ -134,6 +139,7 @@ export async function createWorkspaceAction(name: string, iconUrl?: string): Pro
     const { error: membershipError } = await supabase.from('workspace_members').insert<Database['public']['Tables']['workspace_members']['Insert']>({
         user_id: userId,
         workspace_id: workspaceId,
+        role: 'admin',
     })
     if (membershipError) return { ok: false, error: membershipError.message }
 

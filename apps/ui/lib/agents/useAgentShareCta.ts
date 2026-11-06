@@ -2,8 +2,8 @@
 
 import type { AgentSharePreview } from '@rerun/contracts'
 import { useTransition } from 'react'
-import { isSubscriptionEntitled, PLAN_CURRENCY, basePriceCents, trialOffer, trialOfferLine } from '@/cloud/billing'
-import { usePriceArm, startPlan } from '@/cloud/billing.client'
+import { isSubscriptionEntitled, PLAN_CURRENCY, basePriceCents, trialOffer, trialOfferLine } from '@rerun/cloud/billing'
+import { usePriceArm, startPlan } from '@rerun/cloud/billing.client'
 import { CreditCard, LayoutGridIcon, type LucideIcon } from '@/lib/icons'
 import { TRIAL_DAYS, formatAmount, trialLimitsLabel } from '@rerun/contracts'
 import { useBoardStore } from '@/stores/board.store'

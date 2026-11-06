@@ -114,6 +114,7 @@ const { armBudgetLatch, clearBudgetLatch, isBudgetLatched } = await import('./bu
 const { insertAgentIndex } = await import('../db/repos/agents.js')
 const { createConnection } = await import('../connections/store.js')
 const { isCredentialRejected, recordCredentialRejected } = await import('../connections/credential-rejections.js')
+const { armPlanLimitLatch, isPlanLimitLatched } = await import('../connections/plan-limits.js')
 
 const id = 'pathsagent'
 const quietId = 'quietagent'
@@ -526,6 +527,34 @@ describe('run loop paths', () => {
 
         expect(outcome.errorCode).toBe('provider_refused')
         expect(outcome.error).toBe(`ProviderRefusedError: Provider returned error: ${reason}`)
+    })
+
+    describe('a subscription that hit its limit', () => {
+        const spent = () => [
+            { type: 'stream-start', warnings: [] },
+            { type: 'error', error: new Error("You've hit your 5-hour limit") },
+        ]
+        const anthropicKey = () => createConnection({ name: 'Anthropic', provider: 'anthropic', models: ['claude-sonnet-5'], extraModels: [], keys: { ANTHROPIC_API_KEY: 'sk-ant-api-spent' } })
+
+        it('pauses the schedules of the connection the run billed', async () => {
+            const cnx = await anthropicKey()
+            stream.parts = spent()
+
+            const { outcome } = await run('spent', { override: { connectionId: cnx.id } })
+
+            expect(outcome.errorCode).toBe('provider_usage_limit')
+            expect(isPlanLimitLatched(cnx.id)).toBe(true)
+        })
+
+        it('is lifted by a turn that goes through on it', async () => {
+            const cnx = await anthropicKey()
+            armPlanLimitLatch(cnx.id)
+            stream.parts = textTurn('reset already')
+
+            await run('works again', { override: { connectionId: cnx.id } })
+
+            expect(isPlanLimitLatched(cnx.id)).toBe(false)
+        })
     })
 
     describe('a credential the provider turns away', () => {

@@ -1,5 +1,6 @@
 'use client'
 
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { BaseUrlField } from '@/components/connections/BaseUrlField'
 import { CustomModelList } from '@/components/connections/CustomModelList'
 import { CustomEndpointSettings } from '@/components/connections/custom/CustomEndpointSettings'
@@ -11,7 +12,7 @@ import { PlanConnect } from '@/components/connections/plan-connect/PlanConnect'
 import { PlanLimitsBlock } from '@/components/connections/PlanLimitsBlock'
 import { DetailHeader } from '@/components/connections/SourceBits'
 import { Button } from '@/components/ui/button'
-import { CreditsUsageBar } from '@/cloud/billing.client'
+import { CreditsUsageBar } from '@rerun/cloud/billing.client'
 import { Input } from '@/components/ui/input'
 import { PanelScroller } from '@/components/ui/panel-list'
 import { connectMethod, creditResetPhrase, isCreditUsedUp, sourceKind, type RerunCredit } from '@/lib/engine/ai-sources'
@@ -44,11 +45,13 @@ type ConnectionDetailProps = {
     onUpdate: (id: string, patch: UpdateBoxConnectionInput) => Promise<MutationResult>
     onUpdateKeys: (id: string, body: { set?: Record<string, string>; remove?: string[] }) => Promise<MutationResult>
     onDelete: (id: string) => Promise<DeleteResult>
+    // A member reads the connection; every control is held disabled, the reason on top.
+    readOnlyReason?: string
 }
 
 // Everything one named credential of the workspace owns. Every edit persists immediately: a moved
 // model is a PATCH, a pasted key is a PATCH, and a failed one says so under the header.
-export function ConnectionDetail({ connection, credit, defaultModel, reconnectRequested = false, onReconnected, onBack, onUpdate, onUpdateKeys, onDelete }: ConnectionDetailProps) {
+export function ConnectionDetail({ connection, credit, defaultModel, reconnectRequested = false, onReconnected, onBack, onUpdate, onUpdateKeys, onDelete, readOnlyReason }: ConnectionDetailProps) {
     const [error, setError] = useState<string | null>(null)
     const rejected = reconnectRequested || connection.credentialRejected
     const isOpenRouter = connection.provider === 'openrouter'
@@ -81,9 +84,11 @@ export function ConnectionDetail({ connection, credit, defaultModel, reconnectRe
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
-            <DetailHeader source={connection} credit={credit} onBack={onBack} onRename={name => void patch({ name })} />
+            <DetailHeader source={connection} credit={credit} onBack={onBack} onRename={readOnlyReason ? undefined : name => void patch({ name })} />
             <PanelScroller className="space-y-5 p-4">
+                {readOnlyReason && <p className="text-xs text-muted-foreground">{readOnlyReason}.</p>}
                 {error && <p className="text-[11px] text-destructive">{error}</p>}
+                <fieldset disabled={!!readOnlyReason} className="contents">
                 <SourceAlert connection={connection} credit={credit} reconnectRequested={rejected} onKeys={applyKeys} />
                 {sourceKind(connection.provider) === 'plan' && connection.connected && <PlanLimitsBlock connection={connection} />}
                 {connection.provider === 'opencode' ? (
@@ -95,10 +100,15 @@ export function ConnectionDetail({ connection, credit, defaultModel, reconnectRe
                 {isOpenRouter && connection.connected && <CustomModelList models={connection.extraModels} onChange={extraModels => void patch({ extraModels })} reserved={catalog.models.map(m => m.id)} />}
                 {isCustom && <CustomModelList hint={CUSTOM_MODEL_HINT} placeholder="model id" models={connection.extraModels} onChange={extraModels => void patch({ extraModels })} reserved={[...connection.models, ...(connection.discoveredModels ?? []).map(m => m.id)]} />}
                 {isCustom && <CustomEndpointSettings key={connection.id} connection={connection} onPatch={next => void patch(next)} />}
+                </fieldset>
             </PanelScroller>
             {connection.id !== RERUN_CONNECTION_ID && (
                 <div className="border-t p-3">
-                    <DeleteConnectionButton connection={connection} onDelete={onDelete} onDeleted={onBack} />
+                    <TooltipDisabledReason reason={readOnlyReason}>
+                        <fieldset disabled={!!readOnlyReason} className="contents">
+                            <DeleteConnectionButton connection={connection} onDelete={onDelete} onDeleted={onBack} />
+                        </fieldset>
+                    </TooltipDisabledReason>
                 </div>
             )}
         </div>

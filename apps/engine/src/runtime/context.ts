@@ -7,7 +7,7 @@ import type { Logger } from '../lib/logger.js'
 import type { HostBreaker } from '../tools/host-breaker.js'
 import type { ScreenshotStore } from './screenshots.js'
 
-export type RunTrigger = { source: 'chat'; author?: MessageAuthor; userLanguage?: string } | { source: 'schedule'; slug: string; name: string } | { source: 'trigger'; slug: string; name: string }
+export type RunTrigger = { source: 'chat'; author?: MessageAuthor; userLanguage?: string; callableAgentIds?: string[] } | { source: 'schedule'; slug: string; name: string } | { source: 'trigger'; slug: string; name: string }
 
 export type PartialResult = { label: string; text: string }
 
@@ -25,6 +25,8 @@ export type RunContext = {
     writer?: UIMessageStreamWriter
     abortSignal?: AbortSignal
     callTargets?: AgentRow[]
+    // Who the person behind the run reaches, handed down to every coworker it calls.
+    callableAgentIds?: string[]
     hostBreaker?: HostBreaker
     partialResults?: PartialResult[]
     skillProposals?: SkillProposalNotice[]

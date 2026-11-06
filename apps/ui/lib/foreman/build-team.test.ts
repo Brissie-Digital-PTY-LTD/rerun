@@ -69,13 +69,13 @@ describe('buildTeam', () => {
 
     it('lays out every division of the plan in one batch, the ones only an item names included, in order', async () => {
         await run(stateWith({ plan: TEAM }))
-        expect(createBoxesBatch).toHaveBeenCalledWith({ workspaceId: 7, userId: 'user-1', names: ['Marketing', 'Sales', 'Finance'] })
+        expect(createBoxesBatch).toHaveBeenCalledWith({ workspaceId: 7, userId: 'user-1', actor: { kind: 'workspace', workspaceId: 7 }, names: ['Marketing', 'Sales', 'Finance'] })
     })
 
     it('reuses a Box already on the board rather than laying their company down twice', async () => {
         await run(stateWith({ plan: TEAM }, [{ id: 'existing', name: 'marketing', col_start: 0, row_start: 0, col_end: 4, row_end: 4 }]))
         expect(createBoxesBatch).toHaveBeenCalledWith(expect.objectContaining({ names: ['Sales', 'Finance'] }))
-        expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ name: 'Scout', spaceId: 'existing' }))
+        expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ name: 'Scout', spaceId: 'existing', actor: { kind: 'workspace', workspaceId: 7 } }))
     })
 
     it('creates every agent at once, without writing anything with a model first', async () => {

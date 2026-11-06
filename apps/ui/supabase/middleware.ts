@@ -1,7 +1,7 @@
 import type { Database } from '@/app/api/database.types'
 import { provisionUser } from '@/app/api/_services/user-provisioning.service'
 import { PENDING_INVITE_COOKIE } from '@/lib/auth/pending-invite'
-import { drawPriceArm } from '@/cloud/billing'
+import { drawPriceArm } from '@rerun/cloud/billing'
 import { routes } from '@/lib/routes'
 import { EXPERIMENT_COOKIE } from '@rerun/analytics/experiments'
 import { CONSENT_COOKIE, SESSION_HINT_COOKIE, SESSION_HINT_MAX_AGE, SESSION_HINT_VALUE, parseSessionHintCookie } from '@rerun/contracts'
@@ -35,7 +35,7 @@ function cookieDomain(request: NextRequest): string | undefined {
     return host.endsWith('rerun.build') ? '.rerun.build' : undefined
 }
 
-// Railway terminates the TLS and forwards the request in clear: without the forwarded header the
+// The reverse proxy (Traefik, under Dokploy) terminates the TLS and forwards the request in clear: without the forwarded header the
 // cookie would go out without `Secure` in production.
 function isSecure(request: NextRequest): boolean {
     const forwarded = request.headers.get('x-forwarded-proto')?.split(',')[0].trim()

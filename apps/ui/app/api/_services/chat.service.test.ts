@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-vi.mock('@/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
+vi.mock('@rerun/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
 
 const mocks = vi.hoisted(() => ({
-    requireWorkspaceId: vi.fn(),
+    requireLightSessionActor: vi.fn(),
+    visibleSpaceIds: vi.fn(),
+    selectMaybeSingle: vi.fn(),
     selectMaybeSingleWithJoins: vi.fn(),
     selectManyWithJoins: vi.fn(),
     findWorkspaceEngine: vi.fn(),
@@ -11,7 +13,7 @@ const mocks = vi.hoisted(() => ({
     sessionUpdate: vi.fn(),
 }))
 
-vi.mock('@/app/api/_auth/ownership', async importOriginal => ({ ...(await importOriginal<typeof import('@/app/api/_auth/ownership')>()), requireWorkspaceId: mocks.requireWorkspaceId }))
+vi.mock('@/app/api/_auth/access', async importOriginal => ({ ...(await importOriginal<typeof import('@/app/api/_auth/access')>()), requireLightSessionActor: mocks.requireLightSessionActor, visibleSpaceIds: mocks.visibleSpaceIds }))
 vi.mock('@/supabase/serviceRole', () => ({
     createServiceRoleClient: () => ({
         from: (table: string) => ({
@@ -32,35 +34,43 @@ vi.mock('@/supabase/serviceRole', () => ({
         }),
     }),
 }))
-vi.mock('@/supabase/supabase-helpers', () => ({ selectMaybeSingleWithJoins: mocks.selectMaybeSingleWithJoins, selectManyWithJoins: mocks.selectManyWithJoins, selectMaybeSingle: vi.fn(), selectSingle: vi.fn(), selectCount: vi.fn(), selectMany: mocks.selectMany }))
+vi.mock('@/supabase/supabase-helpers', () => ({ selectMaybeSingleWithJoins: mocks.selectMaybeSingleWithJoins, selectManyWithJoins: mocks.selectManyWithJoins, selectMaybeSingle: mocks.selectMaybeSingle, selectSingle: vi.fn(), selectCount: vi.fn(), selectMany: mocks.selectMany, selectAll: vi.fn() }))
 vi.mock('@/lib/engine/client', () => ({ listRuns: mocks.listRuns, getRunSteps: vi.fn() }))
 vi.mock('./workspace-engine.service', () => ({ findWorkspaceEngine: mocks.findWorkspaceEngine, NoEngineError: class NoEngineError extends Error {} }))
 
 const { AuthorizationError } = await import('@/app/api/_auth/ownership')
+const { AccessDeniedError, workspaceActor } = await import('@/app/api/_auth/access')
+type Actor = import('@/app/api/_auth/access').Actor
 const { clearSkillProposalAttention, findIdleSessions, lastRunError, resolveAgentTarget, resolveAgentTargetForTrigger, summarizeSessionRuns } = await import('./chat.service')
 
 const conn = { baseUrl: 'https://engine', apiKey: 'k' }
 
 type AgentRow = {
     workspace_id: number
+    space_id: string
     engine_agent_id: string | null
     template_id: string | null
     disabled_at: string | null
     disabled_reason: string | null
     workspaces: { subscription_status: string | null; is_sandbox: boolean } | null
+    space: { visibility: string } | null
 }
+
+const admin: Actor = { kind: 'user', userId: 'u1', workspaceId: 1, role: 'admin', boxScope: 'all' }
+const member = (boxScope: 'all' | 'assigned'): Actor => ({ kind: 'user', userId: 'u2', workspaceId: 1, role: 'member', boxScope })
 
 let row: AgentRow | null
 
 beforeEach(() => {
-    row = { workspace_id: 1, engine_agent_id: 'e1', template_id: null, disabled_at: null, disabled_reason: null, workspaces: { subscription_status: 'active', is_sandbox: false } }
-    mocks.requireWorkspaceId.mockReset().mockResolvedValue(1)
+    row = { workspace_id: 1, space_id: 'box-1', engine_agent_id: 'e1', template_id: null, disabled_at: null, disabled_reason: null, workspaces: { subscription_status: 'active', is_sandbox: false }, space: { visibility: 'workspace' } }
+    mocks.requireLightSessionActor.mockReset().mockResolvedValue(admin)
+    mocks.selectMaybeSingle.mockReset().mockResolvedValue({ data: null, error: null })
     mocks.selectMaybeSingleWithJoins.mockReset().mockImplementation(async () => ({ data: row, error: null }))
     mocks.findWorkspaceEngine.mockReset().mockResolvedValue({ instanceId: 'i1', conn, managed: true })
 })
 
 describe('resolveAgentTarget', () => {
-    it('resolves the engine agent of the session workspace', async () => {
+    it('resolves the engine agent for the session caller', async () => {
         await expect(resolveAgentTarget('a1')).resolves.toEqual({ engineAgentId: 'e1', conn, contentLocked: false })
         expect(mocks.selectMaybeSingleWithJoins.mock.calls[0][4]).toEqual({ id: 'a1' })
         expect(mocks.findWorkspaceEngine).toHaveBeenCalledWith(1)
@@ -68,61 +78,86 @@ describe('resolveAgentTarget', () => {
 
     it('reads the machine of the caller, never the one of the agent it was asked about', async () => {
         row = { ...row!, workspace_id: 2 }
-        await expect(resolveAgentTarget('a1', 1)).rejects.toBeInstanceOf(AuthorizationError)
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).rejects.toBeInstanceOf(AuthorizationError)
         expect(mocks.findWorkspaceEngine).toHaveBeenCalledWith(1)
     })
 
     it('reports a workspace without a machine', async () => {
         mocks.findWorkspaceEngine.mockResolvedValue(null)
-        await expect(resolveAgentTarget('a1', 1)).rejects.toThrow()
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).rejects.toThrow()
     })
 
-    it('skips the session lookup when the caller passes a workspace proven by an API key', async () => {
-        await expect(resolveAgentTarget('a1', 1)).resolves.toMatchObject({ engineAgentId: 'e1' })
-        expect(mocks.requireWorkspaceId).not.toHaveBeenCalled()
+    it('skips the session lookup when the caller passes an actor, an API key or a v1 context', async () => {
+        await expect(resolveAgentTarget('a1', workspaceActor(1), 'manage')).resolves.toMatchObject({ engineAgentId: 'e1' })
+        expect(mocks.requireLightSessionActor).not.toHaveBeenCalled()
+        expect(mocks.selectMaybeSingle).not.toHaveBeenCalled()
     })
 
-    it('refuses an agent of another workspace than the explicit one', async () => {
-        await expect(resolveAgentTarget('a1', 2)).rejects.toBeInstanceOf(AuthorizationError)
+    it('refuses an agent of another workspace than the actor one', async () => {
+        await expect(resolveAgentTarget('a1', workspaceActor(2))).rejects.toBeInstanceOf(AuthorizationError)
     })
 
     it('refuses an agent of another workspace than the session one', async () => {
-        mocks.requireWorkspaceId.mockResolvedValue(2)
+        mocks.requireLightSessionActor.mockResolvedValue({ ...admin, workspaceId: 2 })
         await expect(resolveAgentTarget('a1')).rejects.toThrow('Coworker not found')
     })
 
     it('refuses an agent that does not exist', async () => {
         row = null
-        await expect(resolveAgentTarget('a1', 1)).rejects.toBeInstanceOf(AuthorizationError)
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).rejects.toBeInstanceOf(AuthorizationError)
+    })
+
+    it('lets a member use a coworker of an open Box, and refuses a change with a reason', async () => {
+        await expect(resolveAgentTarget('a1', member('all'))).resolves.toMatchObject({ engineAgentId: 'e1' })
+        const refused = await resolveAgentTarget('a1', member('all'), 'manage').catch(e => e)
+        expect(refused).toBeInstanceOf(AccessDeniedError)
+    })
+
+    it('hides a coworker of a Box the member does not reach, as missing rather than forbidden', async () => {
+        row = { ...row!, space: { visibility: 'restricted' } }
+        const restricted = await resolveAgentTarget('a1', member('all')).catch(e => e)
+        expect(restricted).toBeInstanceOf(AuthorizationError)
+        expect(restricted).not.toBeInstanceOf(AccessDeniedError)
+
+        row = { ...row, space: { visibility: 'workspace' } }
+        await expect(resolveAgentTarget('a1', member('assigned'))).rejects.toThrow('Coworker not found')
+    })
+
+    it('lets a member who manages the Box change the coworker, and reads that grant on the Box', async () => {
+        row = { ...row!, space: { visibility: 'restricted' } }
+        mocks.selectMaybeSingle.mockResolvedValue({ data: { access: 'manage' }, error: null })
+        await expect(resolveAgentTarget('a1', member('assigned'), 'manage')).resolves.toMatchObject({ engineAgentId: 'e1' })
+        expect(mocks.selectMaybeSingle.mock.calls[0][1]).toBe('space_members')
+        expect(mocks.selectMaybeSingle.mock.calls[0][3]).toEqual({ space_id: 'box-1', user_id: 'u2' })
     })
 
     it('tells a plan-limited agent apart from a revoked template', async () => {
         row = { ...row!, disabled_at: '2026-09-01', disabled_reason: 'plan_limit' }
-        await expect(resolveAgentTarget('a1', 1)).rejects.toThrow(/no free coworker slot/)
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).rejects.toThrow(/no free coworker slot/)
 
         row = { ...row, disabled_reason: null }
-        await expect(resolveAgentTarget('a1', 1)).rejects.toThrow(/no free coworker slot/)
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).rejects.toThrow(/no free coworker slot/)
 
         row = { ...row, disabled_reason: 'template_revoked' }
-        await expect(resolveAgentTarget('a1', 1)).rejects.toThrow(/template subscription it came from has ended/)
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).rejects.toThrow(/template subscription it came from has ended/)
     })
 
     it('refuses an agent the engine does not know yet', async () => {
         row = { ...row!, engine_agent_id: null }
-        await expect(resolveAgentTarget('a1', 1)).rejects.toThrow('Coworker not configured or not found')
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).rejects.toThrow('Coworker not configured or not found')
     })
 
     it('seals the content of a template agent on an unpaid workspace', async () => {
         row = { ...row!, template_id: 't1', workspaces: { subscription_status: 'trialing', is_sandbox: false } }
-        await expect(resolveAgentTarget('a1', 1)).resolves.toMatchObject({ contentLocked: true })
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).resolves.toMatchObject({ contentLocked: true })
     })
 
     it('leaves a template agent open on a paid workspace and in a sandbox', async () => {
         row = { ...row!, template_id: 't1', workspaces: { subscription_status: 'active', is_sandbox: false } }
-        await expect(resolveAgentTarget('a1', 1)).resolves.toMatchObject({ contentLocked: false })
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).resolves.toMatchObject({ contentLocked: false })
 
         row = { ...row, workspaces: { subscription_status: null, is_sandbox: true } }
-        await expect(resolveAgentTarget('a1', 1)).resolves.toMatchObject({ contentLocked: false })
+        await expect(resolveAgentTarget('a1', workspaceActor(1))).resolves.toMatchObject({ contentLocked: false })
     })
 })
 
@@ -130,7 +165,7 @@ describe('resolveAgentTargetForTrigger', () => {
     it('resolves any agent without comparing workspaces, since the token is the authorization', async () => {
         row = { ...row!, workspace_id: 42 }
         await expect(resolveAgentTargetForTrigger('a1')).resolves.toEqual({ engineAgentId: 'e1', conn, contentLocked: false })
-        expect(mocks.requireWorkspaceId).not.toHaveBeenCalled()
+        expect(mocks.requireLightSessionActor).not.toHaveBeenCalled()
         expect(mocks.findWorkspaceEngine).toHaveBeenCalledWith(42)
     })
 
@@ -183,10 +218,29 @@ describe('lastRunError', () => {
 })
 
 describe('findIdleSessions', () => {
-    const agent = (workspaceId: number, engineAgentId: string | null) => ({ workspace_id: workspaceId, engine_agent_id: engineAgentId })
+    const agent = (workspaceId: number, engineAgentId: string | null, spaceId = 'box-1') => ({ workspace_id: workspaceId, space_id: spaceId, engine_agent_id: engineAgentId })
 
     beforeEach(() => {
         mocks.listRuns.mockReset()
+        mocks.visibleSpaceIds.mockReset().mockResolvedValue('all')
+    })
+
+    it('leaves out the sessions of a Box the member cannot see, without asking the engine about them', async () => {
+        const member: Actor = { kind: 'user', userId: 'u-member', workspaceId: 1, role: 'member', boxScope: 'assigned' }
+        mocks.visibleSpaceIds.mockResolvedValue(new Set(['box-1']))
+        mocks.selectManyWithJoins.mockResolvedValue({
+            data: [
+                { id: 'mine', engine_session_id: 'es-mine', agent: agent(1, 'e1', 'box-1') },
+                { id: 'hidden', engine_session_id: 'es-hidden', agent: agent(1, 'e2', 'box-2') },
+            ],
+            error: null,
+        })
+        mocks.listRuns.mockResolvedValue([])
+
+        await expect(findIdleSessions(['mine', 'hidden'], member)).resolves.toEqual(['mine'])
+        expect(mocks.visibleSpaceIds).toHaveBeenCalledWith(member)
+        expect(mocks.listRuns).toHaveBeenCalledTimes(1)
+        expect(mocks.listRuns.mock.calls[0][1]).toBe('e1')
     })
 
     it('asks the engine once per agent and keeps only the sessions with no run in flight', async () => {
@@ -200,7 +254,7 @@ describe('findIdleSessions', () => {
         })
         mocks.listRuns.mockImplementation(async (_conn: unknown, engineAgentId: string) => (engineAgentId === 'e1' ? [run('r1', 'es-busy', 'running', '2026-09-01')] : []))
 
-        await expect(findIdleSessions(['busy', 'idle', 'idle-2'], 1)).resolves.toEqual(expect.arrayContaining(['idle', 'idle-2']))
+        await expect(findIdleSessions(['busy', 'idle', 'idle-2'], workspaceActor(1))).resolves.toEqual(expect.arrayContaining(['idle', 'idle-2']))
         expect(mocks.listRuns).toHaveBeenCalledTimes(2)
         expect(mocks.listRuns.mock.calls[0][2]).toEqual({ status: 'running', limit: 200 })
     })
@@ -215,16 +269,16 @@ describe('findIdleSessions', () => {
         })
         mocks.listRuns.mockRejectedValue(new Error('engine down'))
 
-        await expect(findIdleSessions(['foreign', 'unreachable'], 1)).resolves.toEqual([])
+        await expect(findIdleSessions(['foreign', 'unreachable'], workspaceActor(1))).resolves.toEqual([])
     })
 
     it('counts a session never mirrored to the engine, or on a workspace without a machine, as idle', async () => {
         mocks.selectManyWithJoins.mockResolvedValue({ data: [{ id: 'orphan', engine_session_id: null, agent: agent(1, 'e1') }], error: null })
-        await expect(findIdleSessions(['orphan'], 1)).resolves.toEqual(['orphan'])
+        await expect(findIdleSessions(['orphan'], workspaceActor(1))).resolves.toEqual(['orphan'])
 
         mocks.findWorkspaceEngine.mockResolvedValue(null)
         mocks.selectManyWithJoins.mockResolvedValue({ data: [{ id: 's', engine_session_id: 'es', agent: agent(1, 'e1') }], error: null })
-        await expect(findIdleSessions(['s'], 1)).resolves.toEqual(['s'])
+        await expect(findIdleSessions(['s'], workspaceActor(1))).resolves.toEqual(['s'])
         expect(mocks.listRuns).not.toHaveBeenCalled()
     })
 })

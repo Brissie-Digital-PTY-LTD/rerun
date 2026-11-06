@@ -7,7 +7,7 @@ import { oauthPopupResponse } from '@/lib/oauth/popup-result'
 import { appReturnUrl } from '@/lib/oauth/app-return'
 import { callbackGrant } from '@/lib/oauth/mobile-ticket'
 import { parkSignIn } from '@/lib/oauth/pending-grant'
-import { requireAgentWorkspaceId } from '@/app/api/_auth/ownership'
+import { requireAgentWorkspaceId, workspaceActor } from '@/app/api/_auth/access'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
@@ -69,7 +69,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
         if (ctx.provider !== providerId) return finish({ ok: false, error: 'Provider mismatch, please retry' })
         const grant = callbackGrant(ctx)
         const workspaceId = grant?.workspaceId ?? (await requireAgentWorkspaceId(ctx.agentId))
-        const { conn, engineAgentId } = await resolveAgentTarget(ctx.agentId, workspaceId)
+        // The session passed `manage` on the coworker's Box just above, or the grant was minted for someone who did.
+        const actor = workspaceActor(workspaceId)
+        const { conn, engineAgentId } = await resolveAgentTarget(ctx.agentId, actor, 'manage')
         const token = await exchangeManagedCode(provider.oauth, clientId, clientSecret, ctx, code)
         const email = provider.oauth.accountEmail ? await provider.oauth.accountEmail(token.accessToken).catch(() => undefined) : undefined
 
@@ -89,7 +91,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
             clientSecret,
             obtainedAt: Date.now(),
         })
-        await markManagedAuthorized(ctx.agentId, ctx.key, email, workspaceId)
+        await markManagedAuthorized(ctx.agentId, ctx.key, email, actor)
         return finish({ ok: true, email })
     } catch (err) {
         return finish({ ok: false, error: err instanceof Error ? err.message : 'Authorization failed' })

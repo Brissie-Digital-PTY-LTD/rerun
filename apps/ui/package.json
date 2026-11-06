@@ -1,5 +1,6 @@
 {
     "name": "rerun",
+    "license": "AGPL-3.0-only",
     "version": "0.1.0",
     "private": true,
     "scripts": {
@@ -37,6 +38,7 @@
         "@rerun/analytics": "workspace:*",
         "@rerun/contracts": "workspace:*",
         "@rerun/db": "workspace:*",
+        "@rerun/emails": "workspace:*",
         "@rerun/ui": "workspace:*",
         "@streamdown/cjk": "^1.0.3",
         "@streamdown/code": "^1.1.1",
@@ -113,6 +115,5 @@
         "tailwindcss": "^4",
         "typescript": "^5",
         "vitest": "^4.1.8"
-    },
-    "license": "AGPL-3.0-only"
+    }
 }

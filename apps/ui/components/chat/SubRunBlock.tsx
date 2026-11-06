@@ -6,6 +6,7 @@ import { SubRunTree } from '@/components/chat/SubRunTree'
 import { ToolOutput, ToolSection, toolStatusOf, type ToolState } from '@/components/chat/ToolCallBlock'
 import { useToolDisplay } from '@/hooks/useToolDisplay'
 import { isSubRunLive, subRunHeadline, type SubRunProgress } from '@/lib/chat/sub-run-progress'
+import { readableToolError } from '@rerun/contracts'
 import { ToolCallRow, type ToolCallStatus } from '@rerun/ui/chat'
 import { useEffect, useRef, useState } from 'react'
 
@@ -44,7 +45,7 @@ export function SubRunBlock({ toolName, agentId, state, output, errorText, progr
             <SubRunTree tasks={progress.tasks} toolDisplay={toolDisplay} onStopTask={onStopTask} />
             {errorText && (
                 <ToolSection label="Error">
-                    <p className="rounded bg-red-950/20 px-2 py-1.5 text-xs text-red-400">{errorText}</p>
+                    <p className="rounded bg-red-950/20 px-2 py-1.5 text-xs text-red-400">{readableToolError(errorText)}</p>
                 </ToolSection>
             )}
             {output !== undefined && (

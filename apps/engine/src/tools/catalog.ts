@@ -19,7 +19,8 @@ import { visionTools } from './builtin/vision.js'
 import { computerTools } from './builtin/computer.js'
 import { notifyTools } from './builtin/notify.js'
 import { hubTools } from './builtin/hub.js'
-import { PAID_DATA_ENABLED, paidDataTools } from '../cloud/index.js'
+import { paidDataTools } from './builtin/paid-data.js'
+import { paidDataOfferedSoFar } from '../paid-data/price.js'
 import { cardTools } from './builtin/cards.js'
 import { askUserTool, requestApprovalTool, requestSecretTool, requestTakeoverTool, suggestServiceTool } from './builtin/hitl.js'
 import { agentConfigSchema, type AgentConfig } from '../agents/types.js'
@@ -56,7 +57,7 @@ const FAMILIES: FamilyDef[] = [
     { family: 'computer', description: 'See and drive its own computer screen: take screenshots, click, type and scroll in the browser, the file manager and the terminal, while the user watches.', build: ctx => computerTools(ctx).tools, enabled: c => c.tools.computer, hidden: () => !desktopEnabled() },
     { family: 'notify', description: 'Notify the user out-of-band (something to see, question, approval request, progress, or completion) without pausing the run.', build: notifyTools, enabled: c => c.tools.notify },
     { family: 'hub', description: 'Search, install and manage ready-made services from the Rerun catalog, and publish files to public URLs.', build: hubTools, enabled: c => c.tools.hub },
-    { family: 'paidData', description: 'Buy live data from a catalog: leads and companies, SEO metrics, Google results and Maps, and public profiles and posts on LinkedIn, TikTok, Instagram, X, YouTube, Facebook and Reddit, billed on the workspace Rerun credit.', build: paidDataTools, enabled: c => c.tools.paidData, hidden: () => !PAID_DATA_ENABLED },
+    { family: 'paidData', description: 'Buy live data from a catalog: leads and companies, SEO metrics, Google results and Maps, and public profiles and posts on LinkedIn, TikTok, Instagram, X, YouTube, Facebook and Reddit, billed on the workspace Rerun credit.', build: paidDataTools, enabled: c => c.tools.paidData, hidden: () => !paidDataOfferedSoFar() },
     { family: 'cards', description: 'Show a table or a workspace file to the user as a rich card in the conversation.', build: cardTools, enabled: c => c.tools.cards },
     { family: 'quickReplies', description: 'Lets the coworker end a message with up to three short replies shown as buttons under it, sent in one click.', build: () => ({}), enabled: c => c.tools.quickReplies },
     { family: 'askUser', description: 'Ask the user a question with suggested answers and pause the run until they reply.', build: askUserTool, enabled: c => c.tools.askUser },

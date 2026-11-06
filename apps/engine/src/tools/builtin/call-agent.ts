@@ -11,6 +11,13 @@ import { beginSubRun, endSubRun, followSubRun, renderSubRunOutcome, snapshotSubR
 
 type CallProgress = SubRunProgress & { agentName: string; sessionId?: string }
 
+// Every coworker on the machine but the caller and the delegates, narrowed to the ones the person
+// behind the run reaches when the hub says who that is.
+export function callTargetsOf(index: AgentRow[], callerId: string, callableAgentIds?: string[]): AgentRow[] {
+    const callable = callableAgentIds ? new Set(callableAgentIds) : null
+    return index.filter(a => a.id !== callerId && !a.name.endsWith(' delegate') && (!callable || callable.has(a.id)))
+}
+
 export function resolveTargetAgent(ref: string, targets: AgentRow[]): { agent: AgentRow } | { error: string } {
     const allowed = targets.map(t => `${t.name} (id: ${t.id})`).join(', ')
     const byId = targets.find(t => t.id === ref)
@@ -90,7 +97,7 @@ export function callAgentTools(ctx: RunContext): ToolSet {
                 try {
                     // `fullStream` tees, so following the run for the caller's progress block and
                     // publishing it to the run hub can happen side by side.
-                    run = await startHeadlessRun(callee, session.id, prompt, undefined, { source: 'chat' })
+                    run = await startHeadlessRun(callee, session.id, prompt, undefined, { source: 'chat', callableAgentIds: ctx.callableAgentIds })
                 } catch (err) {
                     // A run that never started emits no completion event of its own, so the session
                     // just mirrored on the hub would stay `working` forever.

@@ -1,8 +1,8 @@
 // What Rerun Cloud answers about a plan, for the tests of code that only reads the answer. The open
 // source build answers "entitled" to everything, so a test about what happens without a plan mocks
-// `@/cloud/billing` with these, and runs the same in both builds:
+// `@rerun/cloud/billing` with these, and runs the same in both builds:
 //
-//   vi.mock('@/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...CLOUD_ENTITLEMENTS }))
+//   vi.mock('@rerun/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...CLOUD_ENTITLEMENTS }))
 type WorkspacePlan = { subscription_status: string | null; is_sandbox: boolean }
 
 const ENTITLED_STATUSES = new Set(['active', 'trialing', 'past_due'])

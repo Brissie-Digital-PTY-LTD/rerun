@@ -1,3 +1,4 @@
+import { memberActor, workspaceActor, type Actor } from '@/app/api/_auth/access'
 import { FOREMAN_AGENT_ID, FOREMAN_HUB_TOKEN_HEADER } from '@rerun/contracts'
 
 import { dispatchForemanHubTool } from '@/app/api/_services/foreman-hub.service'
@@ -28,10 +29,19 @@ export async function POST(req: Request): Promise<Response> {
 
     // The foreman has no agent row: it speaks for the whole workspace the engine key names.
     const isForeman = engineAgentId === FOREMAN_AGENT_ID
+    // The person the foreman's turn speaks for, from its signed token: their access, not the
+    // workspace's. A token without one (minted before, or no token at all) acts as the workspace.
+    let foremanActor: Actor = workspaceActor(engine.workspaceId)
     if (isForeman) {
         const foremanToken = req.headers.get(FOREMAN_HUB_TOKEN_HEADER)
         if (foremanToken) {
-            if (!verifyForemanHubToken(foremanToken, engine.workspaceId)) return new Response('Invalid foreman token', { status: 403 })
+            const claims = verifyForemanHubToken(foremanToken, engine.workspaceId)
+            if (!claims) return new Response('Invalid foreman token', { status: 403 })
+            if (claims.uid) {
+                const member = await memberActor(engine.workspaceId, claims.uid)
+                if (!member) return new Response('The member this foreman speaks for has left the workspace', { status: 403 })
+                foremanActor = member
+            }
         } else if (foremanHubTokenRequired()) {
             return new Response('Missing foreman token', { status: 403 })
         } else {
@@ -54,7 +64,7 @@ export async function POST(req: Request): Promise<Response> {
     if (!tool) return new Response('Missing tool', { status: 400 })
 
     try {
-        const out = agent ? await dispatchHubTool(agent.id, tool, args, engine.workspaceId) : await dispatchForemanHubTool(engine.workspaceId, tool, args)
+        const out = agent ? await dispatchHubTool(agent.id, tool, args, engine.workspaceId) : await dispatchForemanHubTool(foremanActor, tool, args)
         return Response.json(out)
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Hub tool failed'

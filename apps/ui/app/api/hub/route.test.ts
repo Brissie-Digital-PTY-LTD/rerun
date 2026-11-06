@@ -15,7 +15,7 @@ vi.mock('@/app/api/_services/mcp-account.service', () => ({ dispatchAccountTool:
 vi.mock('@/app/api/_auth/ownership', () => ({ workspaceFounderUserId: vi.fn().mockResolvedValue('founder') }))
 vi.mock('@/lib/foreman/onboarding-tools', () => ({ dispatchWorkspaceOnboardingTool: vi.fn() }))
 vi.mock('@/lib/foreman/search-docs', () => ({ searchForemanDocs: vi.fn() }))
-vi.mock('@/lib/foreman/tools', () => ({ dispatchBoxTool: vi.fn() }))
+vi.mock('@/lib/foreman/box-tools', () => ({ dispatchBoxTool: vi.fn() }))
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn().mockReturnValue({}) }))
 vi.mock('@/supabase/supabase-helpers', () => ({ selectMaybeSingle: vi.fn() }))
 
@@ -97,7 +97,7 @@ describe('POST /api/hub', () => {
         expect(await response.json()).toEqual({ agents: [] })
         expect(selectMaybeSingle).not.toHaveBeenCalled()
         expect(dispatchHubTool).not.toHaveBeenCalled()
-        expect(dispatchAccountTool).toHaveBeenCalledWith(WORKSPACE_ID, 'list_agents', { spaceId: 'box-1' })
+        expect(dispatchAccountTool).toHaveBeenCalledWith({ kind: 'workspace', workspaceId: WORKSPACE_ID }, 'list_agents', { spaceId: 'box-1' }, { actorUserId: null })
     })
 
     it('refuses a foreman tool that is not on its belt', async () => {
@@ -133,7 +133,7 @@ describe('POST /api/hub', () => {
         const response = await POST(hubRequest({ agent: FOREMAN_AGENT_ID, body: { tool: 'list_agents', args: {} } }))
 
         expect(response.status).toBe(200)
-        expect(dispatchAccountTool).toHaveBeenCalledWith(WORKSPACE_ID, 'list_agents', {})
+        expect(dispatchAccountTool).toHaveBeenCalledWith({ kind: 'workspace', workspaceId: WORKSPACE_ID }, 'list_agents', {}, { actorUserId: null })
         expect(console.warn).toHaveBeenCalledWith('[hub] foreman call without token (tolerated)', { workspaceId: WORKSPACE_ID })
     })
 
@@ -143,6 +143,26 @@ describe('POST /api/hub', () => {
         const response = await POST(hubRequest({ agent: FOREMAN_AGENT_ID, foremanToken: mintForemanHubToken(WORKSPACE_ID), body: { tool: 'list_agents', args: {} } }))
 
         expect(response.status).toBe(200)
-        expect(dispatchAccountTool).toHaveBeenCalledWith(WORKSPACE_ID, 'list_agents', {})
+        expect(dispatchAccountTool).toHaveBeenCalledWith({ kind: 'workspace', workspaceId: WORKSPACE_ID }, 'list_agents', {}, { actorUserId: null })
+    })
+
+    it('runs a member’s foreman turn with that member’s access, not the workspace’s', async () => {
+        vi.mocked(selectMaybeSingle).mockResolvedValue({ data: { role: 'member', box_scope: 'assigned' }, error: null })
+
+        const response = await POST(hubRequest({ agent: FOREMAN_AGENT_ID, foremanToken: mintForemanHubToken(WORKSPACE_ID, 'user-7'), body: { tool: 'list_agents', args: {} } }))
+
+        expect(response.status).toBe(200)
+        expect(vi.mocked(selectMaybeSingle).mock.calls[0][1]).toBe('workspace_members')
+        expect(vi.mocked(selectMaybeSingle).mock.calls[0][3]).toEqual({ user_id: 'user-7', workspace_id: WORKSPACE_ID })
+        expect(dispatchAccountTool).toHaveBeenCalledWith({ kind: 'user', userId: 'user-7', workspaceId: WORKSPACE_ID, role: 'member', boxScope: 'assigned' }, 'list_agents', {}, { actorUserId: 'user-7' })
+    })
+
+    it('refuses the foreman of a member who has left the workspace since the turn started', async () => {
+        vi.mocked(selectMaybeSingle).mockResolvedValue({ data: null, error: null })
+
+        const response = await POST(hubRequest({ agent: FOREMAN_AGENT_ID, foremanToken: mintForemanHubToken(WORKSPACE_ID, 'user-gone'), body: { tool: 'list_agents', args: {} } }))
+
+        expect(response.status).toBe(403)
+        expect(dispatchAccountTool).not.toHaveBeenCalled()
     })
 })

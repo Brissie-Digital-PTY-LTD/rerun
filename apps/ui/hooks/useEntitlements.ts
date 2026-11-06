@@ -11,8 +11,8 @@
 // `max_agents` est un snapshot du plan souscrit, pas la limite du moment : un abonnement fini la
 // ramène à zéro. `activeAgentLimitFor` est la même fonction que celle du gate serveur.
 
-import { activeAgentLimitFor } from '@/cloud/billing'
-import type { AddonKey } from '@/cloud/billing'
+import { activeAgentLimitFor } from '@rerun/cloud/billing'
+import type { AddonKey } from '@rerun/cloud/billing'
 import { useBillingStore } from '@/stores/billing.store'
 import { useBoardStore } from '@/stores/board.store'
 import { useSession } from '@/supabase/session/SessionProvider'

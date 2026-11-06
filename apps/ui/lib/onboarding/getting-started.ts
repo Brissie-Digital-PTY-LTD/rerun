@@ -3,9 +3,9 @@
 // payment method opens its card form, the phone the account dialog, and any other hands its
 // `prompt` to the Foreman, who walks them through.
 
-import { isPhoneStepDone, type PhoneStatus } from '@/cloud/phone'
+import { isPhoneStepDone, type PhoneStatus } from '@rerun/cloud/phone'
 import type { WorkspaceDialogPanel } from '@/lib/settings/panels'
-import { BILLING_ENABLED } from '@/cloud/billing'
+import { BILLING_ENABLED } from '@rerun/cloud/billing'
 
 export const GETTING_STARTED_REWARD_DAYS = 3
 

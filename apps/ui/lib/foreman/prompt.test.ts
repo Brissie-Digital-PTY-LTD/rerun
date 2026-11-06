@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { BILLING_ENABLED } from '@/cloud/billing'
+import { BILLING_ENABLED } from '@rerun/cloud/billing'
 
 vi.mock('server-only', () => ({}))
 

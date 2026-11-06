@@ -2,7 +2,7 @@
 
 import { deleteWorkspaceTableRowsAction, dropWorkspaceTableAction, listWorkspaceTablesAction, purgeWorkspaceTableAction, readWorkspaceTableRowsAction } from '@/app/api/_actions/workspace-db.actions'
 import { DataBrowser } from '@/components/data/DataBrowser'
-import { viewActions, type DataFocus, type DataSource } from '@/lib/data/source'
+import { tablesOrThrow, viewActions, type DataFocus, type DataSource } from '@/lib/data/source'
 import { useMemo } from 'react'
 import { withTabWorkspace } from '@/lib/workspace/tab-workspace'
 
@@ -26,7 +26,7 @@ export function SharedDataPanel({ initial, onInitialConsumed, table, onTableDrop
         () => ({
             scope: 'shared',
             storageKey: 'shared',
-            listTables: () => listWorkspaceTablesAction(),
+            listTables: () => listWorkspaceTablesAction().then(tablesOrThrow),
             readRows: (table, params) => readWorkspaceTableRowsAction(table, params),
             deleteRows: (table, rowids) => deleteWorkspaceTableRowsAction(table, rowids),
             dropTable: table => dropWorkspaceTableAction(table),

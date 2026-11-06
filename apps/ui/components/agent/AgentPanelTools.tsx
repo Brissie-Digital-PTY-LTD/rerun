@@ -3,7 +3,9 @@
 import { getAgentDetailAction, listAgentToolsAction, updateAgentConfigAction } from '@/app/api/_actions/agent.actions'
 import { Icon } from '@/components/ui/icon'
 import { Switch } from '@/components/ui/switch'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipDisabledReason, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { ENGINE_SELF_IMPROVEMENT_KEYS } from '@/lib/engine/constants'
 import type { EngineSelfImprovement, EngineToolFamily } from '@/lib/engine/types'
 import { BrainIcon, CalendarClockIcon, CardsIcon, CircleCheckIcon, CoinsIcon, DatabaseIcon, FolderIcon, GlobeIcon, InfoIcon, LayersIcon, Loader2Icon, LockIcon, type LucideIcon, MessageCircleQuestionIcon, MonitorIcon, QuickReplyIcon, TerminalIcon, UsersIcon, WandSparklesIcon, WebhookIcon, WrenchIcon } from '@/lib/icons'
@@ -71,6 +73,8 @@ export function AgentPanelTools({ agentId }: AgentPanelToolsProps) {
     const [loading, setLoading] = useState(true)
     const [pending, setPending] = useState<Set<string>>(new Set())
     const [error, setError] = useState<string | null>(null)
+    const canManage = useCanManageAgent(agentId)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
 
     useEffect(() => {
         setLoading(true)
@@ -171,7 +175,9 @@ export function AgentPanelTools({ agentId }: AgentPanelToolsProps) {
                                 {isPending ? (
                                     <Loader2Icon className="size-3.5 animate-spin text-muted-foreground shrink-0 mt-1" />
                                 ) : (
-                                    <Switch checked={checked} onCheckedChange={value => handleToggle(family.family, value)} className="shrink-0 mt-0.5" />
+                                    <TooltipDisabledReason reason={manageReason} className="shrink-0">
+                                        <Switch checked={checked} disabled={!canManage} onCheckedChange={value => handleToggle(family.family, value)} className="shrink-0 mt-0.5" />
+                                    </TooltipDisabledReason>
                                 )}
                             </div>
                             <div className="min-w-0">
@@ -213,7 +219,9 @@ export function AgentPanelTools({ agentId }: AgentPanelToolsProps) {
                                             {pending.has(key) ? (
                                                 <Loader2Icon className="size-3.5 animate-spin text-muted-foreground shrink-0" />
                                             ) : (
-                                                <Switch checked={!!selfImprovement[key]} onCheckedChange={value => handleSelfImprovement(key, value)} className="shrink-0" />
+                                                <TooltipDisabledReason reason={manageReason} className="shrink-0">
+                                                    <Switch checked={!!selfImprovement[key]} disabled={!canManage} onCheckedChange={value => handleSelfImprovement(key, value)} className="shrink-0" />
+                                                </TooltipDisabledReason>
                                             )}
                                         </label>
                                     ))}

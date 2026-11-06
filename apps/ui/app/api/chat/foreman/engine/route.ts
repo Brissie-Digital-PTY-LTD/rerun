@@ -1,7 +1,8 @@
 import { FOREMAN_AGENT_ID } from '@rerun/contracts'
 
+import { actorFromContext, callableEngineAgentIds } from '@/app/api/_auth/access'
 import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
-import { isPhoneStepPending } from '@/cloud/phone.server'
+import { isPhoneStepPending } from '@rerun/cloud/phone.server'
 import { messageAuthorOf } from '@/app/api/_services/me.service'
 import { getWorkspaceConnection, NoEngineError } from '@/app/api/_services/workspace-engine.service'
 import { QUEUED_RETRY_DELAYS_MS, startChat } from '@/lib/chat/start-chat'
@@ -11,7 +12,7 @@ import { foremanEngineBrief } from '@/lib/foreman/engine-brief'
 import { mintForemanHubToken } from '@/lib/foreman/hub-token'
 import { loadForemanState } from '@/lib/foreman/state'
 import { resolveForemanSurface } from '@/lib/foreman/surface.server'
-import { PHONE_REQUIRED_MESSAGE } from '@/cloud/phone'
+import { PHONE_REQUIRED_MESSAGE } from '@rerun/cloud/phone'
 
 // The foreman of every workspace past its onboarding, running on the workspace's engine. The loop,
 // the model and the transcript are the engine's; the hub only hands it, on every turn, the
@@ -69,7 +70,7 @@ export async function POST(req: Request): Promise<Response> {
     let conn: Awaited<ReturnType<typeof getWorkspaceConnection>>
     try {
         conn = await getWorkspaceConnection(ctx.workspace.id)
-        engineRes = await startChat(conn, FOREMAN_AGENT_ID, { sessionId: existing?.engineSessionId ?? undefined, message: text, connectionId, model, source: 'dashboard', foreman: { ...foremanEngineBrief(state), hubToken: mintForemanHubToken(ctx.workspace.id) ?? undefined }, author: messageAuthorOf(ctx) }, queued ? QUEUED_RETRY_DELAYS_MS : null)
+        engineRes = await startChat(conn, FOREMAN_AGENT_ID, { sessionId: existing?.engineSessionId ?? undefined, message: text, connectionId, model, source: 'dashboard', foreman: { ...foremanEngineBrief(state), hubToken: mintForemanHubToken(ctx.workspace.id, ctx.userId) ?? undefined }, author: messageAuthorOf(ctx), callableAgentIds: await callableEngineAgentIds(actorFromContext(ctx)) }, queued ? QUEUED_RETRY_DELAYS_MS : null)
     } catch (err) {
         // The machine went away under a conversation that was already going: the browser hides the
         // foreman, which only exists beside a machine.

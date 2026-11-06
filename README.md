@@ -251,3 +251,8 @@ If Rerun saves you a few hours, a ⭐ helps a lot.
 [AGPL-3.0](LICENSE). You can run, modify and host Rerun freely; if you host it for others, you
 publish your changes under the same license. The name and logo are not covered: see
 [TRADEMARK.md](TRADEMARK.md).
+
+Directories named `ee` or `(ee)` (billing and plans, the Rerun credit and its managed models, the
+template marketplace) are source-available under the [Rerun Commercial License](apps/ui/ee/LICENSE):
+read and modify them freely, run them in production with an agreement. The open source build never
+switches them on.

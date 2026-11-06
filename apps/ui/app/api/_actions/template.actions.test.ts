@@ -5,7 +5,7 @@ import { fakeSupabase, type FakeSupabase } from '@/test/supabase-fake'
 const mocks = vi.hoisted(() => ({
     getAdminEmail: vi.fn(),
     getServerSession: vi.fn(),
-    assertSpaceInWorkspace: vi.fn(),
+    assertSpaceAccess: vi.fn(),
     hasTemplateEntitlement: vi.fn(),
     templateAccessByWorkspace: vi.fn(),
     installTemplate: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('@/lib/auth/admin', () => ({
         if (!(await mocks.getAdminEmail())) throw new Error('Unauthorized')
     },
 }))
-vi.mock('@/app/api/_auth/ownership', () => ({ assertSpaceInWorkspace: mocks.assertSpaceInWorkspace }))
+vi.mock('@/app/api/_auth/access', () => ({ assertSpaceAccess: mocks.assertSpaceAccess }))
 vi.mock('@/supabase/session/getServerSession', () => ({ getServerSession: mocks.getServerSession, getSessionWorkspace: mocks.getServerSession }))
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
 vi.mock('@/supabase/server', () => ({ createClient: vi.fn() }))
@@ -32,6 +32,7 @@ const WORKSPACE_ID = 7
 const SPACE_ID = '11111111-1111-4111-8111-111111111111'
 const AUTHOR = 'user-author'
 const STRANGER = 'user-stranger'
+const ACTOR = { kind: 'user', userId: STRANGER, workspaceId: WORKSPACE_ID, role: 'member', boxScope: 'all' }
 
 type Template = { id: string; slug: string; status: string; creator_id: string; pricing_model: string }
 
@@ -56,7 +57,7 @@ function signedInAs(userId: string | null) {
 beforeEach(() => {
     vi.clearAllMocks()
     mocks.getAdminEmail.mockResolvedValue(null)
-    mocks.assertSpaceInWorkspace.mockResolvedValue({ workspace_id: WORKSPACE_ID })
+    mocks.assertSpaceAccess.mockResolvedValue({ actor: ACTOR, access: 'manage' })
     mocks.hasTemplateEntitlement.mockResolvedValue(true)
     mocks.templateAccessByWorkspace.mockResolvedValue(new Map())
     mocks.installTemplate.mockResolvedValue({ imported: 1, inactive: 0, agentIds: ['agent-1'], failed: [], warnings: [] })
@@ -76,7 +77,7 @@ describe('installTemplateAction', () => {
         database(template({ status: 'draft' }), null)
 
         await expect(installTemplateAction({ slug: 'crm', spaceId: SPACE_ID })).resolves.toMatchObject({ ok: true, imported: 1 })
-        expect(mocks.installTemplate).toHaveBeenCalledWith(expect.anything(), 'crm', { workspaceId: WORKSPACE_ID, spaceId: SPACE_ID, positions: undefined })
+        expect(mocks.installTemplate).toHaveBeenCalledWith(expect.anything(), 'crm', { workspaceId: WORKSPACE_ID, spaceId: SPACE_ID, actor: ACTOR, positions: undefined })
     })
 
     it('lets an admin install a template still in review', async () => {
@@ -110,17 +111,26 @@ describe('installTemplateAction', () => {
 
     it('refuses a Box of another workspace before reading the template', async () => {
         const db = database(template())
-        mocks.assertSpaceInWorkspace.mockRejectedValue(new Error('Space not found'))
+        mocks.assertSpaceAccess.mockRejectedValue(new Error('Box not found'))
 
-        await expect(installTemplateAction({ slug: 'crm', spaceId: SPACE_ID })).resolves.toEqual({ ok: false, error: 'Space not found' })
+        await expect(installTemplateAction({ slug: 'crm', spaceId: SPACE_ID })).resolves.toEqual({ ok: false, error: 'Box not found' })
         expect(db.chainsOn('templates')).toHaveLength(0)
+    })
+
+    it('asks for manage on the Box, so a member who only uses it installs nothing', async () => {
+        database(template())
+        mocks.assertSpaceAccess.mockRejectedValue(new Error('Only an admin or a manager of this Box can do this'))
+
+        await expect(installTemplateAction({ slug: 'crm', spaceId: SPACE_ID })).resolves.toEqual({ ok: false, error: 'Only an admin or a manager of this Box can do this' })
+        expect(mocks.assertSpaceAccess).toHaveBeenCalledWith(SPACE_ID, 'manage')
+        expect(mocks.installTemplate).not.toHaveBeenCalled()
     })
 
     it('refuses a space id that is not a uuid', async () => {
         database(template())
 
         await expect(installTemplateAction({ slug: 'crm', spaceId: 'nope' })).resolves.toMatchObject({ ok: false })
-        expect(mocks.assertSpaceInWorkspace).not.toHaveBeenCalled()
+        expect(mocks.assertSpaceAccess).not.toHaveBeenCalled()
     })
 })
 

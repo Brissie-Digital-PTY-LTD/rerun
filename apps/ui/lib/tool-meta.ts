@@ -54,7 +54,7 @@ import {
     ZapIcon,
     type LucideIcon,
 } from '@/lib/icons'
-import { paidDataIcon } from '@/cloud/paid-data'
+import { paidDataIcon } from '@/lib/paid-data/spend'
 
 type ToolMeta = {
     label: string

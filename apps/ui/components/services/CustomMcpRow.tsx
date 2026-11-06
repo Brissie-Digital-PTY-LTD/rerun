@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { PanelDeleteButton } from '@/components/ui/panel-editor'
 import { PanelRow } from '@/components/ui/panel-row'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { CustomMcpStatusBadge } from '@/components/services/CustomMcpStatusBadge'
 import { serviceIconProps } from '@/lib/services/icons'
 import type { CustomMcpServer, CustomMcpStatus } from '@/lib/services/types'
@@ -17,9 +18,12 @@ type CustomMcpRowProps = {
     onConnect: () => void
     onEdit: () => void
     onRemove: () => void
+    // Why connecting, editing or removing the server is out of reach: the buttons stay, disabled.
+    disabledReason?: string
 }
 
-export function CustomMcpRow({ server, status, statusLoading, onConnect, onEdit, onRemove }: CustomMcpRowProps) {
+export function CustomMcpRow({ server, status, statusLoading, onConnect, onEdit, onRemove, disabledReason }: CustomMcpRowProps) {
+    const disabled = !!disabledReason
     const canSignIn = status?.status === 'needs_auth' && !!server.signInUrl
     return (
         <PanelRow
@@ -39,20 +43,27 @@ export function CustomMcpRow({ server, status, statusLoading, onConnect, onEdit,
                         <CustomMcpStatusBadge status={status} loading={statusLoading} />
                     </span>
                     {canSignIn && (
-                        <Button size="sm" variant="outline" onClick={onConnect}>
-                            Connect
-                        </Button>
+                        <TooltipDisabledReason reason={disabledReason}>
+                            <Button size="sm" variant="outline" disabled={disabled} onClick={onConnect}>
+                                Connect
+                            </Button>
+                        </TooltipDisabledReason>
                     )}
-                    <Button size="icon-sm" variant="ghost" className="text-muted-foreground" aria-label={`Edit ${server.displayName}`} onClick={onEdit}>
-                        <PencilIcon />
-                    </Button>
-                    <PanelDeleteButton
-                        label={`Remove ${server.displayName}`}
-                        onClick={onRemove}
-                        confirmTitle={`Remove ${server.displayName}?`}
-                        confirmDescription="The coworker loses every tool this server exposes, and its sign-in is cleared."
-                        confirmLabel="Remove"
-                    />
+                    <TooltipDisabledReason reason={disabledReason}>
+                        <Button size="icon-sm" variant="ghost" className="text-muted-foreground" aria-label={`Edit ${server.displayName}`} disabled={disabled} onClick={onEdit}>
+                            <PencilIcon />
+                        </Button>
+                    </TooltipDisabledReason>
+                    <TooltipDisabledReason reason={disabledReason}>
+                        <PanelDeleteButton
+                            label={`Remove ${server.displayName}`}
+                            disabled={disabled}
+                            onClick={onRemove}
+                            confirmTitle={`Remove ${server.displayName}?`}
+                            confirmDescription="The coworker loses every tool this server exposes, and its sign-in is cleared."
+                            confirmLabel="Remove"
+                        />
+                    </TooltipDisabledReason>
                 </>
             }
         />

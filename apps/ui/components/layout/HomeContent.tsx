@@ -1,27 +1,28 @@
 'use client'
 
-import { confirmTemplatePurchaseAction } from '@/cloud/marketplace.client'
+import { confirmTemplatePurchaseAction } from '@rerun/cloud/marketplace.client'
 import { AppLoader } from '@/components/layout/AppLoader'
 import { AuthDialog } from '@/components/dialogs/AuthDialog'
 import { EngineWaitlistDialog } from '@/components/dialogs/EngineWaitlistDialog'
 import { BuilderView } from '@/components/builder/BuilderView'
 import { ForemanDock } from '@/components/foreman/ForemanDock'
 import { useRewindEnabled } from '@/components/layout/FeatureFlagsProvider'
-import { PhoneVerificationDialog } from '@/cloud/phone.client'
-import { PostPaymentDialog, TemplatePurchaseSuccessDialog } from '@/cloud/billing.client'
+import { PhoneVerificationDialog } from '@rerun/cloud/phone.client'
+import { PostPaymentDialog, TemplatePurchaseSuccessDialog } from '@rerun/cloud/billing.client'
 import { AgentShareDeepLinkDialog } from '@/components/dialogs/AgentShareDeepLinkDialog'
 import { TemplateDeepLinkDialog } from '@/components/dialogs/TemplateDeepLinkDialog'
 import { WorkspacePausedBanner } from '@/components/layout/WorkspacePausedBanner'
 import { WorkspaceSwitcher } from '@/components/layout/WorkspaceSwitcher'
 import { ChangelogDialog } from '@/components/changelog/ChangelogDialog'
 import { ControlCenter } from '@/components/control-center/ControlCenter'
-import { RewindViewer, useRewindLauncher, useRewindStore } from '@/cloud/rewind.client'
+import { RewindViewer, useRewindLauncher, useRewindStore } from '@rerun/cloud/rewind.client'
 import { useChangelogLauncher } from '@/components/changelog/useChangelogLauncher'
 import { useEnsureSandboxSpace } from '@/lib/sandbox/useEnsureSandboxSpace'
 import { useAgentHealthSync } from '@/hooks/useAgentHealthSync'
 import { useAgentSchedulesSync } from '@/hooks/useAgentSchedulesSync'
 import { useNotificationsRealtime } from '@/hooks/useNotificationsRealtime'
 import { useSessionsRealtime } from '@/hooks/useSessionsRealtime'
+import { useSpaceAccessSync } from '@/hooks/useSpaceAccessSync'
 import { useSpacesRealtime } from '@/hooks/useSpacesRealtime'
 import { useUnseenRunsSync } from '@/hooks/useUnseenRunsSync'
 import { useAccountStore } from '@/stores/account.store'
@@ -43,9 +44,11 @@ import { useSearchParams } from 'next/navigation'
 import { WORKSPACE_PARAM } from '@/lib/workspace/workspace-header'
 import { useEffect, useRef, useState } from 'react'
 import { ACCOUNT_LINK_ERROR_PARAM, ACCOUNT_LINK_PROVIDER_PARAM, ACCOUNT_PARAM, linkErrorMessage } from '@/lib/auth/link-intent'
-import { isOAuthProvider } from '@/lib/auth/oauth-providers'
-import { oauthErrorCode, oauthErrorMessage, withoutOAuthError } from '@/lib/auth/oauth-error'
+import { OAUTH_PROVIDER_CONFIG, isOAuthProvider, type OAuthProvider } from '@/lib/auth/oauth-providers'
+import { oauthErrorCode, oauthRetryCopy, withoutOAuthError } from '@/lib/auth/oauth-error'
+import { oauthProviderLeftFor } from '@/lib/auth/oauth-sign-in'
 import { toast } from 'sonner'
+import { track } from '@rerun/analytics/client'
 
 // Durée minimale d'affichage du loader : le temps que le R se trace (45% d'un
 // cycle de 2.8s) pour que l'animation soit perceptible et pas un simple flash.
@@ -82,6 +85,7 @@ export function HomeContent({ initialSpaces = [], initialWorkspaceId = null }: {
     // On ne peut pas se contenter de `isAnonymous`, car un signup en attente de confirmation d'email
     // laisse la session anonyme en place, et l'utilisateur resterait enfermé derrière son propre mur.
     const [accountClaimed, setAccountClaimed] = useState(false)
+    const [signInRetry, setSignInRetry] = useState<{ code: string; provider: OAuthProvider | null } | null>(null)
     // Un anonyme n'est laissé devant le board que le temps de la carte d'accueil : elle ne coûte
     // aucun modèle et c'est elle qui dessine sa boîte. Une fois répondue, c'est le bouton au pied de
     // la colonne qui ouvre la dialog de compte, jamais elle qui surgit seule, même colonne refermée :
@@ -95,6 +99,7 @@ export function HomeContent({ initialSpaces = [], initialWorkspaceId = null }: {
     const readyMadeParked = useOnboardingStore(s => s.pendingTemplateLink !== null || s.pendingShareLink !== null)
     const arrivalHoldsTheWall = foremanArrival ? foremanFunnel === 'guided' && !foremanArrival.installed && foremanOpen !== false : foremanFunnel === 'unknown' && readyMadeParked && !workspace?.onboarded_at
     const accountWallOpen = isAnonymous && !accountClaimed && !foremanHoldsTheWall && !arrivalHoldsTheWall
+    const retryCopy = signInRetry ? oauthRetryCopy(signInRetry.code, signInRetry.provider ? OAUTH_PROVIDER_CONFIG[signInRetry.provider].label : null) : null
     const phoneWallOpen = phoneStep === 'pending' && !arrivalHoldsTheWall
     const templateLinkSlug = useTemplateFlowStore(s => s.linkSlug)
     const shareLinkToken = useAgentShareStore(s => s.token)
@@ -160,13 +165,20 @@ export function HomeContent({ initialSpaces = [], initialWorkspaceId = null }: {
 
     // A provider sign-in that failed upstream lands here with the error in the URL, where it would
     // otherwise stay for the whole session. Only someone still anonymous needs to hear about it: an
-    // account already signed in got there through another tab.
+    // account already signed in got there through another tab. A toast would leave them on a screen
+    // with no provider button, so the account dialog reopens and says what happened.
     useEffect(() => {
         if (loading) return
         const url = new URL(window.location.href)
         const code = oauthErrorCode(url)
         if (!code) return
-        if (isAnonymous) toast.error(oauthErrorMessage(code))
+        if (isAnonymous) {
+            const provider = oauthProviderLeftFor()
+            track('oauth_sign_in_failed', { code, provider })
+            // The URL is the only place the failure lives, and this effect is what wipes it.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setSignInRetry({ code, provider })
+        }
         const clean = withoutOAuthError(url)
         window.history.replaceState(null, '', `${clean.pathname}${clean.search}${clean.hash}`)
     }, [searchParams, loading, isAnonymous])
@@ -393,6 +405,7 @@ export function HomeContent({ initialSpaces = [], initialWorkspaceId = null }: {
     useAgentSchedulesSync(hydrated ? workspace?.id : undefined)
     useAgentsRealtime(hydrated ? workspace?.id : undefined)
     useSpacesRealtime(hydrated ? workspace?.id : undefined)
+    useSpaceAccessSync(hydrated ? workspace?.id : undefined)
     useSessionsRealtime(hydrated)
     useNotificationsRealtime(hydrated ? workspace?.id : undefined)
     useUnseenRunsSync(hydrated ? workspace?.id : undefined, user?.id)
@@ -420,7 +433,8 @@ export function HomeContent({ initialSpaces = [], initialWorkspaceId = null }: {
             {/* Le mur d'entrée : le board reste visible derrière, mais rien n'est actionnable tant
                 qu'il n'y a pas de compte. Le signup upgrade la session anonyme en place, donc le
                 workspace déjà provisionné et tout ce qu'un deep link a parké lui restent attachés. */}
-            <AuthDialog variant="welcome" open={accountWallOpen} onOpenChange={() => setAccountClaimed(true)} />
+            <AuthDialog variant="welcome" open={accountWallOpen} onOpenChange={() => setAccountClaimed(true)} copy={retryCopy} />
+            {!accountWallOpen && <AuthDialog variant="signin" open={signInRetry !== null && isAnonymous} onOpenChange={open => !open && setSignInRetry(null)} copy={retryCopy} />}
             {/* Le mur du téléphone : il prend le relais dès que le compte existe, par quelque porte
                 qu'il soit né, et ne tombe qu'une fois le numéro vérifié. */}
             <PhoneVerificationDialog open={phoneWallOpen} />

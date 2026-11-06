@@ -136,6 +136,7 @@ const KIND_TITLES: Record<Exclude<ChatErrorKind, 'generic' | 'usage_limit'>, str
     thinking_replay: 'The run could not continue',
     interrupted: 'Run interrupted',
     run_in_flight: 'This conversation is still busy',
+    session_gone: 'Conversation unavailable',
 }
 
 // Codex's wording when one model has no room while the provider itself is fine: the notice names
@@ -160,6 +161,7 @@ const KIND_MESSAGES: Partial<Record<ChatErrorKind, string>> = {
     provider_error: 'The model provider refused this request, and sending it again will get the same answer. Switch to another model to keep going.',
     thinking_replay: 'The engine replayed this turn in a way the model provider rejects. This is an engine bug, not the model: switching models will not help. Try again, and update the engine if it keeps happening.',
     interrupted: 'The run was cut off before it could finish.',
+    session_gone: 'This coworker cannot reach this conversation anymore, so the message was not sent. Start a new conversation to keep going.',
 }
 
 export function friendlyError(message: string): string {

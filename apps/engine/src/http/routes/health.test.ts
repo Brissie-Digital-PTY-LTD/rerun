@@ -51,8 +51,8 @@ describe('GET /health', () => {
     })
 
     it('follows the live runs and the claimed sessions', async () => {
-        registerRunAbort('run-a')
-        registerRunAbort('run-b')
+        registerRunAbort('run-a', 'agent-1')
+        registerRunAbort('run-b', 'agent-1')
         claimSession('sess-a', 'run-a')
         expect(await health()).toMatchObject({ activeRuns: 2, claimedSessions: 1 })
 

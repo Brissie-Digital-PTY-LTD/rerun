@@ -6,6 +6,9 @@ import { invalidateAgentContext } from '@/hooks/useAgentContext'
 import { AgentSetupFields, type AgentSetupDraft } from '@/components/agent/AgentSetupFields'
 import { Button } from '@/components/ui/button'
 import { SkeletonForm } from '@/components/ui/skeleton'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { CheckIcon, Loader2Icon } from '@/lib/icons'
 import { useEffect, useState } from 'react'
 
@@ -15,6 +18,7 @@ export function AgentPanelSetup({ agentId }: { agentId: string }) {
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const canManage = useCanManageAgent(agentId)
 
     useEffect(() => {
         let cancelled = false
@@ -70,21 +74,23 @@ export function AgentPanelSetup({ agentId }: { agentId: string }) {
 
             {error && <p className="text-xs text-destructive">{error}</p>}
 
-            <AgentSetupFields value={draft} onChange={setDraft} disabled={saving} />
+            <AgentSetupFields value={draft} onChange={setDraft} disabled={saving || !canManage} />
 
-            <Button type="button" size="sm" onClick={save} disabled={saving || !isSetupAnswered(draft)} className="w-full">
-                {saved ? (
-                    <>
-                        <CheckIcon className="mr-1.5 size-3.5 text-emerald-500" /> Saved
-                    </>
-                ) : saving ? (
-                    <>
-                        <Loader2Icon className="mr-1.5 size-3.5 animate-spin" /> Saving...
-                    </>
-                ) : (
-                    'Save'
-                )}
-            </Button>
+            <TooltipDisabledReason reason={canManage ? undefined : BOX_MANAGE_REASON} className="flex w-full">
+                <Button type="button" size="sm" onClick={save} disabled={saving || !canManage || !isSetupAnswered(draft)} className="w-full">
+                    {saved ? (
+                        <>
+                            <CheckIcon className="mr-1.5 size-3.5 text-emerald-500" /> Saved
+                        </>
+                    ) : saving ? (
+                        <>
+                            <Loader2Icon className="mr-1.5 size-3.5 animate-spin" /> Saving...
+                        </>
+                    ) : (
+                        'Save'
+                    )}
+                </Button>
+            </TooltipDisabledReason>
         </div>
     )
 }

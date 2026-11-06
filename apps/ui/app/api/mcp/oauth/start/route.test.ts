@@ -28,6 +28,7 @@ const AUTH_SERVER_METADATA = {
 }
 
 let agentWorkspace = SESSION_WORKSPACE
+let role: 'admin' | 'member' = 'admin'
 let documents: Record<string, unknown> = {}
 const fetchMock = vi.fn(async (input: string | URL) => {
     const doc = documents[String(input)]
@@ -47,9 +48,14 @@ function start(body: Record<string, unknown>) {
 beforeEach(() => {
     vi.clearAllMocks()
     agentWorkspace = SESSION_WORKSPACE
-    const db = fakeSupabase(table => (table === 'agents' ? { data: { workspace_id: agentWorkspace, space_id: 'space-1', engine_agent_id: 'engine-agent' } } : undefined))
+    role = 'admin'
+    const db = fakeSupabase(table => {
+        if (table === 'agents') return { data: { workspace_id: agentWorkspace, space_id: 'space-1', engine_agent_id: 'engine-agent' } }
+        if (table === 'spaces') return { data: { id: 'space-1', workspace_id: agentWorkspace, visibility: 'workspace' } }
+        return undefined
+    })
     vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
-    vi.mocked(getServerSession).mockResolvedValue({ user: { workspace_id: SESSION_WORKSPACE }, workspaceRefused: false } as never)
+    vi.mocked(getServerSession).mockImplementation(async () => ({ user: { id: 'user-1', workspace_id: SESSION_WORKSPACE }, membership: { role, box_scope: 'all' }, workspaceRefused: false }) as never)
     documents = { [RESOURCE_METADATA_URL]: { authorization_servers: ['https://auth.acme.test'] }, [AUTH_SERVER_METADATA_URL]: AUTH_SERVER_METADATA }
     vi.stubGlobal('fetch', fetchMock)
     vi.stubEnv('MOBILE_OAUTH_TICKET_SECRET', 'test-secret')
@@ -85,6 +91,17 @@ describe('POST /api/mcp/oauth/start', () => {
 
         expect(res.status).toBe(400)
         expect(await res.json()).toEqual({ error: 'Coworker not found' })
+        expect(res.cookies.getAll()).toEqual([])
+        expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('refuses a member who only uses the Box: connecting an app changes the coworker', async () => {
+        role = 'member'
+
+        const res = await start({})
+
+        expect(res.status).toBe(400)
+        expect(await res.json()).toEqual({ error: 'Only an admin or a manager of this Box can do this' })
         expect(res.cookies.getAll()).toEqual([])
         expect(fetchMock).not.toHaveBeenCalled()
     })

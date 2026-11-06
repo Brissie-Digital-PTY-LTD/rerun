@@ -10,6 +10,7 @@ vi.mock('@/lib/engine/client', () => ({ putMcpToken: vi.fn() }))
 vi.mock('@/lib/managed/registry', () => ({ getManagedProvider: vi.fn() }))
 vi.mock('@/lib/oauth/pending-grant', () => ({ claimSignIn: vi.fn(), SignInClaimError: class SignInClaimError extends Error {} }))
 
+const ACTOR = { kind: 'user' as const, userId: 'user-1', workspaceId: 7, role: 'member' as const, boxScope: 'all' as const }
 const CONN = { baseUrl: 'https://engine.test', apiKey: null }
 const TOKEN = { accessToken: 'at', refreshToken: 'rt', tokenEndpoint: 'https://auth.test/token', obtainedAt: 1 }
 
@@ -32,20 +33,20 @@ describe('finishParkedSignIn', () => {
     })
 
     it('reads the Asana secret from the environment at the claim, the parked bundle never held it', async () => {
-        await finishParkedSignIn('agent-1', 7, parkedMcp())
+        await finishParkedSignIn('agent-1', ACTOR, parkedMcp())
 
-        expect(resolveAgentTarget).toHaveBeenCalledWith('agent-1', 7)
+        expect(resolveAgentTarget).toHaveBeenCalledWith('agent-1', ACTOR, 'manage')
         expect(putMcpToken).toHaveBeenCalledWith(CONN, 'engine-agent', 'asana', { ...TOKEN, clientId: 'asana-id', clientSecret: 'asana-secret' })
     })
 
     it('keeps the GitHub secret on the hub', async () => {
-        await finishParkedSignIn('agent-1', 7, parkedMcp({ serverName: 'github', mcpUrl: 'https://api.githubcopilot.com/mcp/', token: { ...TOKEN, clientId: 'gh-id' } }))
+        await finishParkedSignIn('agent-1', ACTOR, parkedMcp({ serverName: 'github', mcpUrl: 'https://api.githubcopilot.com/mcp/', token: { ...TOKEN, clientId: 'gh-id' } }))
 
         expect(putMcpToken).toHaveBeenCalledWith(CONN, 'engine-agent', 'github', { ...TOKEN, clientId: 'gh-id', clientSecret: undefined })
     })
 
     it('writes a bundle parked by a hub that named no MCP server as it is', async () => {
-        await finishParkedSignIn('agent-1', 7, parkedMcp({ mcpUrl: undefined, token: { ...TOKEN, clientId: 'dcr-id', clientSecret: 'dcr-secret' } }))
+        await finishParkedSignIn('agent-1', ACTOR, parkedMcp({ mcpUrl: undefined, token: { ...TOKEN, clientId: 'dcr-id', clientSecret: 'dcr-secret' } }))
 
         expect(putMcpToken).toHaveBeenCalledWith(CONN, 'engine-agent', 'asana', { ...TOKEN, clientId: 'dcr-id', clientSecret: 'dcr-secret' })
     })

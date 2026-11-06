@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { abortRun, activeRunCount, claimSession, registerRunAbort, releaseSession, sessionClaim, sessionClaimCount, setRunCancel, unregisterRunAbort } from './run-control.js'
+import { abortRun, activeRunCount, agentHasLiveRun, claimSession, registerRunAbort, releaseSession, sessionClaim, sessionClaimCount, setRunCancel, unregisterRunAbort } from './run-control.js'
 
 describe('abortRun', () => {
     it('returns false for a run it never registered', () => {
@@ -8,7 +8,7 @@ describe('abortRun', () => {
 
     it('aborts the signal, runs the cancel hook, frees the claim and forgets the run', () => {
         const before = activeRunCount()
-        const controller = registerRunAbort('run-a')
+        const controller = registerRunAbort('run-a', 'agent-1')
         const cancel = vi.fn()
         setRunCancel('run-a', cancel)
         expect(claimSession('sess-a', 'run-a')).toBeNull()
@@ -23,7 +23,7 @@ describe('abortRun', () => {
     })
 
     it('reports false on a second abort and does not cancel twice', () => {
-        registerRunAbort('run-b')
+        registerRunAbort('run-b', 'agent-1')
         const cancel = vi.fn()
         setRunCancel('run-b', cancel)
 
@@ -33,7 +33,7 @@ describe('abortRun', () => {
     })
 
     it('aborts a run that never set a cancel hook', () => {
-        const controller = registerRunAbort('run-c')
+        const controller = registerRunAbort('run-c', 'agent-1')
         expect(abortRun('run-c')).toBe(true)
         expect(controller.signal.aborted).toBe(true)
     })
@@ -43,7 +43,7 @@ describe('setRunCancel', () => {
     it('ignores a run that is not registered', () => {
         const cancel = vi.fn()
         setRunCancel('not-registered', cancel)
-        registerRunAbort('not-registered')
+        registerRunAbort('not-registered', 'agent-1')
         abortRun('not-registered')
         expect(cancel).not.toHaveBeenCalled()
     })
@@ -99,7 +99,7 @@ describe('session claims', () => {
 
     it('unregistering a run frees its claim and drops it from the active count', () => {
         const before = activeRunCount()
-        registerRunAbort('run-u')
+        registerRunAbort('run-u', 'agent-1')
         claimSession('sess-u', 'run-u')
 
         unregisterRunAbort('run-u')
@@ -107,6 +107,18 @@ describe('session claims', () => {
         expect(activeRunCount()).toBe(before)
         expect(sessionClaim('sess-u')).toBeNull()
         expect(abortRun('run-u')).toBe(false)
+    })
+
+    it('knows which coworkers have a run live, until it ends or is aborted', () => {
+        registerRunAbort('live-1', 'coworker')
+        registerRunAbort('live-2', 'coworker')
+        expect(agentHasLiveRun('coworker')).toBe(true)
+        expect(agentHasLiveRun('someone-else')).toBe(false)
+
+        unregisterRunAbort('live-1')
+        expect(agentHasLiveRun('coworker')).toBe(true)
+        abortRun('live-2')
+        expect(agentHasLiveRun('coworker')).toBe(false)
     })
 
     it('remembers who started the run holding a conversation', () => {

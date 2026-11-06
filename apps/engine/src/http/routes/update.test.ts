@@ -47,7 +47,7 @@ function update(body?: string) {
 // The route keeps whether an update is running in module state, so these cases run in order.
 describe('POST /update', () => {
     it('refuses while a run is in flight', async () => {
-        registerRunAbort('busy-run')
+        registerRunAbort('busy-run', 'agent-1')
         const res = await update(JSON.stringify({}))
         expect(res.status).toBe(200)
         expect(await res.json()).toEqual({ started: false, reason: 'busy', activeRuns: 1 })

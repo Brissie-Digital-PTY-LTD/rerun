@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
-vi.mock('@/cloud/support', () => ({ SUPPORT_CHAT_ENABLED: true }))
+vi.mock('@rerun/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
+vi.mock('@rerun/cloud/support', () => ({ SUPPORT_CHAT_ENABLED: true }))
 
 import { buildControlCommands, pushRecentAgent, type ControlGates } from './commands'
 
-const OPEN: ControlGates = { isSandbox: false, apiEntitled: true, needsMachineReason: null, assistantReady: true, hasChangelog: true, darkTheme: false }
+const OPEN: ControlGates = { isSandbox: false, workspaceAdmin: true, apiEntitled: true, needsMachineReason: null, assistantReady: true, hasChangelog: true, darkTheme: false }
 
 function find(gates: Partial<ControlGates>, id: string) {
     return buildControlCommands({ ...OPEN, ...gates }).find(command => command.id === id)
@@ -26,6 +26,11 @@ describe('buildControlCommands', () => {
     it('disables what a sandbox does not have', () => {
         for (const id of ['workspace', 'members', 'billing', 'new_box']) expect(find({ isSandbox: true }, id)?.disabledReason).toBeTruthy()
         expect(find({ isSandbox: true }, 'ai_providers')?.disabledReason).toBeNull()
+    })
+
+    it('disables what only an admin runs for a member, leaving the members list open', () => {
+        for (const id of ['workspace', 'billing', 'api_keys']) expect(find({ workspaceAdmin: false }, id)?.disabledReason).toBe('Admins only')
+        for (const id of ['members', 'ai_providers', 'new_agent', 'new_box']) expect(find({ workspaceAdmin: false }, id)?.disabledReason).toBeNull()
     })
 
     it('marks API keys as paid rather than disabling it', () => {

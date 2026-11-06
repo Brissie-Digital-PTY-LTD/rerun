@@ -6,7 +6,7 @@ import { oauthPopupResponse } from '@/lib/oauth/popup-result'
 import { appReturnUrl } from '@/lib/oauth/app-return'
 import { callbackGrant } from '@/lib/oauth/mobile-ticket'
 import { parkSignIn } from '@/lib/oauth/pending-grant'
-import { requireAgentWorkspaceId } from '@/app/api/_auth/ownership'
+import { requireAgentWorkspaceId, workspaceActor } from '@/app/api/_auth/access'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
@@ -74,6 +74,8 @@ export async function GET(req: Request) {
     try {
         const grant = callbackGrant(ctx)
         const workspaceId = grant?.workspaceId ?? (await requireAgentWorkspaceId(ctx.agentId))
+        // The session passed `manage` on the coworker's Box just above, or the grant was minted for someone who did.
+        const actor = workspaceActor(workspaceId)
         const userId = composioUserId(ctx.agentId, parseServiceRegistryKey(ctx.key).instanceId)
         const method = (await loadManifest(ctx.key))?.authMethods.find(m => m.kind === 'composio' && m.composio)
         if (!method?.composio) return finish({ ok: false, error: `${ctx.key} has no Composio connection to set up.` })
@@ -95,7 +97,7 @@ export async function GET(req: Request) {
             await parkSignIn(grant, { kind: 'composio', key: ctx.key, connectedAccountId: ctx.connectedAccountId })
             return finish({ ok: true, claim: grant.jti })
         }
-        await markComposioAuthorized(ctx.agentId, ctx.key, ctx.connectedAccountId, undefined, workspaceId)
+        await markComposioAuthorized(ctx.agentId, ctx.key, ctx.connectedAccountId, undefined, actor)
         return finish({ ok: true })
     } catch (err) {
         return finish({ ok: false, error: err instanceof Error ? err.message : 'Authorization failed' })

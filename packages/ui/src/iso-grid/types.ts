@@ -195,6 +195,12 @@ export type Container = {
     // Ce que ce `cta` donne à voir : la pastille fait défiler ces phrases au repos, et ne dit le
     // `cta` lui-même qu'au survol.
     ctaExamples?: string[]
+    // The `cta` is there but closed to this viewer: the pill is muted, and its hover reads `cta`
+    // (the reason, from the host) without the arrow of an action.
+    ctaDisabled?: boolean
+    // The viewer may look at this container, not change it: no resize handles, no grip to move it,
+    // and no tile placed or dropped in it (see onTileMoveRefused).
+    readOnly?: boolean
     // Nom accessible du container (lecteurs d'écran / focus clavier), fourni par l'app hôte.
     ariaLabel?: string
     // Mise en retrait du container entier, empreinte et label debout compris (cf. Tile.dimmed).
@@ -362,6 +368,9 @@ export type IsoGridProps = {
     onConfirmPlacement?: (pos: GridPosition) => void
     // `containerId` is the container the tile landed in, which may not be the one it left.
     onTileMove?: (id: string, pos: GridPosition, containerId?: string) => void
+    // A tile pulled while it is not draggable, or dropped in a `readOnly` container: it stays where
+    // it was, and the host says why.
+    onTileMoveRefused?: (id: string) => void
     onTileContextMenu?: (id: string, x: number, y: number) => void
     onResizeContainerLocal?: (id: string, patch: ResizePatch) => void
     onResizeContainerCommit?: (id: string) => void

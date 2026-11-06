@@ -3,7 +3,7 @@
 import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { TooltipLabeled } from '@/components/ui/tooltip'
+import { TooltipDisabledReason, TooltipLabeled } from '@/components/ui/tooltip'
 import { BrushCleaningIcon, DownloadIcon, EllipsisIcon, SearchIcon, Trash2Icon, XIcon } from '@/lib/icons'
 import { useState } from 'react'
 
@@ -17,10 +17,12 @@ type DataBrowserToolbarProps = {
     onExport: (format: 'csv' | 'json') => void
     onPurgeTable: () => void
     onDropTable: () => void
+    /** Why this viewer cannot change the table: emptying it, deleting it, or deleting its rows. */
+    tableActionsReason?: string
 }
 
 /** The right end of the tabs: a search that unfolds, the table menu, or what to do with the selected rows. */
-export function DataBrowserToolbar({ search, selectedCount, busy, onSearchChange, onClearSelection, onDeleteSelected, onExport, onPurgeTable, onDropTable }: DataBrowserToolbarProps) {
+export function DataBrowserToolbar({ search, selectedCount, busy, onSearchChange, onClearSelection, onDeleteSelected, onExport, onPurgeTable, onDropTable, tableActionsReason }: DataBrowserToolbarProps) {
     const [searchOpen, setSearchOpen] = useState(false)
     const showSearch = searchOpen || search !== ''
 
@@ -28,16 +30,18 @@ export function DataBrowserToolbar({ search, selectedCount, busy, onSearchChange
         return (
             <div className="flex items-center gap-1">
                 <span className="px-1 text-xs whitespace-nowrap text-muted-foreground">{selectedCount} selected</span>
-                <ConfirmDialog
-                    title={selectedCount === 1 ? 'Delete this row?' : `Delete ${selectedCount} rows?`}
-                    description={`${selectedCount === 1 ? 'The row is' : 'The rows are'} removed from the table for good. This cannot be undone.`}
-                    onConfirm={onDeleteSelected}
-                >
-                    <Button variant="ghost" size="xs" disabled={busy} className="text-destructive hover:text-destructive">
-                        <Trash2Icon className="size-3.5" />
-                        Delete
-                    </Button>
-                </ConfirmDialog>
+                <TooltipDisabledReason reason={tableActionsReason}>
+                    <ConfirmDialog
+                        title={selectedCount === 1 ? 'Delete this row?' : `Delete ${selectedCount} rows?`}
+                        description={`${selectedCount === 1 ? 'The row is' : 'The rows are'} removed from the table for good. This cannot be undone.`}
+                        onConfirm={onDeleteSelected}
+                    >
+                        <Button variant="ghost" size="xs" disabled={busy || !!tableActionsReason} className="text-destructive hover:text-destructive">
+                            <Trash2Icon className="size-3.5" />
+                            Delete
+                        </Button>
+                    </ConfirmDialog>
+                </TooltipDisabledReason>
                 <TooltipLabeled label="Clear selection">
                     <Button variant="ghost" size="icon-xs" onClick={onClearSelection} aria-label="Clear selection" className="text-muted-foreground">
                         <XIcon className="size-3.5" />
@@ -107,14 +111,18 @@ export function DataBrowserToolbar({ search, selectedCount, busy, onSearchChange
                         JSON
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={onPurgeTable}>
-                        <BrushCleaningIcon />
-                        Purge table
-                    </DropdownMenuItem>
-                    <DropdownMenuItem variant="destructive" onSelect={onDropTable}>
-                        <Trash2Icon />
-                        Delete table
-                    </DropdownMenuItem>
+                    <TooltipDisabledReason reason={tableActionsReason} side="left" className="flex w-full">
+                        <DropdownMenuItem disabled={!!tableActionsReason} onSelect={onPurgeTable} className="w-full">
+                            <BrushCleaningIcon />
+                            Purge table
+                        </DropdownMenuItem>
+                    </TooltipDisabledReason>
+                    <TooltipDisabledReason reason={tableActionsReason} side="left" className="flex w-full">
+                        <DropdownMenuItem variant="destructive" disabled={!!tableActionsReason} onSelect={onDropTable} className="w-full">
+                            <Trash2Icon />
+                            Delete table
+                        </DropdownMenuItem>
+                    </TooltipDisabledReason>
                 </DropdownMenuContent>
             </DropdownMenu>
         </div>

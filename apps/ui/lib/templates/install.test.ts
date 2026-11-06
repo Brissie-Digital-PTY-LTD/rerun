@@ -13,7 +13,7 @@ vi.mock('@/lib/storage/private', () => ({ downloadPrivateFile }))
 const { installTemplate } = await import('./install')
 
 const TEMPLATE = { id: 'template-1', title: 'Ad Remaker', agents: [], agent_archives: [{ agentKey: 'ad-remaker', path: 'archives/ad-remaker.tar.gz', bytes: 1, capturedAt: '2026-10-01T00:00:00.000Z' }] }
-const TARGET = { workspaceId: 13119, spaceId: 'space-1' }
+const TARGET = { workspaceId: 13119, spaceId: 'space-1', actor: { kind: 'workspace' as const, workspaceId: 13119 } }
 
 describe('installTemplate', () => {
     beforeEach(() => {

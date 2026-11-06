@@ -1,6 +1,6 @@
 // What the chat can say something useful about. `generic` is the catch-all, and still gets a block
 // of its own rather than the raw provider text.
-export type ChatErrorKind = 'budget' | 'usage_limit' | 'unauthorized' | 'overloaded' | 'context_window' | 'provider_error' | 'thinking_replay' | 'interrupted' | 'run_in_flight' | 'generic'
+export type ChatErrorKind = 'budget' | 'usage_limit' | 'unauthorized' | 'overloaded' | 'context_window' | 'provider_error' | 'thinking_replay' | 'interrupted' | 'run_in_flight' | 'session_gone' | 'generic'
 
 // The AI SDK throws `new Error(await response.text())` on a failed /api/chat request, so
 // what reaches the UI is the raw response body: the `Response.json({ error })` envelope of
@@ -74,6 +74,11 @@ export const CONTEXT_WINDOW = /context.?window|too many tokens|prompt is too lon
 // chat often loses the backticks.
 const THINKING_REPLAY_REJECTED = /invalid `?signature`? in `?thinking`? block/i
 
+// The engine's answer to a session id its coworker does not hold, and the code the hub answers with
+// instead, whether it caught the mismatch itself or relays the engine's refusal.
+export const ENGINE_SESSION_NOT_FOUND = 'session not found for this agent'
+export const SESSION_NOT_FOUND = 'session_not_found'
+
 // Classified on the text rather than on a code, because what reaches the chat is `runs.error`, the
 // flattened provider message the engine stored. The patterns mirror the engine's own
 // `classifyProviderError`, so both ends agree on what a spent subscription looks like.
@@ -86,6 +91,7 @@ export function classifyChatError(message: string): ChatErrorKind {
     if (THINKING_REPLAY_REJECTED.test(m)) return 'thinking_replay'
     if (m.includes('rerun_budget_exhausted') || m.includes('payment required') || m.includes('402')) return 'budget'
     if (m.includes('run_in_flight')) return 'run_in_flight'
+    if (m.includes(SESSION_NOT_FOUND) || m.includes(ENGINE_SESSION_NOT_FOUND)) return 'session_gone'
     if (SUBSCRIPTION_LIMIT.test(m)) return 'usage_limit'
     if (m.includes('interrupted: engine restarted') || m.includes('interrupted: claude sign-in renewed') || m.includes('ended the turn without a result')) return 'interrupted'
     if (PROVIDER_UNAUTHORIZED.test(m)) return 'unauthorized'

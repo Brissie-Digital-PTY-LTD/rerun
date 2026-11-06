@@ -2,17 +2,20 @@
 
 import { desktopAppSchema, desktopViewModeSchema, takeoverUrlSchema, type DesktopApp, type DesktopViewMode, type TakeoverResult } from '@rerun/contracts'
 
-import { assertAgentInWorkspace, requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { assertAgentInWorkspace, deniedCode, type DeniedCode } from '@/app/api/_auth/access'
+import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { DesktopUnavailableError, desktopSocketUrl, resolveWorkspaceDesktop, type WorkspaceDesktop } from '@/app/api/_services/desktop.service'
 import { NoEngineError } from '@/app/api/_services/workspace-engine.service'
 import { finishTakeover, openDesktopApp, startDesktop, startTakeover } from '@/lib/engine/client'
 
-type Failure = { ok: false; error: string }
+type Failure = { ok: false; error: string; code?: DeniedCode }
 
 const GENERIC_ERROR = "The machine's screen could not be reached. Try again in a moment."
 
 function failure(err: unknown): Failure {
     if (err instanceof DesktopUnavailableError || err instanceof NoEngineError) return { ok: false, error: err.message }
+    const code = deniedCode(err)
+    if (code && err instanceof Error) return { ok: false, error: err.message, code }
     console.error('[desktop]', err)
     return { ok: false, error: GENERIC_ERROR }
 }

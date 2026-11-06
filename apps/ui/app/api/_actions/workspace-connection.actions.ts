@@ -1,6 +1,6 @@
 'use server'
 
-import { requireWorkspaceId } from '@/app/api/_auth/ownership'
+import { requireAdminContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
 import {
     claudeKeysFromCode,
     codexKeysWhenApproved,
@@ -31,6 +31,10 @@ import { customProbeInputSchema, type CustomProbeInput, type CustomProbeResult }
 // yet reads as empty rather than as an error.
 
 type Result = { success: true } | { success: false; error: string }
+
+async function requireProvidersAdminWorkspaceId(): Promise<number> {
+    return (await requireAdminContext('Only an admin can manage AI providers')).workspace.id
+}
 
 function failure(err: unknown, fallback: string): { success: false; error: string } {
     return { success: false, error: err instanceof Error ? err.message : fallback }
@@ -63,7 +67,7 @@ export async function probeCustomEndpointAction(input: CustomProbeInput): Promis
 
 export async function setDefaultModelAction(pick: BoxDefault | null): Promise<Result> {
     try {
-        await setWorkspaceDefaultModel(await requireWorkspaceId(), pick)
+        await setWorkspaceDefaultModel(await requireProvidersAdminWorkspaceId(), pick)
         return { success: true }
     } catch (err) {
         return failure(err, 'Failed to set the workspace default model')
@@ -72,7 +76,7 @@ export async function setDefaultModelAction(pick: BoxDefault | null): Promise<Re
 
 export async function createAiConnectionAction(params: CreateBoxConnectionInput): Promise<CreateResult> {
     try {
-        return { success: true, connection: await createAiConnection(await requireWorkspaceId(), params) }
+        return { success: true, connection: await createAiConnection(await requireProvidersAdminWorkspaceId(), params) }
     } catch (err) {
         if (err instanceof NoPlanError) return { success: false, error: 'Start your free trial to connect your own Claude plan or API key.', reason: 'no_plan' }
         return failure(err, 'Failed to create the connection')
@@ -81,7 +85,7 @@ export async function createAiConnectionAction(params: CreateBoxConnectionInput)
 
 export async function updateAiConnectionAction(id: string, patch: UpdateBoxConnectionInput): Promise<{ success: true; connection: BoxConnection } | { success: false; error: string }> {
     try {
-        return { success: true, connection: await updateAiConnection(await requireWorkspaceId(), id, patch) }
+        return { success: true, connection: await updateAiConnection(await requireProvidersAdminWorkspaceId(), id, patch) }
     } catch (err) {
         return failure(err, 'Failed to update the connection')
     }
@@ -89,7 +93,7 @@ export async function updateAiConnectionAction(id: string, patch: UpdateBoxConne
 
 export async function updateAiConnectionKeysAction(id: string, body: { set?: Record<string, string>; remove?: string[] }): Promise<Result> {
     try {
-        await updateAiConnectionKeys(await requireWorkspaceId(), id, body)
+        await updateAiConnectionKeys(await requireProvidersAdminWorkspaceId(), id, body)
         return { success: true }
     } catch (err) {
         return failure(err, 'Failed to save the credential')
@@ -106,7 +110,7 @@ export async function getAiConnectionUsageAction(id: string): Promise<BoxConnect
 
 export async function deleteAiConnectionAction(id: string): Promise<{ success: true; released: BoxConnectionUsage } | { success: false; error: string }> {
     try {
-        return { success: true, released: await deleteAiConnection(await requireWorkspaceId(), id) }
+        return { success: true, released: await deleteAiConnection(await requireProvidersAdminWorkspaceId(), id) }
     } catch (err) {
         return failure(err, 'Failed to delete the connection')
     }

@@ -6,26 +6,28 @@ import { vi } from 'vitest'
 process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-catalog-families-'))
 process.env.RERUN_API_KEY = ''
 
-const state = vi.hoisted(() => ({ desktop: true }))
+const state = vi.hoisted(() => ({ desktop: true, paidData: true }))
 
 vi.mock('../config/env.js', async importOriginal => ({ ...(await importOriginal<typeof import('../config/env.js')>()), desktopEnabled: () => state.desktop }))
+vi.mock('../paid-data/price.js', () => ({ paidDataOfferedSoFar: () => state.paidData }))
 
 const { beforeEach, describe, expect, it } = await import('vitest')
 const { TOOL_KEYS } = await import('@rerun/contracts')
 const { agentToolCatalog, toolCatalog } = await import('./catalog.js')
 const { agentConfigSchema } = await import('../agents/types.js')
-const { PAID_DATA_ENABLED } = await import('../cloud/index.js')
-
-// The switches of the families this build ships: the open source one has no paid data.
-const BUILD_KEYS = TOOL_KEYS.filter(key => key !== 'paidData' || PAID_DATA_ENABLED)
-
 beforeEach(() => {
     state.desktop = true
+    state.paidData = true
 })
 
 describe('toolCatalog', () => {
+    it('leaves paid data out of the settings when the hub sells none', () => {
+        state.paidData = false
+        expect(toolCatalog().map(f => f.family)).not.toContain('paidData')
+    })
+
     it('has one family per capability switch plus self', () => {
-        expect(toolCatalog().map(f => f.family).sort()).toEqual([...BUILD_KEYS, 'self'].sort())
+        expect(toolCatalog().map(f => f.family).sort()).toEqual([...TOOL_KEYS, 'self'].sort())
     })
 
     // The quick replies are a block of the message the engine reads, not a tool: the family is
@@ -81,7 +83,7 @@ describe('agentToolCatalog', () => {
     })
 
     it('follows each tool switch one by one', () => {
-        for (const key of BUILD_KEYS) {
+        for (const key of TOOL_KEYS) {
             const catalog = agentToolCatalog(agentConfigSchema.parse({ name: 'x', tools: { [key]: false } }))
             expect(catalog.filter(f => !f.enabled).map(f => f.family), key).toEqual([key])
         }

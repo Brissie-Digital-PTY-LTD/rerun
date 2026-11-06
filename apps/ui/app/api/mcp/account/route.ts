@@ -1,6 +1,7 @@
+import { memberActor, workspaceActor, type Actor } from '@/app/api/_auth/access'
 import { dispatchAccountTool } from '@/app/api/_services/mcp-account.service'
 import { ACCOUNT_TOOL_DEFS } from '@/lib/mcp/account-tools'
-import { authenticateApiKey } from '@/lib/mcp/api-keys'
+import { authenticateApiKey, type AuthenticatedApiKey } from '@/lib/mcp/api-keys'
 import { responseTooLarge, tooLargeMessage } from '@/lib/mcp/truncate'
 
 // The "Rerun" MCP server: it lets an external AI agent (Claude Code and friends) shape a
@@ -18,6 +19,14 @@ function rpcResult(id: unknown, result: unknown): Response {
 
 function rpcError(id: unknown, code: number, message: string): Response {
     return Response.json({ jsonrpc: '2.0', id, error: { code, message } })
+}
+
+const CREATOR_LEFT = 'The member who created this key has left the workspace'
+
+// A key acts with the access of the member who created it, so a hidden Box stays hidden to it. A
+// key from before creators were recorded, or one the back-office made, acts as the workspace.
+async function keyActor(key: AuthenticatedApiKey): Promise<Actor | null> {
+    return key.createdByUserId ? memberActor(key.workspaceId, key.createdByUserId) : workspaceActor(key.workspaceId)
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -57,8 +66,10 @@ export async function POST(req: Request): Promise<Response> {
     if (method === 'tools/call') {
         const name = typeof params?.name === 'string' ? params.name : ''
         const args = (params?.arguments ?? {}) as Record<string, unknown>
+        const actor = await keyActor(key)
+        if (!actor) return rpcError(id, -32001, CREATOR_LEFT)
         try {
-            const out = await dispatchAccountTool(key.workspaceId, name, args, { actorUserId: key.createdBy })
+            const out = await dispatchAccountTool(actor, name, args, { actorUserId: key.createdByUserId })
             const text = JSON.stringify(out)
             // Backstop under the per-field limits the handlers apply. A tool result stays in the
             // caller's transcript for good, so an oversized one is refused rather than cut: the

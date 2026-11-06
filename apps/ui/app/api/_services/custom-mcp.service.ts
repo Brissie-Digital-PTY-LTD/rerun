@@ -1,3 +1,4 @@
+import type { Actor } from '@/app/api/_auth/access'
 import { resolveAgentTarget } from '@/app/api/_services/chat.service'
 import { installedFromRegistry } from '@/app/api/_services/services.service'
 import { deleteMcpToken, getAgent, getMcpServerStatuses, patchMcpServers } from '@/lib/engine/client'
@@ -42,15 +43,15 @@ export async function customMcpServersOf(conn: EngineConnection, engineAgentId: 
 
 // The catalog apps and the servers registered outside it, read off one registry so the two lists
 // never disagree on who owns a server. An unreachable engine still lists the apps.
-export async function listAgentConnectors(agentId: string, workspaceId?: number): Promise<{ services: InstalledService[]; custom: CustomMcpServer[] }> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function listAgentConnectors(agentId: string, actor?: Actor): Promise<{ services: InstalledService[]; custom: CustomMcpServer[] }> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor)
     const reg = await readRegistry(conn, engineAgentId)
     const [services, custom] = await Promise.all([installedFromRegistry(reg), customMcpServersOf(conn, engineAgentId, reg).catch(() => [])])
     return { services, custom }
 }
 
-export async function getCustomMcpStatuses(agentId: string, workspaceId?: number): Promise<CustomMcpStatus[]> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function getCustomMcpStatuses(agentId: string, actor?: Actor): Promise<CustomMcpStatus[]> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor)
     const detail = await getAgent(conn, engineAgentId)
     const names = unclaimedMcpServers(detail.config.mcpServers ?? [], await readRegistry(conn, engineAgentId)).map(server => server.name)
     if (names.length === 0) return []
@@ -60,16 +61,16 @@ export async function getCustomMcpStatuses(agentId: string, workspaceId?: number
 }
 
 // One server, probed alone: the chat card waits on it, and dialing every other server would slow it down.
-export async function getCustomMcpServer(agentId: string, name: string, workspaceId?: number): Promise<{ server: CustomMcpServer; status: CustomMcpLiveStatus } | null> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function getCustomMcpServer(agentId: string, name: string, actor?: Actor): Promise<{ server: CustomMcpServer; status: CustomMcpLiveStatus } | null> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor)
     const server = (await customMcpServersOf(conn, engineAgentId, await readRegistry(conn, engineAgentId))).find(candidate => candidate.name === name)
     if (!server) return null
     const statuses = await getMcpServerStatuses(conn, engineAgentId, [name]).catch(() => null)
     return { server, status: statuses?.find(entry => entry.name === name)?.status ?? 'unknown' }
 }
 
-export async function removeCustomMcpServer(agentId: string, name: string, workspaceId?: number): Promise<void> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+export async function removeCustomMcpServer(agentId: string, name: string, actor?: Actor): Promise<void> {
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     if (connectorMcpServerNames(await readRegistry(conn, engineAgentId)).has(name)) {
         throw new Error(`"${name}" belongs to an app. Manage it from the Apps tab.`)
     }

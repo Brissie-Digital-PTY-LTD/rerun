@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { callableEngineAgentIds, workspaceActor, type Actor } from '@/app/api/_auth/access'
 import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { ensureSessionRow, resolveAgentTarget } from '@/app/api/_services/chat.service'
 import { chat as engineChat, getAgent as engineGetAgent } from '@/lib/engine/client'
@@ -66,13 +67,13 @@ async function browserLanguage(): Promise<string | undefined> {
     }
 }
 
-async function start(workspaceId: number, { agentId, message }: Handoff, fresh: boolean, agentName: string | undefined): Promise<HandoffResult> {
+async function start(actor: Actor, { agentId, message }: Handoff, fresh: boolean, agentName: string | undefined): Promise<HandoffResult> {
     try {
-        const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+        const [{ conn, engineAgentId }, callableAgentIds] = await Promise.all([resolveAgentTarget(agentId, actor), callableEngineAgentIds(actor)])
         const written = fresh ? { message, title: message, ranItsOwnInstall: false } : await messageFor(conn, engineAgentId, message, agentName)
 
         const userLanguage = written.ranItsOwnInstall ? await browserLanguage() : undefined
-        const res = await engineChat(conn, engineAgentId, { message: written.message, source: 'api', install: written.ranItsOwnInstall, userLanguage })
+        const res = await engineChat(conn, engineAgentId, { message: written.message, source: 'api', install: written.ranItsOwnInstall, userLanguage, callableAgentIds })
         if (!res.ok) {
             const refusal = await res.text().catch(() => '')
             // Its install already runs elsewhere, started from its own chat or by an earlier
@@ -103,8 +104,10 @@ async function start(workspaceId: number, { agentId, message }: Handoff, fresh: 
 }
 
 // `fresh` names the agents a caller has just created with the very install it hands over: there is
-// nothing on the engine to read back that it does not already hold.
-export async function startAgentSetup(ctx: Pick<WorkspaceContext, 'supabase'> & { workspace: Pick<WorkspaceContext['workspace'], 'id'> }, args: Record<string, unknown>, { fresh = new Set<string>() }: { fresh?: ReadonlySet<string> } = {}): Promise<unknown> {
+// nothing on the engine to read back that it does not already hold. `actor` is whose access each
+// setup starts with: the member behind a foreman turn, or, left out, the workspace itself.
+export async function startAgentSetup(ctx: Pick<WorkspaceContext, 'supabase'> & { workspace: Pick<WorkspaceContext['workspace'], 'id'>; actor?: Actor }, args: Record<string, unknown>, { fresh = new Set<string>() }: { fresh?: ReadonlySet<string> } = {}): Promise<unknown> {
+    const actor = ctx.actor ?? workspaceActor(ctx.workspace.id)
     const listed = Array.isArray(args.agents) ? args.agents.map(handoff) : []
     if (!listed.length) throw new Error('start_agent_setup needs at least one agent: its agentId and the message to hand it.')
 
@@ -127,7 +130,7 @@ export async function startAgentSetup(ctx: Pick<WorkspaceContext, 'supabase'> & 
 
     // One agent that cannot be reached is reported beside the ones that started, never thrown: the
     // rest of the team is already asking the user, and saying otherwise would be a lie on screen.
-    const agents = await Promise.all(requests.map(request => (inactive.has(request.agentId) ? Promise.resolve<HandoffResult>({ agentId: request.agentId, started: false, inactive: true }) : start(ctx.workspace.id, request, fresh.has(request.agentId), names.get(request.agentId)))))
+    const agents = await Promise.all(requests.map(request => (inactive.has(request.agentId) ? Promise.resolve<HandoffResult>({ agentId: request.agentId, started: false, inactive: true }) : start(actor, request, fresh.has(request.agentId), names.get(request.agentId)))))
     const waiting = agents.filter(result => result.inactive)
     const failed = agents.filter(result => !result.started && !result.inactive)
 

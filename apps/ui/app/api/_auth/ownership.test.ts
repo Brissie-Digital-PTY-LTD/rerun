@@ -5,21 +5,19 @@ const mocks = vi.hoisted(() => ({
     selectSingle: vi.fn(),
     selectMaybeSingle: vi.fn(),
     selectMany: vi.fn(),
-    selectMaybeSingleWithJoins: vi.fn(),
     client: {},
 }))
 
 vi.mock('@/supabase/session/getServerSession', () => ({ getServerSession: mocks.getServerSession, getSessionWorkspace: mocks.getServerSession }))
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: () => mocks.client }))
-vi.mock('@/supabase/supabase-helpers', () => ({ selectSingle: mocks.selectSingle, selectMaybeSingle: mocks.selectMaybeSingle, selectMany: mocks.selectMany, selectMaybeSingleWithJoins: mocks.selectMaybeSingleWithJoins }))
+vi.mock('@/supabase/supabase-helpers', () => ({ selectSingle: mocks.selectSingle, selectMaybeSingle: mocks.selectMaybeSingle, selectMany: mocks.selectMany }))
 
 const {
     AuthorizationError,
     UnauthenticatedError,
-    assertAgentInWorkspace,
-    assertSessionInWorkspace,
     assertSpaceInWorkspace,
     assertSpaceOwnedBy,
+    requireAdminContext,
     requireWorkspaceContext,
     requireWorkspaceId,
     workspaceFounderUserId,
@@ -40,7 +38,6 @@ beforeEach(() => {
     mocks.selectSingle.mockReset()
     mocks.selectMaybeSingle.mockReset()
     mocks.selectMany.mockReset()
-    mocks.selectMaybeSingleWithJoins.mockReset()
 })
 
 describe('requireWorkspaceId', () => {
@@ -68,9 +65,9 @@ describe('requireWorkspaceId', () => {
 
 describe('requireWorkspaceContext', () => {
     it('hands back the workspace once the membership is proven', async () => {
-        mocks.selectMaybeSingle.mockResolvedValue({ data: { user_id: 'u1' }, error: null })
+        mocks.selectMaybeSingle.mockResolvedValue({ data: { role: 'member', box_scope: 'assigned' }, error: null })
         const context = await requireWorkspaceContext()
-        expect(context).toMatchObject({ userId: 'u1', userEmail: 'a@b.c', workspace: { id: 1 }, supabase: mocks.client })
+        expect(context).toMatchObject({ userId: 'u1', userEmail: 'a@b.c', workspace: { id: 1 }, role: 'member', boxScope: 'assigned', supabase: mocks.client })
         expect(mocks.selectMaybeSingle.mock.calls[0][1]).toBe('workspace_members')
         expect(mocks.selectMaybeSingle.mock.calls[0][3]).toEqual({ user_id: 'u1', workspace_id: 1 })
     })
@@ -91,25 +88,6 @@ describe('requireWorkspaceContext', () => {
     it('throws UnauthenticatedError without an auth session', async () => {
         mocks.getServerSession.mockResolvedValue({ ...sessionIn(1), session: undefined })
         await expect(requireWorkspaceContext()).rejects.toBeInstanceOf(UnauthenticatedError)
-    })
-})
-
-describe('assertAgentInWorkspace', () => {
-    it('returns the agent of the caller workspace', async () => {
-        const agent = { workspace_id: 1, space_id: 's1', engine_agent_id: 'e1' }
-        mocks.selectSingle.mockResolvedValue({ data: agent, error: null })
-        await expect(assertAgentInWorkspace('a1')).resolves.toEqual(agent)
-        expect(mocks.selectSingle.mock.calls[0][3]).toEqual({ id: 'a1' })
-    })
-
-    it('refuses an agent from another workspace', async () => {
-        mocks.selectSingle.mockResolvedValue({ data: { workspace_id: 2, space_id: 's1', engine_agent_id: 'e1' }, error: null })
-        await expect(assertAgentInWorkspace('a1')).rejects.toThrow('Coworker not found')
-    })
-
-    it('refuses an agent that does not exist', async () => {
-        mocks.selectSingle.mockResolvedValue({ data: null, error: null })
-        await expect(assertAgentInWorkspace('a1')).rejects.toBeInstanceOf(AuthorizationError)
     })
 })
 
@@ -137,43 +115,28 @@ describe('assertSpaceInWorkspace', () => {
     })
 })
 
-describe('assertSessionInWorkspace', () => {
-    const row = (workspaceId: number | null) => ({ id: 'se1', agent_id: 'a1', engine_session_id: 'es1', agent: workspaceId === null ? null : { workspace_id: workspaceId, engine_agent_id: 'e1' } })
-
-    it('returns a session whose agent belongs to the caller workspace, from one read joined to its agent', async () => {
-        mocks.selectMaybeSingleWithJoins.mockResolvedValueOnce({ data: row(1), error: null })
-        await expect(assertSessionInWorkspace('se1')).resolves.toEqual({ id: 'se1', agent_id: 'a1', engine_session_id: 'es1', engine_agent_id: 'e1' })
-        const [, table, , joins, filters] = mocks.selectMaybeSingleWithJoins.mock.calls[0]
-        expect(table).toBe('sessions')
-        expect(joins.agent.foreignKey).toBe('agents!sessions_agent_id_fkey')
-        expect(filters).toEqual({ id: 'se1' })
+describe('requireAdminContext', () => {
+    it('hands an admin their context', async () => {
+        mocks.selectMaybeSingle.mockResolvedValue({ data: { role: 'admin' }, error: null })
+        await expect(requireAdminContext()).resolves.toMatchObject({ userId: 'u1', role: 'admin' })
     })
 
-    it('refuses a session whose agent belongs to another workspace', async () => {
-        mocks.selectMaybeSingleWithJoins.mockResolvedValueOnce({ data: row(2), error: null })
-        await expect(assertSessionInWorkspace('se1')).rejects.toThrow('Session not found')
-    })
-
-    it('refuses a session whose agent row is missing', async () => {
-        mocks.selectMaybeSingleWithJoins.mockResolvedValueOnce({ data: row(null), error: null })
-        await expect(assertSessionInWorkspace('se1')).rejects.toBeInstanceOf(AuthorizationError)
-    })
-
-    it('refuses a session that does not exist', async () => {
-        mocks.selectMaybeSingleWithJoins.mockResolvedValueOnce({ data: null, error: null })
-        await expect(assertSessionInWorkspace('se1')).rejects.toThrow('Session not found')
-    })
-
-    it('takes the workspace a caller already started resolving instead of reading it again', async () => {
-        mocks.selectMaybeSingleWithJoins.mockResolvedValueOnce({ data: row(7), error: null })
-        await expect(assertSessionInWorkspace('se1', Promise.resolve(7))).resolves.toMatchObject({ id: 'se1' })
-        expect(mocks.getServerSession).not.toHaveBeenCalled()
+    it('refuses a member with the reason given', async () => {
+        mocks.selectMaybeSingle.mockResolvedValue({ data: { role: 'member' }, error: null })
+        const error = await requireAdminContext('Only an admin can manage billing').catch(e => e)
+        expect(error).toBeInstanceOf(AuthorizationError)
+        expect(error.message).toBe('Only an admin can manage billing')
     })
 })
 
 describe('workspaceFounderUserId', () => {
-    it('answers the earliest member, ordered by created_at', async () => {
-        mocks.selectMany.mockResolvedValue({ data: [{ user_id: 'first' }, { user_id: 'second' }], error: null })
+    it('answers the earliest admin, ordered by created_at', async () => {
+        mocks.selectMany.mockResolvedValue({ data: [{ user_id: 'first', role: 'member' }, { user_id: 'second', role: 'admin' }, { user_id: 'third', role: 'admin' }], error: null })
+        await expect(workspaceFounderUserId(1)).resolves.toBe('second')
+    })
+
+    it('falls back on the earliest member when no admin is left', async () => {
+        mocks.selectMany.mockResolvedValue({ data: [{ user_id: 'first', role: 'member' }, { user_id: 'second', role: 'member' }], error: null })
         await expect(workspaceFounderUserId(1)).resolves.toBe('first')
         const [, table, , filters, orderBy] = mocks.selectMany.mock.calls[0]
         expect(table).toBe('workspace_members')

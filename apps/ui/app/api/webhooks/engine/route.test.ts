@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { resolveWorkspaceMemberEmail, resolveWorkspaceOwner } from '@/app/api/_services/workspace-owner.service'
 import { ensureSessionRow } from '@/app/api/_services/chat.service'
-import { sendIncidentResolvedEmail, sendNotificationEmail } from '@/cloud/email'
+import { sendIncidentResolvedEmail, sendNotificationEmail } from '@rerun/cloud/email'
 import { loadPresence } from '@/app/api/_services/presence.service'
 import { captureServer } from '@rerun/analytics/server'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
@@ -15,11 +15,11 @@ vi.mock('@trigger.dev/sdk/v3', async () => (await import('@/test/trigger-sdk')).
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
 vi.mock('@rerun/analytics/server', () => ({ captureServer: vi.fn(), deterministicUuid: vi.fn((seed: string) => seed) }))
 vi.mock('@/app/api/_services/workspace-owner.service', () => ({ resolveWorkspaceOwner: vi.fn().mockResolvedValue(null), resolveWorkspaceMemberEmail: vi.fn().mockResolvedValue(null) }))
-vi.mock('@/cloud/billing.server', () => ({ extendTrial: vi.fn(), subscriptionHasCard: vi.fn() }))
+vi.mock('@rerun/cloud/billing.server', () => ({ extendTrial: vi.fn(), subscriptionHasCard: vi.fn() }))
 vi.mock('@/app/api/_services/chat.service', () => ({ ensureSessionRow: vi.fn() }))
 vi.mock('@/app/api/_services/presence.service', () => ({ loadPresence: vi.fn().mockResolvedValue([]) }))
-vi.mock('@/cloud/email', () => ({ sendNotificationEmail: vi.fn(), sendIncidentResolvedEmail: vi.fn(), BANNER_WARM_INLINE_MS: 0, emailBoardBanner: vi.fn().mockResolvedValue(undefined), buildUnsubscribeUrl: (userId: string) => `https://app.rerun.build/unsubscribe?u=${userId}`, pushNotification: vi.fn() }))
-vi.mock('@/cloud/engines', () => ({ claimPoolEngine: vi.fn() }))
+vi.mock('@rerun/cloud/email', () => ({ sendNotificationEmail: vi.fn(), sendIncidentResolvedEmail: vi.fn(), BANNER_WARM_INLINE_MS: 0, emailBoardBanner: vi.fn().mockResolvedValue(undefined), buildUnsubscribeUrl: (userId: string) => `https://app.rerun.build/unsubscribe?u=${userId}`, pushNotification: vi.fn() }))
+vi.mock('@rerun/cloud/engines', () => ({ claimPoolEngine: vi.fn() }))
 const afterTasks = vi.hoisted(() => [] as Promise<unknown>[])
 vi.mock('next/server', async importOriginal => ({ ...(await importOriginal<typeof import('next/server')>()), after: (task: () => Promise<unknown>) => void afterTasks.push(task()) }))
 vi.mock('@/lib/ai/generate-run-title', () => ({ generateRunTitle: vi.fn() }))
@@ -74,8 +74,10 @@ function resolve(table: string, calls: readonly SupabaseCall[]) {
     if (table === 'workspace_members') {
         const asked = eqValue(calls, 'user_id')
         if (asked) return { data: MEMBERS.includes(asked as string) ? { user_id: asked } : null }
-        return { data: MEMBERS.map(user_id => ({ user_id })) }
+        return { data: MEMBERS.map(user_id => ({ user_id, role: 'member', box_scope: 'all' })) }
     }
+    if (table === 'spaces') return { data: { workspace_id: WORKSPACE_ID, visibility: 'workspace' } }
+    if (table === 'space_members') return { data: [] }
     if (table === 'users' && !writeMethodOf(calls)) {
         const asked = eqValue(calls, 'id')
         if (asked) return { data: { email_notification_prefs: prefsOf[asked as string] ?? null } }

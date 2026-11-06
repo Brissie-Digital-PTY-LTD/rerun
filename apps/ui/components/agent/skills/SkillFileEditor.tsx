@@ -5,6 +5,8 @@ import { PanelDeleteButton, PanelEditorBody, PanelEditorFooter, PanelEditorHeade
 import { TemplateContentLock } from '@/components/agent/TemplateContentLock'
 import { templateLockTooltip } from '@/lib/templates/content-lock'
 import { useTemplateContentLock } from '@/hooks/useTemplateContentLock'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -21,7 +23,10 @@ type SkillFileEditorProps = {
 
 export function SkillFileEditor({ agentId, slug, path, readOnly: readOnlyProp, onBack }: SkillFileEditorProps) {
     const locked = useTemplateContentLock(agentId)
-    const readOnly = readOnlyProp || locked
+    const canManage = useCanManageAgent(agentId)
+    const readOnly = readOnlyProp || locked || !canManage
+    const deleteReason = locked ? templateLockTooltip('Deleting this file') : canManage ? undefined : BOX_MANAGE_REASON
+    const saveReason = locked ? templateLockTooltip('Editing this file') : canManage ? undefined : BOX_MANAGE_REASON
     const [loading, setLoading] = useState(true)
     const [content, setContent] = useState('')
     const [truncated, setTruncated] = useState(false)
@@ -77,18 +82,18 @@ export function SkillFileEditor({ agentId, slug, path, readOnly: readOnlyProp, o
             </PanelEditorBody>
             {!readOnlyProp && (
                 <PanelEditorFooter>
-                    <TooltipDisabledReason reason={locked ? templateLockTooltip('Deleting this file') : undefined}>
+                    <TooltipDisabledReason reason={deleteReason}>
                         <PanelDeleteButton
                             label="Delete file"
                             busy={deleting}
-                            disabled={locked}
+                            disabled={!!deleteReason}
                             onClick={handleDelete}
                             confirmTitle={`Delete ${path}?`}
                             confirmDescription="The file is removed from the skill. This cannot be undone."
                         />
                     </TooltipDisabledReason>
-                    <TooltipDisabledReason reason={locked ? templateLockTooltip('Editing this file') : undefined} className="flex-1">
-                        <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={locked || loading || truncated}>
+                    <TooltipDisabledReason reason={saveReason} className="flex-1">
+                        <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={!!saveReason || loading || truncated}>
                             Save changes
                         </Button>
                     </TooltipDisabledReason>

@@ -1,4 +1,5 @@
 import { deleteAgentAction, duplicateAgentAction, moveAgentAction, renameAgentAction } from '@/app/api/_actions/agent.actions'
+import { BOX_MANAGE_ACTION_REASON, boxAccessFor, type BoxViewer, type SpaceGrant } from '@/lib/board/box-access'
 import { duplicateAgentName } from '@/lib/copy-name'
 import { startKickoffAction } from '@/app/api/_actions/chat.actions'
 import type { KickoffResult } from '@/app/api/_services/kickoff.service'
@@ -10,7 +11,7 @@ import type { SpaceRect, SpaceSide } from '@/lib/board/space-layout'
 import { installSharedAgentAction } from '@/app/api/_actions/agent-share.actions'
 import { installTemplateAction } from '@/app/api/_actions/template.actions'
 import { fireRerunConfetti } from '@/lib/confetti'
-import { clearPendingKickoff, readPendingKickoff, savePendingKickoff } from '@/lib/onboarding/pending-kickoff'
+import { clearPendingKickoff, readPendingKickoff, readPendingKickoffs, savePendingKickoff, type PendingKickoff } from '@/lib/onboarding/pending-kickoff'
 import { reportDuplicate, reportInstall, reportShareInstall } from '@/lib/templates/install-feedback'
 import { track } from '@rerun/analytics/client'
 import { toast } from 'sonner'
@@ -34,6 +35,18 @@ function spaceAtPosition(spaces: SpacePublic[], pos: GridPosition) {
         const rowMax = Math.max(s.row_start, s.row_end)
         return pos.col >= colMin && pos.col + (AGENT_SPAN - 1) <= colMax && pos.row >= rowMin && pos.row + (AGENT_SPAN - 1) <= rowMax
     })
+}
+
+// The board's own writes go straight to the database: a Box the caller only uses is refused here,
+// before RLS would refuse it in silence.
+function managesBoxes(state: { spaces: SpacePublic[]; spaceGrants: SpaceGrant[] }, viewer: BoxViewer, spaceIds: (string | null | undefined)[]) {
+    return spaceIds.every(spaceId => boxAccessFor(viewer, spaceId ? state.spaces.find(s => s.id === spaceId) : undefined, state.spaceGrants) === 'manage')
+}
+
+export const BOX_REFUSAL_TOAST_ID = 'box-manage-refused'
+
+export function refuseUnmanagedBox() {
+    toast.error(BOX_MANAGE_ACTION_REASON, { id: BOX_REFUSAL_TOAST_ID })
 }
 
 // Brouillon d'agent en attente de placement : le modal récolte ces champs, puis on entre en
@@ -111,10 +124,10 @@ type BoardState = {
     setPendingOpenSession: (open: { agentId: string; sessionId: string; runId: string | null; title?: string }) => void
     clearPendingOpenSession: () => void
     pushPlacement: (pos: GridPosition, spaceId: string | null) => { positions: GridPosition[]; done: boolean } | null
-    confirmPlacement: (pos: GridPosition) => void
+    confirmPlacement: (pos: GridPosition, viewer: BoxViewer) => void
     cancelPlacement: () => void
-    moveAgent: (id: string, pos: GridPosition, spaceId?: string) => void
-    moveAgentToBox: (id: string, spaceId: string) => void
+    moveAgent: (id: string, pos: GridPosition, spaceId: string | undefined, viewer: BoxViewer) => void
+    moveAgentToBox: (id: string, spaceId: string, viewer: BoxViewer) => void
     renameAgent: (id: string, name: string) => void
     removeAgent: (id: string) => void
     setSessionStatus: (sessionId: string, status: SessionStatus) => void
@@ -144,16 +157,25 @@ type BoardState = {
     focusAgentOnBoard: (id: string, tab?: AgentFocusTab) => void
     setMode: (mode: InteractionMode) => void
     // `from` : la Box créée atterrit sur cette face de la Box source, au lieu d'être empilée en bas.
-    claimSpace: (workspaceId: number, name: string, from?: { spaceId: string; side: SpaceSide }) => Promise<void>
-    updateSpace: (id: string, patch: Partial<Pick<SpacePublic, 'col_start' | 'row_start' | 'col_end' | 'row_end' | 'name'>>) => void
-    moveSpace: (id: string, rect: SpaceRect) => void
+    // A member manages the Box they create: their grant is written here before realtime brings it,
+    // so the new Box opens its controls the moment it lands.
+    claimSpace: (workspaceId: number, name: string, from?: { spaceId: string; side: SpaceSide }, viewer?: BoxViewer) => Promise<void>
+    updateSpace: (id: string, patch: Partial<Pick<SpacePublic, 'col_start' | 'row_start' | 'col_end' | 'row_end' | 'name'>>, viewer: BoxViewer) => void
+    moveSpace: (id: string, rect: SpaceRect, viewer: BoxViewer) => void
     // L'activation est déjà écrite en base quand ceci est appelé : c'est du repaint immédiat, le
     // realtime repassera derrière avec la même valeur.
     _localActivateAgent: (id: string) => void
     _localUpdateSpace: (id: string, patch: Partial<Pick<SpacePublic, 'col_start' | 'row_start' | 'col_end' | 'row_end'>>) => void
     _setResizingSpaceId: (id: string | null) => void
-    renameSpace: (id: string, name: string) => void
-    deleteSpace: (id: string) => void
+    renameSpace: (id: string, name: string, viewer: BoxViewer) => void
+    deleteSpace: (id: string, viewer: BoxViewer) => void
+    // The caller's own `space_members` rows (every row of the workspace for an admin, as RLS returns
+    // them). Read with the board so the buttons know which Boxes the caller manages.
+    spaceGrants: SpaceGrant[]
+    setSpaceGrants: (grants: SpaceGrant[]) => void
+    // A Box the caller lost access to leaves the board with its coworkers, their sessions and any
+    // panel open on one of them. Answers whether a coworker panel had to be closed.
+    dropSpaces: (spaceIds: string[]) => boolean
     _realtimeInsertSpace: (space: SpacePublic) => void
     _realtimeUpdateSpace: (space: SpacePublic) => void
     _realtimeDeleteSpace: (id: string) => void
@@ -169,9 +191,24 @@ type BoardState = {
 
 const supabase = createClient()
 
-// Single-flight sur l'envoi du kickoff : la fermeture du wizard et le rattrapage au boot
-// peuvent se chevaucher, or l'entrée localStorage n'est effacée qu'après la réponse.
-let kickoffInFlight: ReturnType<typeof startKickoffAction> | null = null
+// Single-flight sur l'envoi du kickoff, par agent : la fermeture du wizard et le rattrapage au boot
+// peuvent se chevaucher, or l'entrée localStorage n'est effacée qu'après la réponse. Un seul envoi
+// partagé entre agents faisait ouvrir, chez un agent créé juste après un autre, la conversation du
+// premier, et son propre kickoff ne partait jamais.
+const kickoffsInFlight = new Map<string, Promise<KickoffResult>>()
+
+function deliverKickoff(pending: PendingKickoff): Promise<KickoffResult> {
+    const inFlight = kickoffsInFlight.get(pending.agentId)
+    if (inFlight) return inFlight
+    track('agent_run_started', { agent_id: pending.agentId })
+    // A dropped connection rejects the action instead of answering: the same transient failure
+    // as an unreachable engine, so the entry stays for the replay at boot.
+    const delivery = startKickoffAction(pending.agentId, { kickoff: pending.kickoff, description: pending.description })
+        .catch((err: unknown): KickoffResult => ({ ok: false, error: err instanceof Error ? err.message : 'Kickoff failed', agentGone: false }))
+        .finally(() => kickoffsInFlight.delete(pending.agentId))
+    kickoffsInFlight.set(pending.agentId, delivery)
+    return delivery
+}
 
 // Une écriture qui ne change rien recrée quand même `sessions` / `agents`, et toute la colonne de
 // droite (un AgentPanelChat monté par agent visité, un AgentChat monté par conversation ouverte)
@@ -206,6 +243,7 @@ const initialState = {
     pendingOpenSession: null as { agentId: string; sessionId: string; runId: string | null; title?: string } | null,
     _resizingSpaceId: null,
     _movingSpaceId: null,
+    spaceGrants: [] as SpaceGrant[],
     hydrated: false,
 }
 
@@ -219,7 +257,11 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     reset: () => set({ ...initialState }),
 
     hydrate: async (workspaceId: number) => {
-        const [agentsResult, spacesResult] = await Promise.all([selectMany(supabase, 'agents', ['id', 'name', 'handle', 'description', 'template_id', 'status', 'col', 'row', 'workspace_id', 'space_id', 'created_at', 'disabled_at', 'disabled_reason'] as const, { workspace_id: workspaceId }), selectMany(supabase, 'spaces', ['id', 'workspace_id', 'name', 'col_start', 'row_start', 'col_end', 'row_end', 'created_at'] as const, { workspace_id: workspaceId })])
+        const [agentsResult, spacesResult, grantsResult] = await Promise.all([
+            selectMany(supabase, 'agents', ['id', 'name', 'handle', 'description', 'template_id', 'status', 'col', 'row', 'workspace_id', 'space_id', 'created_at', 'disabled_at', 'disabled_reason'] as const, { workspace_id: workspaceId }),
+            selectMany(supabase, 'spaces', ['id', 'workspace_id', 'name', 'col_start', 'row_start', 'col_end', 'row_end', 'created_at', 'visibility'] as const, { workspace_id: workspaceId }),
+            selectMany(supabase, 'space_members', ['space_id', 'user_id', 'access'] as const, { workspace_id: workspaceId }),
+        ])
 
         const dbAgents = agentsResult.data ? agentsResult.data.map(agentFromRow) : []
         const dbSpaces = spacesResult.data ?? []
@@ -237,7 +279,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
             return { ...a, status: computeAgentStatus(agentSessions, onlineMap[a.id] ?? true) }
         })
 
-        set({ agents: agentsWithStatus, spaces: dbSpaces, sessions: dbSessions, agentOnlineMap: onlineMap, hydrated: true })
+        set({ agents: agentsWithStatus, spaces: dbSpaces, sessions: dbSessions, spaceGrants: grantsResult.data ?? [], agentOnlineMap: onlineMap, hydrated: true })
 
         // The board shows first and the engine is asked after: a sweep that waits on a slow Box
         // would hold the whole board back for sessions that are, at worst, shown busy a moment
@@ -300,33 +342,27 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     },
 
     sendPendingKickoff: async agentId => {
-        const pending = readPendingKickoff()
-        if (!pending) return null
-        if (agentId && pending.agentId !== agentId) return null
-
-        if (!kickoffInFlight) {
-            track('agent_run_started', { agent_id: pending.agentId })
-            // A dropped connection rejects the action instead of answering: the same transient failure
-            // as an unreachable engine, so the entry stays for the replay at boot.
-            kickoffInFlight = startKickoffAction(pending.agentId, { kickoff: pending.kickoff, description: pending.description })
-                .catch((err: unknown): KickoffResult => ({ ok: false, error: err instanceof Error ? err.message : 'Kickoff failed', agentGone: false }))
-                .finally(() => {
-                    kickoffInFlight = null
-                })
-        }
-        const res = await kickoffInFlight
-
-        if (!res.ok) {
-            track('agent_run_failed', { error_type: res.agentGone ? 'agent_gone' : 'kickoff_error' })
-            // Cible disparue (agent supprimé, brouillon orphelin) : inutile de rejouer au boot.
-            // Sur erreur transitoire (engine injoignable), on garde l'entrée pour le rattrapage.
-            if (res.agentGone) clearPendingKickoff()
-            return null
-        }
-
-        clearPendingKickoff()
-        set({ pendingOpenSession: { agentId: pending.agentId, sessionId: res.sessionId, runId: res.runId } })
-        return { agentId: pending.agentId, sessionId: res.sessionId }
+        const pending = agentId ? [readPendingKickoff(agentId)].filter(entry => entry !== null) : readPendingKickoffs()
+        const sent = await Promise.all(
+            pending.map(async entry => {
+                const res = await deliverKickoff(entry)
+                if (!res.ok) {
+                    track('agent_run_failed', { error_type: res.agentGone ? 'agent_gone' : 'kickoff_error' })
+                    // Cible disparue (agent supprimé, brouillon orphelin) : inutile de rejouer au boot.
+                    // Sur erreur transitoire (engine injoignable), on garde l'entrée pour le rattrapage.
+                    if (res.agentGone) clearPendingKickoff(entry.agentId)
+                    return null
+                }
+                clearPendingKickoff(entry.agentId)
+                return { agentId: entry.agentId, sessionId: res.sessionId, runId: res.runId }
+            })
+        )
+        // Posé une fois, sur le kickoff renvoyé : le boot sélectionne cet agent-là, quel que soit
+        // l'ordre dans lequel les envois ont répondu.
+        const opened = sent.filter(result => result !== null).at(-1)
+        if (!opened) return null
+        set({ pendingOpenSession: opened })
+        return { agentId: opened.agentId, sessionId: opened.sessionId }
     },
 
     setPendingOpenSession: open => {
@@ -352,13 +388,17 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         return { positions: placed, done }
     },
 
-    confirmPlacement: pos => {
+    confirmPlacement: (pos, viewer) => {
         const { placingAgentId, placement, spaces } = get()
 
         // File en cours : l'espace est déduit de la tuile, et la création n'a lieu qu'au dernier drop.
         if (placement) {
             const space = spaceAtPosition(spaces, pos)
             if (!space) return // tuile hors de tout espace : le ghost était rouge, on ignore.
+            if (!managesBoxes(get(), viewer, [space.id])) {
+                refuseUnmanagedBox()
+                return
+            }
 
             const step = get().pushPlacement(pos, space.id)
             if (!step?.done) return
@@ -429,6 +469,10 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         // agent reposé ailleurs resterait la propriété de la Box qu'il vient de quitter.
         const target = spaceAtPosition(get().spaces, pos)
         if (!target) return
+        if (!managesBoxes(get(), viewer, [target.id])) {
+            refuseUnmanagedBox()
+            return
+        }
 
         set(state => ({
             agents: state.agents.map(a => (a.id === placingAgentId ? { ...a, position: pos, spaceId: target.id } : a)),
@@ -456,11 +500,15 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     // Dropping an agent in another Box moves it there: same workspace, same machine, same folder
     // on the engine, only the rectangle it is drawn in changes. The composite foreign key on
     // (space_id, workspace_id) is what stops a crafted call from parking it in someone else's Box.
-    moveAgent: (id, pos, spaceId) => {
+    moveAgent: (id, pos, spaceId, viewer) => {
         const previous = get().agents.find(a => a.id === id)
         // Le board porte aussi des containers qui ne sont pas des Box, comme le bloc fantôme de
         // l'onboarding : leur id n'a rien à faire dans space_id.
         const target = spaceId && get().spaces.some(s => s.id === spaceId) ? spaceId : undefined
+        if (!managesBoxes(get(), viewer, [previous?.spaceId, target ?? previous?.spaceId])) {
+            refuseUnmanagedBox()
+            return
+        }
 
         set(state => ({
             agents: state.agents.map(a => (a.id === id ? { ...a, position: pos, spaceId: target ?? a.spaceId } : a)),
@@ -483,7 +531,11 @@ export const useBoardStore = create<BoardState>((set, get) => ({
             })
     },
 
-    moveAgentToBox: (id, spaceId) => {
+    moveAgentToBox: (id, spaceId, viewer) => {
+        if (!managesBoxes(get(), viewer, [get().agents.find(a => a.id === id)?.spaceId, spaceId])) {
+            refuseUnmanagedBox()
+            return
+        }
         // Pas d'optimisme : c'est le serveur qui choisit la cellule libre, et l'annoncer avant de
         // la connaître ferait sauter la tuile deux fois.
         moveAgentAction({ agentId: id, spaceId }).then(res => {
@@ -668,12 +720,21 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         set(state => ({ cameraFocus: { agentId: id, nonce: (state.cameraFocus?.nonce ?? 0) + 1 } }))
     },
 
-    claimSpace: async (workspaceId, name, from) => {
+    claimSpace: async (workspaceId, name, from, viewer) => {
         const result = await claimSpaceAction({ workspaceId, name: name.trim() || null, from })
         if (!result.ok) throw new Error(result.error)
+        const userId = viewer?.userId
+        if (!userId || viewer.role !== 'member') return
+        set(state => ({
+            spaceGrants: [...state.spaceGrants.filter(row => row.space_id !== result.spaceId || row.user_id !== userId), { space_id: result.spaceId, user_id: userId, access: 'manage' }],
+        }))
     },
 
-    updateSpace: (id, patch) => {
+    updateSpace: (id, patch, viewer) => {
+        if (!managesBoxes(get(), viewer, [id])) {
+            refuseUnmanagedBox()
+            return
+        }
         set(state => ({
             spaces: state.spaces.map(s => (s.id === id ? { ...s, ...patch } : s)),
         }))
@@ -684,9 +745,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     // translater chacun de ses agents posés du même pas. Le navigateur n'a pas de transaction, donc
     // un échec en route réécrit l'ancienne place de tout le monde plutôt que de laisser des agents
     // hors de leur Box.
-    moveSpace: (id, rect) => {
+    moveSpace: (id, rect, viewer) => {
         const before = get().spaces.find(s => s.id === id)
         if (!before) return
+        if (!managesBoxes(get(), viewer, [id])) {
+            refuseUnmanagedBox()
+            return
+        }
         const from: SpaceRect = { col_start: before.col_start, row_start: before.row_start, col_end: before.col_end, row_end: before.row_end }
         const delta = { col: rect.col_start - from.col_start, row: rect.row_start - from.row_start }
         const carried = get()
@@ -741,11 +806,19 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         set({ _resizingSpaceId: id })
     },
 
-    renameSpace: (id, name) => {
+    renameSpace: (id, name, viewer) => {
+        if (!managesBoxes(get(), viewer, [id])) {
+            refuseUnmanagedBox()
+            return
+        }
         renameSpaceAction(id, name).catch(() => {})
     },
 
-    deleteSpace: id => {
+    deleteSpace: (id, viewer) => {
+        if (!managesBoxes(get(), viewer, [id])) {
+            refuseUnmanagedBox()
+            return
+        }
         const removed = get().spaces.find(s => s.id === id)
         set(state => ({
             spaces: state.spaces.filter(s => s.id !== id),
@@ -760,6 +833,24 @@ export const useBoardStore = create<BoardState>((set, get) => ({
                 if (!res.ok) restore(res.error)
             })
             .catch(err => restore(err instanceof Error ? err.message : 'Check your connection and try again.'))
+    },
+
+    setSpaceGrants: grants => set({ spaceGrants: grants }),
+
+    dropSpaces: spaceIds => {
+        const dropped = new Set(spaceIds)
+        const state = get()
+        const goneAgents = new Set(state.agents.filter(agent => dropped.has(agent.spaceId)).map(agent => agent.id))
+        if (!goneAgents.size && !state.spaces.some(space => dropped.has(space.id))) return false
+        const closesPanel = !!state.selectedAgentId && goneAgents.has(state.selectedAgentId)
+        set({
+            spaces: state.spaces.filter(space => !dropped.has(space.id)),
+            agents: state.agents.filter(agent => !goneAgents.has(agent.id)),
+            sessions: state.sessions.filter(session => !goneAgents.has(session.agentId)),
+            selectedSpaceId: state.selectedSpaceId && dropped.has(state.selectedSpaceId) ? null : state.selectedSpaceId,
+            ...(closesPanel ? { selectedAgentId: null, agentFocusRequest: null } : {}),
+        })
+        return closesPanel
     },
 
     _realtimeInsertSpace: space => {
@@ -777,8 +868,18 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
     _realtimeUpdateSpace: space => {
         if (get()._resizingSpaceId === space.id || get()._movingSpaceId === space.id) return
+        // A Box the board never loaded just opened to the caller (back to everyone, for instance):
+        // its coworkers and grants are not in this row, the board is read again.
+        if (!get().spaces.some(s => s.id === space.id)) {
+            void get()
+                .hydrate(space.workspace_id)
+                .then(() => {
+                    if (!get().placingAgentId && !get().placement) get().recenterBoard()
+                })
+            return
+        }
         set(state => ({
-            spaces: state.spaces.map(s => (s.id === space.id ? space : s)),
+            spaces: state.spaces.map(s => (s.id === space.id ? { ...s, ...space } : s)),
         }))
     },
 

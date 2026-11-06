@@ -4,7 +4,7 @@ import { NoticeActions, type NoticeAction } from '@/components/chat/NoticeAction
 import { Icon } from '@/components/ui/icon'
 import { ProviderIcon } from '@/lib/engine/provider-icons'
 import { BorderBeam } from '@rerun/ui'
-import { AlertTriangleIcon, GaugeIcon, PlugIcon, RotateCwIcon, ScrollTextIcon, ServerIcon, SquareIcon, UnplugIcon } from '@/lib/icons'
+import { AlertTriangleIcon, GaugeIcon, MessagePlusIcon, MessageSquareIcon, PlugIcon, RotateCwIcon, ScrollTextIcon, ServerIcon, SquareIcon, UnplugIcon } from '@/lib/icons'
 import { chatErrorTitle, describeSubscriptionLimit, friendlyError, type ChatErrorKind } from '@/lib/chat-error'
 import type { ComponentType } from 'react'
 
@@ -23,6 +23,7 @@ const ICONS: Record<NoticeKind, ComponentType<{ className?: string }>> = {
     thinking_replay: RotateCwIcon,
     interrupted: RotateCwIcon,
     run_in_flight: RotateCwIcon,
+    session_gone: MessageSquareIcon,
     generic: AlertTriangleIcon,
 }
 
@@ -41,7 +42,7 @@ function header(kind: NoticeKind, message: string): { title: string; icon: Compo
 // The dead end this replaces: a raw provider stack, or "A run is already in flight on this
 // conversation." with nothing to click. Every kind here says what happened and, where there is one,
 // offers the move that fixes it.
-export function ProviderErrorNotice({ kind, message, onSwitchModel, onOpenConnections, onReconnect, onStopRun, onContinue, onRetry }: { kind: NoticeKind; message: string; onSwitchModel?: () => void; onOpenConnections?: () => void; onReconnect?: () => void; onStopRun?: () => void; onContinue?: () => void; onRetry?: () => void }) {
+export function ProviderErrorNotice({ kind, message, onSwitchModel, onOpenConnections, onReconnect, onStopRun, onContinue, onRetry, onNewConversation }: { kind: NoticeKind; message: string; onSwitchModel?: () => void; onOpenConnections?: () => void; onReconnect?: () => void; onStopRun?: () => void; onContinue?: () => void; onRetry?: () => void; onNewConversation?: () => void }) {
     const { title, icon } = header(kind, message)
 
     const actions: NoticeAction[] = []
@@ -53,6 +54,16 @@ export function ProviderErrorNotice({ kind, message, onSwitchModel, onOpenConnec
             cta: 'Stop run',
             description: 'Frees the conversation for your message.',
             onClick: onStopRun,
+        })
+    }
+    if (kind === 'session_gone' && onNewConversation) {
+        actions.push({
+            key: 'new-conversation',
+            leading: <Icon icon={MessagePlusIcon} size="sm" />,
+            title: 'Start a new conversation',
+            cta: 'New conversation',
+            description: 'Opens a fresh conversation with this coworker.',
+            onClick: onNewConversation,
         })
     }
     if (kind === 'interrupted' && onContinue) {

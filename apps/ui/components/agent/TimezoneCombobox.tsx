@@ -10,7 +10,7 @@ function timezones(): string[] {
     return supported ? supported('timeZone') : ['UTC']
 }
 
-export function TimezoneCombobox({ value, onChange, placeholder = 'Select timezone' }: { value: string; onChange: (tz: string) => void; placeholder?: string }) {
+export function TimezoneCombobox({ value, onChange, placeholder = 'Select timezone', disabled }: { value: string; onChange: (tz: string) => void; placeholder?: string; disabled?: boolean }) {
     const [open, setOpen] = useState(false)
     const zones = useMemo(() => timezones(), [])
 
@@ -19,7 +19,8 @@ export function TimezoneCombobox({ value, onChange, placeholder = 'Select timezo
             <PopoverTrigger asChild>
                 <button
                     type="button"
-                    className="flex h-8 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm transition-colors hover:bg-muted aria-expanded:bg-muted"
+                    disabled={disabled}
+                    className="flex h-8 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-sm transition-colors hover:bg-muted aria-expanded:bg-muted disabled:pointer-events-none disabled:opacity-50"
                 >
                     <span className={value ? '' : 'text-muted-foreground'}>{value || placeholder}</span>
                     <ChevronsUpDownIcon className="size-3.5 opacity-50" />

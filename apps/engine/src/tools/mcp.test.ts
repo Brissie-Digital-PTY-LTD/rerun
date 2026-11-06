@@ -217,7 +217,7 @@ describe('probeMcp', () => {
 
     it('lists the tool names and closes the client even when close fails', async () => {
         mcp.behaviours.set('https://ok.example/mcp', { tools: [{ name: 'a' }, { name: 'b' }], closeError: 'boom' })
-        expect(await probeMcp('mcp-agent', server({ name: 'ok', url: 'https://ok.example/mcp' }), {}, { spawn })).toEqual({ ok: true, transport: 'http', toolNames: ['ok_a', 'ok_b'] })
+        expect(await probeMcp('mcp-agent', server({ name: 'ok', url: 'https://ok.example/mcp' }), {}, { spawn })).toEqual({ ok: true, transport: 'http', toolNames: ['a', 'b'] })
         expect(mcp.closed).toEqual(['https://ok.example/mcp'])
     })
 

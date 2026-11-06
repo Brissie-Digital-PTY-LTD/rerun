@@ -5,43 +5,36 @@ import {
     listWorkspaceMembersAction,
     removeMemberAction,
     revokeInvitationAction,
+    setMemberBoxScopeAction,
+    setMemberRoleAction,
     type WorkspaceInviteRow,
     type WorkspaceMember,
 } from '@/app/api/_actions/members.actions'
-import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { TooltipDisabledReason } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
-import { CopyLine } from '@/components/dialogs/CopyLine'
-import { Loader2Icon, XIcon } from '@/lib/icons'
-import { SkeletonList } from '@/components/ui/skeleton'
-import { useSession } from '@/supabase/session/SessionProvider'
+import { grantSpaceAccessAction, listMemberAccessAction, revokeSpaceAccessAction, setSpaceVisibilityAction, type MemberBoxAccess } from '@/app/api/_actions/space-access.actions'
+import type { BoxAccess } from '@/app/api/_auth/access'
+import type { BoxScope } from '@/app/api/_auth/box-scope'
+import { PanelDialogContent } from '@/components/dialogs/PanelDialogContent'
+import { WorkspaceMembersView, type OpenedMember } from '@/components/dialogs/WorkspaceMembersView'
+import { Dialog } from '@/components/ui/dialog'
+import { useMemberDirectory } from '@/hooks/useMemberProfiles'
+import { syncBoardGrant, syncBoardVisibility } from '@/lib/board/sync-space-access'
+import { useSession, type WorkspaceRole } from '@/supabase/session/SessionProvider'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-function initial(value: string): string {
-    return value.trim().charAt(0).toUpperCase() || '?'
-}
+type Result = { ok: true } | { ok: false; error: string }
 
 export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     const [members, setMembers] = useState<WorkspaceMember[]>([])
     const [inviteLink, setInviteLink] = useState<{ email: string; url: string } | null>(null)
     const [invites, setInvites] = useState<WorkspaceInviteRow[]>([])
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+    const [currentRole, setCurrentRole] = useState<WorkspaceRole | null>(null)
     const [loading, setLoading] = useState(true)
-    const [draft, setDraft] = useState('')
-    const [inviting, setInviting] = useState(false)
-    const [removing, setRemoving] = useState(false)
+    const [busy, setBusy] = useState(false)
+    const [opened, setOpened] = useState<OpenedMember | null>(null)
     const { workspace } = useSession()
-
-    // Neither a trial nor a paid plan has a seat limit, held as null. A cap was set by hand (admin),
-    // so there is nothing to buy to lift it.
-    const seatsFull = !loading && workspace?.max_seats != null && members.length + invites.length >= workspace.max_seats
-    const seatsFullReason = seatsFull ? `Your workspace is capped at ${workspace.max_seats === 1 ? 'one seat' : `${workspace.max_seats} seats`}.` : undefined
+    const profileOf = useMemberDirectory(workspace?.id)
 
     const refresh = useCallback(async () => {
         const result = await listWorkspaceMembersAction()
@@ -53,6 +46,7 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
         setMembers(result.members)
         setInvites(result.invites)
         setCurrentUserId(result.currentUserId)
+        setCurrentRole(result.currentRole)
         setLoading(false)
     }, [])
 
@@ -61,129 +55,114 @@ export function WorkspaceMembersDialog({ open, onOpenChange }: { open: boolean; 
         refresh()
     }, [open, refresh])
 
-    const invite = async () => {
-        const email = draft.trim().toLowerCase()
-        if (!EMAIL_RE.test(email) || inviting) return
-        setInviting(true)
-        const result = await inviteToWorkspaceAction(email)
-        setInviting(false)
+    const loadAccess = useCallback(async (member: WorkspaceMember) => {
+        const result = await listMemberAccessAction(member.userId)
         if (!result.ok) {
             toast.error(result.error)
+            setOpened(current => (current?.member.userId === member.userId ? null : current))
             return
+        }
+        setOpened(current => (current?.member.userId === member.userId ? { member, access: result } : current))
+    }, [])
+
+    const openMember = (member: WorkspaceMember) => {
+        setOpened({ member, access: null })
+        void loadAccess(member)
+    }
+
+    // Every change made from the drill-in reads the person's Boxes again: one level moved can
+    // change where another comes from.
+    const changeAccess = async (member: WorkspaceMember, action: () => Promise<Result>) => {
+        if (busy) return
+        setBusy(true)
+        const result = await action()
+        if (!result.ok) toast.error(result.error)
+        await loadAccess(member)
+        setBusy(false)
+    }
+
+    const changeScope = (member: WorkspaceMember, scope: BoxScope) =>
+        changeAccess(member, async () => {
+            const result = await setMemberBoxScopeAction(member.userId, scope)
+            if (result.ok) setMembers(current => current.map(m => (m.userId === member.userId ? { ...m, boxScope: scope } : m)))
+            return result
+        })
+
+    const changeLevel = (member: WorkspaceMember, box: MemberBoxAccess, level: BoxAccess) =>
+        changeAccess(member, async () => {
+            const result = level === 'none' ? await revokeSpaceAccessAction(box.spaceId, member.userId) : await grantSpaceAccessAction(box.spaceId, [member.userId], level)
+            if (result.ok) syncBoardGrant(box.spaceId, member.userId, level === 'none' ? null : level)
+            return result
+        })
+
+    // Named first, so the person never loses the Box between the two writes.
+    const restrictBox = (member: WorkspaceMember, box: MemberBoxAccess) =>
+        changeAccess(member, async () => {
+            if (box.source !== 'assigned') {
+                const granted = await grantSpaceAccessAction(box.spaceId, [member.userId], 'use')
+                if (!granted.ok) return granted
+                syncBoardGrant(box.spaceId, member.userId, 'use')
+            }
+            const restricted = await setSpaceVisibilityAction(box.spaceId, 'restricted')
+            if (restricted.ok) syncBoardVisibility(box.spaceId, 'restricted')
+            return restricted
+        })
+
+    const invite = async (email: string, boxScope: BoxScope) => {
+        const result = await inviteToWorkspaceAction(email, boxScope)
+        if (!result.ok) {
+            toast.error(result.error)
+            return false
         }
         if (result.inviteUrl) setInviteLink({ email, url: result.inviteUrl })
         else toast.success(`Invitation sent to ${email}`)
-        setDraft('')
+        refresh()
+        return true
+    }
+
+    const run = async (action: () => Promise<Result>, success?: string) => {
+        if (busy) return
+        setBusy(true)
+        const result = await action()
+        setBusy(false)
+        if (!result.ok) return toast.error(result.error)
+        if (success) toast.success(success)
         refresh()
     }
 
-    const revoke = async (id: string) => {
-        const result = await revokeInvitationAction(id)
-        if (!result.ok) return toast.error(result.error)
-        refresh()
-    }
-
-    const removeMember = async (member: WorkspaceMember) => {
-        if (removing) return
-        setRemoving(true)
-        const result = await removeMemberAction(member.userId)
-        setRemoving(false)
-        if (!result.ok) return toast.error(result.error)
-        toast.success(`${member.email ?? 'Member'} removed from the workspace`)
-        refresh()
-    }
+    const label = (member: WorkspaceMember) => member.email ?? 'Member'
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Members</DialogTitle>
-                    <p className="text-sm text-muted-foreground">Invite teammates to collaborate in this workspace.</p>
-                </DialogHeader>
-
-                {loading ? (
-                    <SkeletonList rows={4} />
-                ) : (
-                    <div className="-mx-1 max-h-96 space-y-1 overflow-y-auto px-1">
-                        {members.map(member => (
-                            <Row key={member.userId} label={member.email ?? 'Unknown user'}>
-                                {member.userId !== currentUserId && (
-                                    <RemoveButton
-                                        label="Remove member"
-                                        confirmLabel="Remove"
-                                        title={`Remove ${member.email ?? 'this member'}?`}
-                                        description="They lose access to this workspace and everything in it right away. You can invite them back later."
-                                        disabled={removing}
-                                        onClick={() => removeMember(member)}
-                                    />
-                                )}
-                            </Row>
-                        ))}
-                        {invites.map(inv => (
-                            <Row key={inv.id} label={inv.email} badge="Pending" muted>
-                                <RemoveButton
-                                    label="Revoke invitation"
-                                    confirmLabel="Revoke"
-                                    title={`Revoke the invitation to ${inv.email}?`}
-                                    description="Their invitation link stops working. You can send a new one at any time."
-                                    onClick={() => revoke(inv.id)}
-                                />
-                            </Row>
-                        ))}
-                    </div>
-                )}
-
-                <div className="space-y-2 border-t pt-4">
-                    {inviteLink && (
-                        <div className="space-y-1.5">
-                            <p className="text-xs text-muted-foreground">Send this link to {inviteLink.email}. It works for them only, once.</p>
-                            <CopyLine value={inviteLink.url} label="Copy the invitation link" />
-                        </div>
-                    )}
-                    <Input
-                        label="Invite by email"
-                        type="email"
-                        placeholder="teammate@rerun.build"
-                        value={draft}
-                        onChange={e => setDraft(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault()
-                                invite()
-                            }
-                        }}
-                    />
-                    <div className="flex justify-end gap-2">
-                        <TooltipDisabledReason reason={seatsFullReason}>
-                            <Button onClick={invite} disabled={seatsFull || !EMAIL_RE.test(draft.trim().toLowerCase()) || inviting}>
-                                {inviting && <Loader2Icon className="animate-spin" />}
-                                Invite
-                            </Button>
-                        </TooltipDisabledReason>
-                    </div>
-                </div>
-            </DialogContent>
+        <Dialog
+            open={open}
+            onOpenChange={next => {
+                if (!next) setOpened(null)
+                onOpenChange(next)
+            }}
+        >
+            <PanelDialogContent className="sm:h-[min(40rem,88dvh)] sm:max-w-lg">
+                <WorkspaceMembersView
+                    loading={loading}
+                    members={members}
+                    invites={invites}
+                    currentUserId={currentUserId}
+                    currentRole={currentRole}
+                    maxSeats={workspace?.max_seats ?? null}
+                    inviteLink={inviteLink}
+                    busy={busy}
+                    profileOf={profileOf}
+                    onInvite={invite}
+                    onRoleChange={(member, role) => run(() => setMemberRoleAction(member.userId, role), role === 'admin' ? `${label(member)} is now an admin` : `${label(member)} is now a member`)}
+                    onRemove={member => run(() => removeMemberAction(member.userId), `${label(member)} removed from the workspace`)}
+                    onRevoke={inv => run(() => revokeInvitationAction(inv.id))}
+                    opened={opened}
+                    onOpenMember={openMember}
+                    onCloseMember={() => setOpened(null)}
+                    onScopeChange={changeScope}
+                    onBoxLevelChange={changeLevel}
+                    onRestrictBox={restrictBox}
+                />
+            </PanelDialogContent>
         </Dialog>
-    )
-}
-
-function Row({ label, badge, muted, children }: { label: string; badge?: string; muted?: boolean; children?: React.ReactNode }) {
-    return (
-        <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-            <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-medium', muted ? 'bg-foreground/5 text-muted-foreground' : 'bg-foreground/10 text-foreground')}>{initial(label)}</span>
-            <span className={cn('min-w-0 flex-1 truncate text-sm', muted && 'text-muted-foreground')}>{label}</span>
-            {badge && <span className="text-[11px] text-muted-foreground">{badge}</span>}
-            {children}
-        </div>
-    )
-}
-
-function RemoveButton({ label, title, description, confirmLabel, disabled, onClick }: { label: string; title: string; description: string; confirmLabel: string; disabled?: boolean; onClick: () => void }) {
-    return (
-        <ConfirmDialog title={title} description={description} confirmLabel={confirmLabel} onConfirm={onClick}>
-            <Button type="button" variant="ghost" size="icon-xs" disabled={disabled} title={label} aria-label={label} className="text-muted-foreground transition-colors hover:text-foreground">
-                <XIcon className="size-4" />
-            </Button>
-        </ConfirmDialog>
     )
 }

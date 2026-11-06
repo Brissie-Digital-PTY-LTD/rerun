@@ -1,4 +1,5 @@
 import type { WorkspaceContext } from '@/app/api/_auth/ownership'
+import { visibleSpaceIds } from '@/app/api/_auth/access'
 import { markSessionsHandled } from '@/app/api/_services/conversation.service'
 import { createClient } from '@/supabase/server'
 import { selectCount, selectMany } from '@/supabase/supabase-helpers'
@@ -10,8 +11,12 @@ import { listWorkspaceInbox, markInboxRead } from './inbox.service'
 vi.mock('@/supabase/supabase-helpers', () => ({ selectMany: vi.fn(), selectCount: vi.fn() }))
 vi.mock('@/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/app/api/_services/conversation.service', () => ({ markSessionsHandled: vi.fn() }))
+vi.mock('@/app/api/_auth/access', async importOriginal => {
+    const actual = await importOriginal<typeof import('@/app/api/_auth/access')>()
+    return { ...actual, visibleSpaceIds: vi.fn(actual.visibleSpaceIds) }
+})
 
-const ctx = { userId: 'me', supabase: {}, workspace: { id: 7 } } as unknown as WorkspaceContext
+const ctx = { userId: 'me', role: 'admin', boxScope: 'all', supabase: {}, workspace: { id: 7 } } as unknown as WorkspaceContext
 
 function unseenRun(sessionId: string, lastAt: string, extra: Partial<{ source: string; slug: string | null; run_count: number }> = {}) {
     return { session_id: sessionId, agent_id: 'a', title: `${sessionId} title`, source: 'dashboard', slug: null, message: `${sessionId} done`, last_at: lastAt, run_count: 1, ...extra }
@@ -46,6 +51,20 @@ describe('listWorkspaceInbox', () => {
             { id: 'done:a:schedule:digest', sessionId: 's-cron-2', sessionIds: ['s-cron-2', 's-cron-1'], agentId: 'a', agentName: 'Scout', status: 'done', title: 'digest', message: null, updatedAt: '2026-10-22T10:00:00.000Z', count: 3 },
             { id: 'done:s-chat', sessionId: 's-chat', sessionIds: ['s-chat'], agentId: 'a', agentName: 'Scout', status: 'done', title: 's-chat title', message: 's-chat done', updatedAt: '2026-10-22T09:00:00.000Z', count: 1 },
         ])
+    })
+
+    it("leaves out what happens in a Box the member does not reach, a finished run included", async () => {
+        callerReturning([{ ...unseenRun('s-hidden', '2026-10-22T10:00:00Z'), agent_id: 'hidden' }])
+        vi.mocked(visibleSpaceIds).mockResolvedValueOnce(new Set(['open']))
+        vi.mocked(selectMany)
+            .mockResolvedValueOnce({ data: [{ id: 'a', name: 'Scout', space_id: 'open' }, { id: 'hidden', name: 'Closer', space_id: 'closed' }], error: null } as never)
+            .mockResolvedValueOnce({ data: [], error: null } as never)
+        vi.mocked(selectCount).mockResolvedValueOnce({ data: 0, error: null } as never)
+
+        const inbox = await listWorkspaceInbox({ ...ctx, role: 'member' } as WorkspaceContext)
+
+        expect(inbox.items).toEqual([])
+        expect(vi.mocked(selectMany).mock.calls[1][3]).toMatchObject({ agent_id: ['a'] })
     })
 
     it('answers empty without reading further when the workspace has no coworker', async () => {

@@ -5,17 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useIsMobile } from '@rerun/ui/primitives/use-is-mobile'
 import { AnimatePresence, motion } from 'motion/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { placementLabel, useBoardStore } from '@/stores/board.store'
+import { type PlacementQueue, placementLabel, refuseUnmanagedBox, useBoardStore } from '@/stores/board.store'
 import { useBoardCoverStore } from '@/stores/board-cover.store'
 import { useForemanStore } from '@/stores/foreman.store'
 import { useBillingStore } from '@/stores/billing.store'
 import { hasPendingStart, useOnboardingStore } from '@/stores/onboarding.store'
-import { isSubscriptionEntitled } from '@/cloud/billing'
+import { isSubscriptionEntitled } from '@rerun/cloud/billing'
 import { readHeroAgentApps, readHeroAgentName } from '@/lib/onboarding/hero-handoff'
 import { useResumePendingStart } from '@/lib/onboarding/useResumePendingStart'
 import { nameAgentFromPromptAction } from '@/app/api/_actions/onboarding.actions'
 import { useSession } from '@/supabase/session/SessionProvider'
-import { ClaimSpaceDialog, type ClaimSpaceTarget } from '@/components/dialogs/ClaimSpaceDialog'
+import { BOX_FIRST_INTRO, ClaimSpaceDialog, type ClaimSpaceTarget } from '@/components/dialogs/ClaimSpaceDialog'
 import { CursorOverlay } from '@/components/layout/CursorOverlay'
 import { BoardContextMenu, type BoardContextTarget } from '@/components/builder/BoardContextMenu'
 import { isPlanPreviewId } from '@/lib/foreman/plan-scene'
@@ -26,6 +26,8 @@ import { useDiscoveriesStore } from '@/stores/discoveries.store'
 import { useTeamCursors } from '@/supabase/useTeamCursors'
 import { useWindowFocused } from '@/hooks/useWindowFocused'
 import { useWorkspaceAccess } from '@/hooks/useWorkspaceAccess'
+import { useBoxViewer, useManageableSpaceIds } from '@/hooks/useBoxAccess'
+import { MEMBER_EMPTY_BOARD_LABEL, boxContainerFor, boxTileFor, emptyBoardOffersBox, placementNeedsBoxFirst } from '@/lib/board/box-controls'
 import { flushCamera, readCamera, writeCamera } from '@/lib/camera-storage'
 import { attentionCountByAgent } from '@/lib/board/attention'
 import { useNextRuns } from '@/hooks/useNextRuns'
@@ -48,6 +50,9 @@ const PLACEHOLDER_ID = '__placeholder__'
 // losange s'étend de col_start à col_end+1, donc (2 → 9) ⇒ centre = (2 + 10) / 2 = 6 = GRID_SIZE / 2,
 // il apparaît au milieu de l'écran.
 const PLACEHOLDER_CONTAINER: Container = { id: PLACEHOLDER_ID, label: null, color: SPACE_COLOR, col_start: 2, row_start: 2, col_end: 9, row_end: 9, variant: 'placeholder', placeholderLabel: 'Click to recruit your first coworker' }
+// A member with no Box open to them starts from a Box of their own, not from the workspace's first
+// coworker: nothing can be dropped on it, a click names the Box.
+const MEMBER_PLACEHOLDER_CONTAINER: Container = { ...PLACEHOLDER_CONTAINER, placeholderLabel: MEMBER_EMPTY_BOARD_LABEL, readOnly: true }
 
 // SidePanel's `md:` breakpoint.
 const PANEL_SHEET_QUERY = '(max-width: 767.98px)'
@@ -98,6 +103,9 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
     const moveSpace = useBoardStore(s => s.moveSpace)
     const _localUpdateSpace = useBoardStore(s => s._localUpdateSpace)
     const _setResizingSpaceId = useBoardStore(s => s._setResizingSpaceId)
+    const recenterBoard = useBoardStore(s => s.recenterBoard)
+    const viewer = useBoxViewer()
+    const manageableSpaceIds = useManageableSpaceIds()
 
     // Avant l'hydratation client, on s'appuie sur les données fetchées côté serveur (zéro flash).
     // Après hydratation, le store fait foi et les changements live prennent le relais.
@@ -110,6 +118,8 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
     // « default » (simple zone colorée qui se surligne au survol), sans le visuel incitatif
     // (border beam, glow, label « Click to recruit »).
     const showPlaceholder = realSpaces.length === 0
+    const memberWithoutBox = emptyBoardOffersBox(viewer.role, realSpaces.length)
+    const [ownBoxOpen, setOwnBoxOpen] = useState(false)
     // Une file dont la dernière tuile est posée n'est plus un placement : elle ne survit que pour
     // garder ses tuiles à l'écran le temps que les vraies arrivent.
     const placingFromQueue = !!placement && !placement.installing
@@ -135,7 +145,7 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
     // The welcome card of a workspace that installed first is answered beside a board that is
     // already built: nothing is left to sketch on it.
     const installedFirst = useForemanStore(s => s.arrival?.installed === true)
-    const emptyOnboardingBoard = !isSandbox && guidedByForeman && !startingFirstAgent && !placing && !parkedTitle && !installedFirst
+    const emptyOnboardingBoard = !memberWithoutBox && !isSandbox && guidedByForeman && !startingFirstAgent && !placing && !parkedTitle && !installedFirst
     // L'organisation que le Foreman vient de proposer, dessinée là où elle atterrira vraiment. Elle
     // se superpose au board plutôt qu'elle ne le remplace : les Box viennent du même
     // `findRadialRect` des deux côtés, donc chaque vraie Box se pose exactement sur son fantôme, qui
@@ -188,16 +198,18 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
                               : startingFirstAgent
                                 ? { ...PLACEHOLDER_CONTAINER, variant: 'loading' as const, placeholderLabel: parkedTitle ? `Setting up ${parkedTitle}…` : 'Setting up your coworker…' }
                                 : placing
-                                  ? { ...PLACEHOLDER_CONTAINER, variant: 'default' as const, placeholderLabel: undefined }
+                                  ? { ...PLACEHOLDER_CONTAINER, variant: 'default' as const, placeholderLabel: undefined, readOnly: memberWithoutBox }
                                   : parkedTitle
                                     ? { ...PLACEHOLDER_CONTAINER, placeholderLabel: `Click to install ${parkedTitle}` }
-                                    : PLACEHOLDER_CONTAINER,
+                                    : memberWithoutBox
+                                      ? MEMBER_PLACEHOLDER_CONTAINER
+                                      : PLACEHOLDER_CONTAINER,
                       ]
                 : realSpaces.map(space => {
                       const invite = boxInvites.get(space.id)
-                      return invite ? { ...containerFromSpace(space), ...invite } : containerFromSpace(space)
+                      return boxContainerFor(invite ? { ...containerFromSpace(space), ...invite } : containerFromSpace(space), manageableSpaceIds.has(space.id))
                   }),
-        [showPlaceholder, emptyOnboardingBoard, isSandbox, workspaceAccess, startingFirstAgent, placing, parkedTitle, realSpaces, boxInvites]
+        [showPlaceholder, emptyOnboardingBoard, isSandbox, workspaceAccess, startingFirstAgent, placing, parkedTitle, memberWithoutBox, realSpaces, boxInvites, manageableSpaceIds]
     )
     const containers = useMemo(() => (planPreview ? [...boardContainers, ...planPreview.containers] : boardContainers), [planPreview, boardContainers])
 
@@ -246,13 +258,17 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
                     void resumePendingStart()
                     return
                 }
+                if (memberWithoutBox) {
+                    setOwnBoxOpen(true)
+                    return
+                }
                 onRequestRecruitAgent?.()
                 return
             }
             selectSpace(id)
-            if (id && boxInvites.has(id)) onRequestBoxAgent?.(id)
+            if (id && boxInvites.has(id) && manageableSpaceIds.has(id)) onRequestBoxAgent?.(id)
         },
-        [dismissForemanSheet, startingFirstAgent, isSandbox, pendingTemplate, resumePendingStart, onRequestRecruitAgent, selectSpace, boxInvites, onRequestBoxAgent]
+        [dismissForemanSheet, startingFirstAgent, isSandbox, pendingTemplate, resumePendingStart, memberWithoutBox, onRequestRecruitAgent, selectSpace, boxInvites, manageableSpaceIds, onRequestBoxAgent]
     )
 
     // Le prompt tapé dans le composer du hero de la landing, `?prompt=<texte>` : il devient le premier
@@ -303,6 +319,7 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
             // donc fermer le paywall (ou recharger) doit tout préserver : le nettoyage n'a lieu
             // qu'après création réelle (useStartPendingAgent / useStartPendingTemplate).
             if (placement && showPlaceholder) {
+                if (memberWithoutBox) return
                 // Une copie ne peut pas atterrir ici : sans Box réelle il n'y a aucun agent à
                 // dupliquer. La branche existe pour que le switch reste exhaustif.
                 if (placement.source.kind === 'duplicate') {
@@ -336,10 +353,26 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
                 openBilling(undefined, 'iso_drop')
                 return
             }
-            confirmPlacement(pos)
+            confirmPlacement(pos, viewer)
         },
-        [placement, showPlaceholder, workspace, resumePendingStart, openBilling, cancelPlacement, pushPlacement, setPendingFirstAgent, setPendingTemplate, setPendingShareLink, confirmPlacement]
+        [placement, showPlaceholder, memberWithoutBox, workspace, resumePendingStart, openBilling, cancelPlacement, pushPlacement, setPendingFirstAgent, setPendingTemplate, setPendingShareLink, confirmPlacement, viewer]
     )
+
+    const handleTileMove = useCallback((id: string, pos: Parameters<typeof moveAgent>[1], containerId?: string) => moveAgent(id, pos, containerId, viewer), [moveAgent, viewer])
+    const handleTileMoveRefused = useCallback((id: string) => {
+        if (useBoardStore.getState().agents.some(a => a.id === id)) refuseUnmanagedBox()
+    }, [])
+    const handleContainerMove = useCallback((id: string, rect: Parameters<typeof moveSpace>[1]) => moveSpace(id, rect, viewer), [moveSpace, viewer])
+
+    // The placement waits on the Box the member is naming: once it exists the ghost has somewhere
+    // to land, and the board frames it, the realtime insert not reframing during a placement.
+    const [boxNamedFor, setBoxNamedFor] = useState<PlacementQueue | null>(null)
+    const needsBoxFirst = hydrated && placementNeedsBoxFirst({ placing: placingFromQueue, role: viewer.role, manageableSpaceCount: manageableSpaceIds.size })
+    const boxFirstOpen = needsBoxFirst && boxNamedFor !== placement
+    const namedBoxArrived = !!placement && boxNamedFor === placement && manageableSpaceIds.size > 0
+    useEffect(() => {
+        if (namedBoxArrived) recenterBoard()
+    }, [namedBoxArrived, recenterBoard])
 
     const [claimTarget, setClaimTarget] = useState<ClaimSpaceTarget | null>(null)
     const [contextTarget, setContextTarget] = useState<BoardContextTarget | null>(null)
@@ -362,7 +395,7 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
         return byAgent
     }, [unseenGroups])
     const boardTiles = useMemo(() => {
-        const placed = agents.map(a => tileFromAgent(a, a.id === justPlacedAgentId, attentionCounts[a.id] ?? 0, workspaceAccess, nextRuns[a.id], resultsByAgent[a.id]))
+        const placed = agents.map(a => boxTileFor(tileFromAgent(a, a.id === justPlacedAgentId, attentionCounts[a.id] ?? 0, workspaceAccess, nextRuns[a.id], resultsByAgent[a.id]), manageableSpaceIds.has(a.spaceId)))
         if (!placement) return placed
 
         const reserved = placement.placed
@@ -370,7 +403,7 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
             .filter(({ position }) => !agents.some(a => a.position.col === position.col && a.position.row === position.row))
             .map(({ position, index }) => ({ id: `__reserved__${index}`, position, span: AGENT_SPAN, style: { ...agentTileStyle('idle', placement.labels[index]), opacity: 0.6 }, selectable: false, draggable: false }))
         return [...placed, ...reserved]
-    }, [agents, attentionCounts, justPlacedAgentId, placement, workspaceAccess, nextRuns, resultsByAgent])
+    }, [agents, attentionCounts, justPlacedAgentId, placement, workspaceAccess, nextRuns, resultsByAgent, manageableSpaceIds])
     const tiles = useMemo(() => (planPreview ? [...boardTiles, ...planPreview.tiles] : boardTiles), [planPreview, boardTiles])
     const computedLinks = useMemo(() => linksFromSessions(sessions, liveLinks), [sessions, liveLinks])
     const placingTile = useMemo(() => (placement ? { span: AGENT_SPAN, style: agentTileStyle('idle', placementLabel(placement)) } : undefined), [placement])
@@ -378,9 +411,9 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
     const handleResizeCommit = useCallback(
         (id: string) => {
             const space = useBoardStore.getState().spaces.find(s => s.id === id)
-            if (space) updateSpace(id, { col_start: space.col_start, col_end: space.col_end, row_start: space.row_start, row_end: space.row_end })
+            if (space) updateSpace(id, { col_start: space.col_start, col_end: space.col_end, row_start: space.row_start, row_end: space.row_end }, viewer)
         },
-        [updateSpace]
+        [updateSpace, viewer]
     )
     // Cadrage mémorisé par workspace. Le `key` sur IsoGrid est indispensable : changer de workspace
     // ne démonte pas la grille (HomeContent se contente de reset/rehydrater le board store), donc
@@ -440,17 +473,21 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
                     viewControlsPlacement="top-right"
                     viewControlsClassName={guidedByForeman ? 'max-md:hidden' : undefined}
                     initialCamera={initialCamera}
+                    // A member may reach only Boxes far from the centre of the board: their first view
+                    // frames what they can see rather than the middle of the workspace.
+                    fitToContent={viewer.role === 'member'}
                     recenterSignal={recenterSignal}
                     focusRequest={focusRequest}
                     onCameraChange={handleCameraChange}
                     onTileSelect={handleTileSelect}
                     onContainerSelect={handleSelectSpace}
                     onConfirmPlacement={handleConfirmPlacement}
-                    onTileMove={moveAgent}
+                    onTileMove={handleTileMove}
+                    onTileMoveRefused={handleTileMoveRefused}
                     onResizeContainerLocal={previewing ? undefined : _localUpdateSpace}
                     onResizeContainerCommit={previewing ? undefined : handleResizeCommit}
                     onResizingContainerChange={previewing ? undefined : _setResizingSpaceId}
-                    onContainerMove={showPlaceholder || previewing ? undefined : moveSpace}
+                    onContainerMove={showPlaceholder || previewing ? undefined : handleContainerMove}
                     onContainerAdd={canAddSpace ? handleContainerAdd : undefined}
                     containerAddPreview={canAddSpace ? handleContainerAddPreview : undefined}
                     containerAddLabel="Add a Box on this side"
@@ -470,6 +507,19 @@ export function IsoBoard({ onRequestRecruitAgent, onRequestBoxAgent, initialSpac
             </AnimatePresence>
 
             <ClaimSpaceDialog target={claimTarget} onClose={() => setClaimTarget(null)} />
+            <ClaimSpaceDialog
+                target={null}
+                open={boxFirstOpen || ownBoxOpen}
+                intro={boxFirstOpen ? BOX_FIRST_INTRO : undefined}
+                onCreated={() => {
+                    setOwnBoxOpen(false)
+                    if (boxFirstOpen) setBoxNamedFor(placement)
+                }}
+                onClose={() => {
+                    setOwnBoxOpen(false)
+                    if (boxFirstOpen) cancelPlacement()
+                }}
+            />
         </>
     )
 }

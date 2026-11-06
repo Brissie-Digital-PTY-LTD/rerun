@@ -1,5 +1,6 @@
 {
     "name": "@rerun/db",
+    "license": "AGPL-3.0-only",
     "version": "0.1.0",
     "private": true,
     "type": "module",
@@ -19,6 +20,5 @@
         "@supabase/supabase-js": "^2.106.2",
         "@types/node": "^20",
         "typescript": "^5"
-    },
-    "license": "AGPL-3.0-only"
+    }
 }

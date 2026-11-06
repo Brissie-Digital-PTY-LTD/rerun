@@ -21,7 +21,25 @@ export type NewBoxStill = { name: string; frozen?: boolean; drawnCaret?: boolean
 // eye lands once it has seen what it is naming.
 //
 // Nothing is created here: `onCreate` receives the name, and what it throws is shown under the field.
-export function NewBoxForm({ suggestions, onCreate, controls, placeholderEffect = DEFAULT_PLACEHOLDER_EFFECT, still }: { suggestions: string[]; onCreate: (name: string) => Promise<void>; controls?: ReactNode; placeholderEffect?: PlaceholderEffect; still?: NewBoxStill }) {
+export type NewBoxIntro = { heading: string; description: string }
+
+const DEFAULT_INTRO: NewBoxIntro = { heading: 'Name your new Box', description: 'A Box is a name on your board, a place to sort your coworkers by department.' }
+
+export function NewBoxForm({
+    suggestions,
+    onCreate,
+    controls,
+    placeholderEffect = DEFAULT_PLACEHOLDER_EFFECT,
+    still,
+    intro = DEFAULT_INTRO,
+}: {
+    suggestions: string[]
+    onCreate: (name: string) => Promise<void>
+    controls?: ReactNode
+    placeholderEffect?: PlaceholderEffect
+    still?: NewBoxStill
+    intro?: NewBoxIntro
+}) {
     const rootRef = useRef<HTMLFormElement>(null)
     const anchorRef = useRef<HTMLSpanElement>(null)
     const draft = useBoxDraft({ initialName: still?.name ?? '', frozen: Boolean(still?.frozen) })
@@ -61,8 +79,8 @@ export function NewBoxForm({ suggestions, onCreate, controls, placeholderEffect 
                 {/* The sheet this becomes on a phone drops the safe-area padding of the frame, so the
                     last row carries it. */}
                 <div className="relative z-20 flex w-full max-w-[640px] flex-col items-center pt-[calc(var(--stage)_-_16px)] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-0">
-                    <h2 className="text-center font-heading text-2xl font-medium tracking-tight">Name your new Box</h2>
-                    <p className="mt-1.5 text-center text-sm text-muted-foreground">A Box is a name on your board, a place to sort your coworkers by department.</p>
+                    <h2 className="text-center font-heading text-2xl font-medium tracking-tight">{intro.heading}</h2>
+                    <p className="mt-1.5 text-center text-sm text-muted-foreground">{intro.description}</p>
                     <BoxComposer draft={draft} suggestions={suggestions} placeholderEffect={still?.frozen ? 'static' : placeholderEffect} controls={controls} creating={isSubmitting} error={errors.root?.message} autoFocus={!still} drawnCaret={Boolean(still?.drawnCaret)} className="mt-6 w-full" />
                 </div>
                 {still?.overlay}

@@ -1,3 +1,4 @@
+import type { Actor } from '@/app/api/_auth/access'
 import { resolveAgentTarget } from '@/app/api/_services/chat.service'
 import { createSkill, deleteMcpToken, deleteSkill, listSkills, patchMcpServers, updateAgentKeys, updateSkill } from '@/lib/engine/client'
 import type { EngineConnection, EngineMcpServer } from '@/lib/engine/types'
@@ -104,10 +105,10 @@ export async function compileService(
     manifest: ServiceManifest,
     values: Record<string, string>,
     authMethodId?: string,
-    workspaceId?: number,
+    actor?: Actor,
     instance?: ServiceInstanceTarget,
 ): Promise<CompileResult> {
-    const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+    const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
     const method = getMethod(manifest, authMethodId)
     const instanceId = instance?.instanceId
 

@@ -4,6 +4,9 @@ import { useState, type ReactNode } from 'react'
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { Input } from '@/components/ui/input'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { useBoardStore } from '@/stores/board.store'
 
 type DeleteAgentDialogProps = {
@@ -20,8 +23,9 @@ export function DeleteAgentDialog({ agentId, agentName, children, open: controll
     const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
     const [confirmText, setConfirmText] = useState('')
     const open = controlledOpen ?? uncontrolledOpen
+    const canManage = useCanManageAgent(agentId)
 
-    const canDelete = !agentName || confirmText.trim() === agentName
+    const canDelete = canManage && (!agentName || confirmText.trim() === agentName)
 
     const handleOpenChange = (next: boolean) => {
         if (controlledOpen === undefined) setUncontrolledOpen(next)
@@ -63,7 +67,9 @@ export function DeleteAgentDialog({ agentId, agentName, children, open: controll
                 )}
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete} variant="destructive" disabled={!canDelete}>Delete</AlertDialogAction>
+                    <TooltipDisabledReason reason={canManage ? undefined : BOX_MANAGE_REASON}>
+                        <AlertDialogAction onClick={handleDelete} variant="destructive" disabled={!canDelete}>Delete</AlertDialogAction>
+                    </TooltipDisabledReason>
                 </AlertDialogFooter>
             </AlertDialogContent>
         </AlertDialog>

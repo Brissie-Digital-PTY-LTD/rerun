@@ -6,14 +6,15 @@ import { AccountDialog } from '@/components/dialogs/AccountDialog'
 import { AiProvidersDialog } from '@/components/dialogs/AiProvidersDialog'
 import { ApiKeysDialog } from '@/components/dialogs/ApiKeysDialog'
 import { ServersDialog } from '@/components/dialogs/ServersDialog'
-import { RERUN_CLOUD } from '@/cloud/edition'
-import { SERVERS_ENABLED } from '@/cloud/servers'
-import { SUPPORT_CHAT_ENABLED } from '@/cloud/support'
+import { ADMIN_URL } from '@rerun/cloud/admin'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
+import { SERVERS_ENABLED } from '@rerun/cloud/servers'
+import { SUPPORT_CHAT_ENABLED } from '@rerun/cloud/support'
 import { CreateWorkspaceDialog } from '@/components/dialogs/CreateWorkspaceDialog'
-import { CreditMeter, UpgradePill } from '@/cloud/billing.client'
+import { CreditMeter, UpgradePill } from '@rerun/cloud/billing.client'
 import { ExpertProfileDialog } from '@/components/dialogs/ExpertProfileDialog'
 import { KnowledgeBaseDialog } from '@/components/dialogs/KnowledgeBaseDialog'
-import { PaidAppDialogs, usePaidAppsStore, AppsMenuSection } from '@/cloud/apps.client'
+import { PaidAppDialogs, usePaidAppsStore, AppsMenuSection } from '@rerun/cloud/apps.client'
 import { useEnabledPaidApps } from '@/components/layout/FeatureFlagsProvider'
 import { WorkspaceMembersDialog } from '@/components/dialogs/WorkspaceMembersDialog'
 import { WorkspaceSettingsDialog } from '@/components/dialogs/WorkspaceSettingsDialog'
@@ -23,8 +24,9 @@ import { HelpMenuItems, WeeklyRewindMenuItem, WhatsNewMenuItem } from '@/compone
 import { WorkspacePowerDialog, WorkspacePowerMenuItems, type PowerAction } from '@/components/layout/WorkspacePowerControl'
 import { WorkspaceLogoImage, WorkspacePill } from '@rerun/ui/chrome'
 import { Badge } from '@rerun/ui/primitives'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { activeAgentLimitFor, BILLING_ENABLED, isWorkspaceApiEntitled } from '@/cloud/billing'
+import { activeAgentLimitFor, BILLING_ENABLED, isWorkspaceApiEntitled } from '@rerun/cloud/billing'
 import { useBrainProposalCount } from '@/hooks/useBrainProposalCount'
 import { useIsAdmin } from '@/hooks/useIsAdmin'
 import { useIsTemplateAuthor } from '@/hooks/useIsTemplateAuthor'
@@ -36,19 +38,29 @@ import { useBrainStore } from '@/stores/brain.store'
 import { useForemanStore } from '@/stores/foreman.store'
 import { useNotificationsStore } from '@/stores/notifications.store'
 import { useWorkspaceSettingsStore } from '@/stores/workspace-settings.store'
-import { useSession } from '@/supabase/session/SessionProvider'
-import { BadgeCheck, BellIcon, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserPlus, UserRoundIcon } from '@/lib/icons'
+import { useIsWorkspaceAdmin, useSession } from '@/supabase/session/SessionProvider'
+import { BadgeCheck, BellIcon, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from '@/lib/icons'
 import { openCrisp } from '@/lib/crisp'
 import { cn } from '@/lib/utils'
 import { abortWorkspaceSwitch, beginWorkspaceSwitch, enterActiveWorkspace } from '@/lib/workspace/workspace-switch'
 import Link from 'next/link'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
 const PRICING_ICONS = ['/pricing/solo.png', '/pricing/team.png', '/pricing/scale.png']
 
 type SessionWorkspace = NonNullable<ReturnType<typeof useSession>['workspace']>
+
+// A menu entry an admin uses and a member sees, disabled, with the reason on hover.
+function AdminOnly({ allowed, reason, className = 'flex w-full', children }: { allowed: boolean; reason: string; className?: string; children: ReactNode }) {
+    if (allowed) return <>{children}</>
+    return (
+        <TooltipDisabledReason reason={reason} side="right" className={className}>
+            {children}
+        </TooltipDisabledReason>
+    )
+}
 
 function workspaceSummary(workspace: SessionWorkspace): string {
     if (workspace.is_sandbox) return 'Expert sandbox'
@@ -69,6 +81,7 @@ export function WorkspaceSwitcher() {
     const refreshAppAccounts = usePaidAppsStore(s => s.refreshAccountCount)
     const openAccount = useAccountStore(s => s.openAccount)
     const isAdmin = useIsAdmin()
+    const workspaceAdmin = useIsWorkspaceAdmin()
     const isTemplateAuthor = useIsTemplateAuthor()
     // In a store rather than here: the return from Stripe's hosted onboarding lands on the home
     // page and has to reopen this panel on its payouts pane.
@@ -161,15 +174,17 @@ export function WorkspaceSwitcher() {
     const showCredit = !workspace.is_sandbox && credit.budgetMicros > 0 && workspace.subscription_status !== 'past_due'
 
     const apiKeysItem = (
-        <DropdownMenuItem onSelect={() => (apiEntitled ? openWorkspacePanel('api_keys') : openBilling(undefined, 'api_keys'))} className="gap-2 text-muted-foreground">
-            <KeyIcon className="size-4" />
-            API keys & MCP
-            {!apiEntitled && (
-                <Badge size="xs" tone="brand" glow={false} className="ml-auto font-medium">
-                    PRO
-                </Badge>
-            )}
-        </DropdownMenuItem>
+        <AdminOnly allowed={workspaceAdmin} reason="Only an admin can manage API keys">
+            <DropdownMenuItem disabled={!workspaceAdmin} onSelect={() => (apiEntitled ? openWorkspacePanel('api_keys') : openBilling(undefined, 'api_keys'))} className="gap-2 text-muted-foreground">
+                <KeyIcon className="size-4" />
+                API keys & MCP
+                {!apiEntitled && (
+                    <Badge size="xs" tone="brand" glow={false} className="ml-auto font-medium">
+                        PRO
+                    </Badge>
+                )}
+            </DropdownMenuItem>
+        </AdminOnly>
     )
 
     // A sandbox has no settings, members nor billing of its own, but it runs on a machine of its own,
@@ -183,16 +198,26 @@ export function WorkspaceSwitcher() {
                     <div className="truncate text-xs text-muted-foreground">{workspaceSummary(workspace)}</div>
                 </div>
             </div>
-            {showCredit && <CreditMeter usedMicros={credit.usedMicros} wholeMicros={credit.budgetMicros} trial={trialing} onOpen={() => openBilling(undefined, 'workspace_menu')} onAdd={() => openBilling(trialing ? undefined : 'credit_pack', 'workspace_menu')} />}
+            {showCredit && (
+                <CreditMeter
+                    usedMicros={credit.usedMicros}
+                    wholeMicros={credit.budgetMicros}
+                    trial={trialing}
+                    onOpen={() => (workspaceAdmin ? openBilling(undefined, 'workspace_menu') : undefined)}
+                    onAdd={workspaceAdmin ? () => openBilling(trialing ? undefined : 'credit_pack', 'workspace_menu') : undefined}
+                />
+            )}
             {!workspace.is_sandbox && (
                 <div className="flex gap-1.5">
-                    <DropdownMenuItem onSelect={() => openWorkspacePanel('workspace')} className="h-7 flex-1 justify-center gap-1.5 rounded-md border border-border text-xs text-foreground">
-                        <SettingsIcon className="size-3.5" />
-                        Settings
-                    </DropdownMenuItem>
+                    <AdminOnly allowed={workspaceAdmin} reason="Only an admin can change the workspace settings" className="flex flex-1">
+                        <DropdownMenuItem disabled={!workspaceAdmin} onSelect={() => openWorkspacePanel('workspace')} className="h-7 flex-1 justify-center gap-1.5 rounded-md border border-border text-xs text-foreground">
+                            <SettingsIcon className="size-3.5" />
+                            Settings
+                        </DropdownMenuItem>
+                    </AdminOnly>
                     <DropdownMenuItem onSelect={() => openWorkspacePanel('members')} className="h-7 flex-1 justify-center gap-1.5 rounded-md border border-border text-xs text-foreground">
-                        <UserPlus className="size-3.5" />
-                        Invite
+                        <UsersIcon className="size-3.5" />
+                        Members
                     </DropdownMenuItem>
                 </div>
             )}
@@ -216,16 +241,20 @@ export function WorkspaceSwitcher() {
             </DropdownMenuItem>
             {apiKeysItem}
             {SERVERS_ENABLED && (
-                <DropdownMenuItem onSelect={() => setServersOpen(true)} className="gap-2 text-muted-foreground">
-                    <ServerIcon className="size-4" />
-                    Servers
-                </DropdownMenuItem>
+                <AdminOnly allowed={workspaceAdmin} reason="Only an admin can manage servers">
+                    <DropdownMenuItem disabled={!workspaceAdmin} onSelect={() => setServersOpen(true)} className="gap-2 text-muted-foreground">
+                        <ServerIcon className="size-4" />
+                        Servers
+                    </DropdownMenuItem>
+                </AdminOnly>
             )}
             {BILLING_ENABLED && !workspace.is_sandbox && (
-                <DropdownMenuItem onSelect={() => openBilling()} className="gap-2 text-muted-foreground">
-                    <CreditCardIcon className="size-4" />
-                    Billing
-                </DropdownMenuItem>
+                <AdminOnly allowed={workspaceAdmin} reason="Only an admin can manage billing">
+                    <DropdownMenuItem disabled={!workspaceAdmin} onSelect={() => openBilling()} className="gap-2 text-muted-foreground">
+                        <CreditCardIcon className="size-4" />
+                        Billing
+                    </DropdownMenuItem>
+                </AdminOnly>
             )}
             <WhatsNewMenuItem />
             <WeeklyRewindMenuItem />
@@ -307,7 +336,7 @@ export function WorkspaceSwitcher() {
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="min-w-48">
                 <DropdownMenuItem asChild className="gap-2 text-muted-foreground">
-                    <Link href="/admin">
+                    <Link href={`${ADMIN_URL}/admin`}>
                         <GaugeIcon className="size-4" />
                         Admin panel
                     </Link>

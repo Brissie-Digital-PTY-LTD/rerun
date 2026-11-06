@@ -6,6 +6,7 @@ import { useToolDisplay } from '@/hooks/useToolDisplay'
 import { agentIdOf, argsOf, toolHeadline } from '@/lib/chat/tool-headline'
 import { cn } from '@/lib/utils'
 import { useBoardStore } from '@/stores/board.store'
+import { readableToolError } from '@rerun/contracts'
 import { ToolCallRow, type ToolCallStatus } from '@rerun/ui/chat'
 
 export type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'
@@ -44,7 +45,7 @@ export function ToolCallStep(props: ToolCallBlockProps) {
         <StepRow
             iconProps={iconProps}
             label={label}
-            detail={status === 'error' && props.errorText ? props.errorText : toolHeadline(props.input, targetAgentName)}
+            detail={status === 'error' && props.errorText ? readableToolError(props.errorText) : toolHeadline(props.input, targetAgentName)}
             status={status}
             elapsed={<ElapsedTime active={status === 'running'} className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/70" />}
         >
@@ -86,7 +87,7 @@ function ToolCallDetails({ toolName, state, input, inputText, output, errorText 
             )}
             {errorText && (
                 <ToolSection label="Error">
-                    <p className="rounded bg-red-950/20 px-2 py-1.5 text-xs text-red-400">{errorText}</p>
+                    <p className="rounded bg-red-950/20 px-2 py-1.5 text-xs text-red-400">{readableToolError(errorText)}</p>
                 </ToolSection>
             )}
             {output !== undefined && (

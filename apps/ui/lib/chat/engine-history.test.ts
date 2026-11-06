@@ -127,6 +127,13 @@ describe('a card and the message written after it', () => {
         expect(messages[0].parts[0]).toMatchObject({ type: 'tool-ask_user', state: 'input-available', input: { questions, v: 2 } })
     })
 
+    it('keeps a failed call red once the transcript is reloaded', () => {
+        const call = { type: 'tool-call', toolCallId: 'c1', toolName: 'rerun_hub_service_search', input: { query: 'Discord' } }
+        const failed = { type: 'tool-result', toolCallId: 'c1', toolName: 'rerun_hub_service_search', output: { type: 'error-json', value: '<tool_use_error>Error: No such tool available: rerun_hub_service_search</tool_use_error>' } }
+        const messages = transformEngineMessages([assistant('a1', [call, failed], 1)])
+        expect(messages[0].parts[0]).toEqual({ type: 'tool-rerun_hub_service_search', toolCallId: 'c1', toolName: 'rerun_hub_service_search', state: 'output-error', input: { query: 'Discord' }, errorText: '<tool_use_error>Error: No such tool available: rerun_hub_service_search</tool_use_error>' })
+    })
+
     it('leaves a card that came with its message as it is', () => {
         const messages = transformEngineMessages([assistant('a1', [{ type: 'text', text: 'Two things to confirm.' }, askUser('c1')], 1), toolRow('t1', 'c1', 2)])
         expect(messages).toHaveLength(1)

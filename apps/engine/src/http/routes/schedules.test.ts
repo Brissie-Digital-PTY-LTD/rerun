@@ -167,7 +167,7 @@ describe('running and deleting a schedule', () => {
         const res = await send('POST', '/run-me/run')
         expect(res.status).toBe(202)
         expect(await res.json()).toEqual({ runId: 'run-1', sessionId: 'session-1' })
-        expect(fired).toEqual([{ agentId: id, slug: 'run-me', opts: { markFired: false, ignoreBudgetLatch: true } }])
+        expect(fired).toEqual([{ agentId: id, slug: 'run-me', opts: { markFired: false, manual: true } }])
     })
 
     it('deletes a schedule', async () => {

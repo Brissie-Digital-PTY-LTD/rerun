@@ -1,7 +1,7 @@
 'use server'
 
 import { patchNotificationPrefs } from '@/app/api/_services/notification-prefs.service'
-import { verifyUnsubscribeToken } from '@/cloud/email'
+import { verifyUnsubscribeToken } from '@rerun/cloud/email'
 import { notificationPrefsPatchSchema, type NotificationPrefsPatch } from '@/lib/notifications/prefs'
 import { getServerSession } from '@/supabase/session/getServerSession'
 

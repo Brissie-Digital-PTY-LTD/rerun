@@ -1,13 +1,13 @@
 'use server'
 
-import { assertAgentInWorkspace } from '@/app/api/_auth/ownership'
+import { assertAgentAccess } from '@/app/api/_auth/access'
 import { listAgentConnectors, removeCustomMcpServer } from '@/app/api/_services/custom-mcp.service'
 import type { CustomMcpServer, InstalledService } from '@/lib/services/types'
 
 export async function listAgentConnectorsAction(agentId: string): Promise<{ services: InstalledService[]; custom: CustomMcpServer[] }> {
     try {
-        await assertAgentInWorkspace(agentId)
-        return await listAgentConnectors(agentId)
+        const { actor } = await assertAgentAccess(agentId, 'use')
+        return await listAgentConnectors(agentId, actor)
     } catch {
         return { services: [], custom: [] }
     }
@@ -15,8 +15,8 @@ export async function listAgentConnectorsAction(agentId: string): Promise<{ serv
 
 export async function removeCustomMcpServerAction(agentId: string, name: string): Promise<{ success: boolean; error?: string }> {
     try {
-        await assertAgentInWorkspace(agentId)
-        await removeCustomMcpServer(agentId, name)
+        const { actor } = await assertAgentAccess(agentId, 'manage')
+        await removeCustomMcpServer(agentId, name, actor)
         return { success: true }
     } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : 'Failed to remove the server' }

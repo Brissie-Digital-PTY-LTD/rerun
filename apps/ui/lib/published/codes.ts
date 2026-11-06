@@ -1,7 +1,7 @@
 import 'server-only'
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto'
 import type { Database } from '@/app/api/database.types'
-import { sendPublishedAccessCodeEmail } from '@/cloud/email'
+import { sendPublishedAccessCodeEmail } from '@rerun/cloud/email'
 import { callerRateKey } from '@/lib/auth/caller-ip'
 import { inviteAllows } from '@/lib/published/access'
 import type { PublishedEntry } from '@/lib/published/gate'

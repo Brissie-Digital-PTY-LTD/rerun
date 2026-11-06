@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useMemo, type PropsWithChildren } from 'react'
-import { APP_SLUGS, type AppSlug } from '@/cloud/apps'
+import { APP_SLUGS, type AppSlug } from '@rerun/cloud/apps'
 
 export type FeatureFlags = { rewind: boolean; computer: boolean; published: boolean; apps: Partial<Record<AppSlug, boolean>> }
 

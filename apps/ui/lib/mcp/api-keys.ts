@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { Database } from '@/app/api/database.types'
-import { isWorkspaceApiEntitled } from '@/cloud/billing'
+import { isWorkspaceApiEntitled } from '@rerun/cloud/billing'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { selectMaybeSingle } from '@/supabase/supabase-helpers'
 import { createHash, randomBytes } from 'node:crypto'
@@ -11,8 +11,10 @@ const KEY_BYTES = 30
 const DISPLAY_PREFIX_LENGTH = 12
 const ACTIVITY_STAMP_INTERVAL_MS = 60 * 60_000
 
-// `createdBy` is the member the key acts for: who sent a message through it, who wrote a schedule.
-export type AuthenticatedApiKey = { keyId: string; workspaceId: number; createdBy: string | null }
+// `createdByUserId` is the member the key acts for: the key carries its creator's access (role and
+// Boxes), and signs what goes through it, who sent a message, who wrote a schedule. Null for a key
+// from before it was recorded, or one the back-office created: that key acts as the workspace.
+export type AuthenticatedApiKey = { keyId: string; workspaceId: number; createdByUserId: string | null }
 
 // Base64url over random bytes: URL-safe, header-safe, no ambiguity about encoding.
 export function generateApiKey(): string {
@@ -47,7 +49,7 @@ export async function authenticateApiKey(token: string): Promise<AuthenticatedAp
     if (!token.startsWith(KEY_PREFIX)) return null
 
     const supabase = createServiceRoleClient()
-    const { data } = await selectMaybeSingle(supabase, 'api_keys', ['id', 'workspace_id', 'revoked_at', 'created_by'] as const, { key_hash: hashApiKey(token) })
+    const { data } = await selectMaybeSingle(supabase, 'api_keys', ['id', 'workspace_id', 'revoked_at', 'created_by_user_id'] as const, { key_hash: hashApiKey(token) })
     if (!data || data.revoked_at) return null
 
     const { data: workspace } = await selectMaybeSingle(supabase, 'workspaces', ['subscription_status', 'is_sandbox'] as const, { id: data.workspace_id })
@@ -65,5 +67,5 @@ export async function authenticateApiKey(token: string): Promise<AuthenticatedAp
 
     void stampSandboxActivity(data.workspace_id)
 
-    return { keyId: data.id, workspaceId: data.workspace_id, createdBy: data.created_by }
+    return { keyId: data.id, workspaceId: data.workspace_id, createdByUserId: data.created_by_user_id }
 }

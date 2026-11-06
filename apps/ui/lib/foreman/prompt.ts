@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { renderBoardMap } from './board-map'
+import { MEMBER_REACH_NOTE, renderBoardMap } from './board-map'
 import { describeNeed } from './needs'
 import { foremanUseCases } from './phase'
 import type { ForemanState } from './phase'
@@ -134,7 +134,7 @@ const IOS_APP_BLOCK = `They are in the Rerun iPhone app. Never mention a price, 
 export function foremanSystemPrompt(state: ForemanState): string {
     const phase = phaseSpec(state.phase).instructions(state)
 
-    const blocks = [ONBOARDING_CHARTER, `Workspace: ${state.workspaceName} (plan ${state.workspacePlan}). You are talking to ${state.userEmail ?? 'its owner'}.`, languageBlock(state, { browserGuess: true }), state.client === 'ios' ? IOS_APP_BLOCK : null, foremanProfileBlock(state), intentBlock(state), phase ? `${phase}\n\nThis block describes where things stand now. Anything earlier in this conversation that says otherwise is out of date.` : null, `The board right now:\n\n${renderBoardMap(state.spaces, state.agents, { canCreateBox: false })}`].filter(Boolean)
+    const blocks = [ONBOARDING_CHARTER, `Workspace: ${state.workspaceName} (plan ${state.workspacePlan}). You are talking to ${state.userEmail ?? 'its owner'}.`, languageBlock(state, { browserGuess: true }), state.client === 'ios' ? IOS_APP_BLOCK : null, foremanProfileBlock(state), intentBlock(state), phase ? `${phase}\n\nThis block describes where things stand now. Anything earlier in this conversation that says otherwise is out of date.` : null, `The board right now:\n\n${renderBoardMap(state.spaces, state.agents, { canCreateBox: false, hiddenBoxes: state.hiddenBoxes })}`, state.isMember ? MEMBER_REACH_NOTE : null].filter(Boolean)
 
     return blocks.join('\n\n')
 }
@@ -142,7 +142,7 @@ export function foremanSystemPrompt(state: ForemanState): string {
 // The engine foreman only ever runs past the onboarding, so there is no phase block and no intent:
 // the charter, who they are, and the board.
 export function foremanEngineInstructions(state: ForemanState): string {
-    const blocks = [ENGINE_CHARTER, `Workspace: ${state.workspaceName} (plan ${state.workspacePlan}). You are talking to ${state.userEmail ?? 'its owner'}.`, state.entitled ? null : NO_PLAN_NOTE, languageBlock(state, { browserGuess: false }), foremanProfileBlock(state), agreedPlanBlock(state), `The board right now:\n\n${renderBoardMap(state.spaces, state.agents, { canCreateBox: true })}`].filter(Boolean)
+    const blocks = [ENGINE_CHARTER, `Workspace: ${state.workspaceName} (plan ${state.workspacePlan}). You are talking to ${state.userEmail ?? 'its owner'}.`, state.entitled ? null : NO_PLAN_NOTE, languageBlock(state, { browserGuess: false }), foremanProfileBlock(state), agreedPlanBlock(state), `The board right now:\n\n${renderBoardMap(state.spaces, state.agents, { canCreateBox: true, hiddenBoxes: state.hiddenBoxes })}`, state.isMember ? MEMBER_REACH_NOTE : null].filter(Boolean)
 
     return blocks.join('\n\n')
 }

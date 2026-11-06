@@ -1,6 +1,6 @@
 'use client'
 
-import { RERUN_CLOUD } from '@/cloud/edition'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
 import { isAnalyticsSurface, startAppAnalytics, stopAppAnalytics } from '@/lib/analytics'
 import { landingUrl } from '@/lib/site'
 import { CookieBanner } from '@rerun/ui/consent'

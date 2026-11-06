@@ -1,0 +1,8 @@
+// No affiliate program on a self-hosted install.
+export async function affiliateSignups(_request: Request): Promise<Response> {
+    return new Response(null, { status: 404 })
+}
+
+export async function affiliateTrack(_request: Request): Promise<Response> {
+    return new Response(null, { status: 404 })
+}

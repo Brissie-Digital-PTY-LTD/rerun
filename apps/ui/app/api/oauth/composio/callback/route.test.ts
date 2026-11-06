@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET } from './route'
 
 vi.mock('next/headers', () => ({ cookies: vi.fn() }))
-vi.mock('@/app/api/_auth/ownership', () => ({ requireAgentWorkspaceId: vi.fn(async () => 7) }))
+vi.mock('@/app/api/_auth/access', () => ({ requireAgentWorkspaceId: vi.fn(async () => 7), workspaceActor: (workspaceId: number) => ({ kind: 'workspace', workspaceId }) }))
 vi.mock('@/app/api/_services/services.service', () => ({ markComposioAuthorized: vi.fn(), loadManifest: vi.fn() }))
 vi.mock('@/lib/oauth/pending-grant', () => ({ parkSignIn: vi.fn() }))
 vi.mock('@/lib/composio/client', async importOriginal => ({ ...(await importOriginal<typeof import('@/lib/composio/client')>()), getConnectedAccount: vi.fn() }))
@@ -75,7 +75,7 @@ describe('GET /api/oauth/composio/callback', () => {
 
         expect(await res.text()).toContain('composio-oauth-success')
         expect(getConnectedAccount).toHaveBeenCalledWith('ca_1')
-        expect(markComposioAuthorized).toHaveBeenCalledWith('agent-1', 'gmail', 'ca_1', undefined, 7)
+        expect(markComposioAuthorized).toHaveBeenCalledWith('agent-1', 'gmail', 'ca_1', undefined, { kind: 'workspace', workspaceId: 7 })
         expect(deletesStateCookie(res)).toBe(true)
     })
 
@@ -86,7 +86,7 @@ describe('GET /api/oauth/composio/callback', () => {
         const res = await callback({ state: STATE, status: 'success' })
 
         expect(await res.text()).toContain('"key":"gmail@k3x9ab"')
-        expect(markComposioAuthorized).toHaveBeenCalledWith('agent-1', 'gmail@k3x9ab', 'ca_1', undefined, 7)
+        expect(markComposioAuthorized).toHaveBeenCalledWith('agent-1', 'gmail@k3x9ab', 'ca_1', undefined, { kind: 'workspace', workspaceId: 7 })
     })
 
     it('refuses an extra account whose Composio user is the base account of the agent', async () => {

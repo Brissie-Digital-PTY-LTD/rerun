@@ -2,10 +2,11 @@
 
 import { completeSignupAction, prepareAnonymousEmailStep, resendLiveSignInCode } from '@/app/(authflow)/auth/actions'
 import { AuthMethods } from '@/components/auth/AuthMethods'
+import type { AuthMethod } from '@/lib/auth/auth-method'
 import { AnonymousEmailStep, type GetCaptchaToken } from '@/components/auth/AnonymousEmailStep'
 import { OAuthSignInButton } from '@/components/auth/OAuthSignInButton'
-import { PHONE_ENABLED } from '@/cloud/phone'
-import { PhoneSignIn } from '@/cloud/phone.client'
+import { PHONE_ENABLED } from '@rerun/cloud/phone'
+import { PhoneSignIn } from '@rerun/cloud/phone.client'
 import { useSignupFunnel } from '@/components/auth/useSignupFunnel'
 import { rememberSignInMethod } from '@/lib/auth/last-sign-in'
 import { signupStep } from '@/lib/auth/signup-abandon'
@@ -28,8 +29,10 @@ const SETTLE_TIMEOUT_MS = 5_000
 // the job once the session settles.
 //
 // `active` is whether the form is on screen: it is what opens and closes the signup the funnel counts.
-export function useAnonymousSignUp({ surface, active, onEntered }: { surface: SignupSurface; active: boolean; onEntered?: (created: boolean) => void }): { form: ReactNode; abandon: () => void; reset: () => void } {
+export function useAnonymousSignUp({ surface, active, onEntered }: { surface: SignupSurface; active: boolean; onEntered?: (created: boolean) => void }): { form: ReactNode; abandon: () => void; reset: () => void; movedOn: boolean } {
     const [formKey, setFormKey] = useState(0)
+    // Past the first screen: a method switched to, or a code asked for.
+    const [movedOn, setMovedOn] = useState(false)
     const supabase = createClient()
     const router = useRouter()
     const refreshUser = useOptionalSession()?.refreshUser
@@ -40,6 +43,7 @@ export function useAnonymousSignUp({ surface, active, onEntered }: { surface: Si
     const reset = () => {
         funnel.setStep(PHONE_ENABLED ? 'phone' : 'email')
         setFormKey(k => k + 1)
+        setMovedOn(false)
     }
 
     const sendCode = async (email: string, getToken: GetCaptchaToken) => {
@@ -98,10 +102,18 @@ export function useAnonymousSignUp({ surface, active, onEntered }: { surface: Si
         markResume()
     }
 
+    const stepTo = (method: AuthMethod, codeSent: boolean) => {
+        funnel.setStep(signupStep(method, codeSent))
+        if (codeSent) setMovedOn(true)
+    }
+
     const form = (
         <AuthMethods
             key={formKey}
-            onMethodChange={method => funnel.setStep(signupStep(method))}
+            onMethodChange={method => {
+                funnel.setStep(signupStep(method))
+                setMovedOn(true)
+            }}
             oauth={
                 ENABLED_OAUTH_PROVIDERS.length > 0 && (
                     <>
@@ -111,10 +123,10 @@ export function useAnonymousSignUp({ surface, active, onEntered }: { surface: Si
                     </>
                 )
             }
-            phone={PHONE_ENABLED ? surroundings => <PhoneSignIn onSignedIn={enter} onStepChange={step => funnel.setStep(signupStep('phone', step === 'code'))} {...surroundings} /> : undefined}
-            email={beforeEmail => <AnonymousEmailStep sendCode={sendCode} verifyCode={verifyCode} onStepChange={step => funnel.setStep(signupStep('email', step === 'code'))} beforeEmail={beforeEmail} />}
+            phone={PHONE_ENABLED ? surroundings => <PhoneSignIn onSignedIn={enter} onStepChange={step => stepTo('phone', step === 'code')} {...surroundings} /> : undefined}
+            email={beforeEmail => <AnonymousEmailStep sendCode={sendCode} verifyCode={verifyCode} onStepChange={step => stepTo('email', step === 'code')} beforeEmail={beforeEmail} />}
         />
     )
 
-    return { form, abandon: funnel.dismiss, reset }
+    return { form, abandon: funnel.dismiss, reset, movedOn }
 }

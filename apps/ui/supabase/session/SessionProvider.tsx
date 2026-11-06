@@ -3,7 +3,7 @@
 import { isAdminEmail } from '@/lib/auth/admin-emails'
 import { Database } from '@/app/api/database.types'
 import { routes } from '@/lib/routes'
-import { parsePriceArm, PRICE_EXPERIMENT_KEY, PRICE_PROPERTY, isSubscriptionEntitled, TRIAL_CARD_PROPERTY, trialArm } from '@/cloud/billing'
+import { parsePriceArm, PRICE_EXPERIMENT_KEY, PRICE_PROPERTY, isSubscriptionEntitled, TRIAL_CARD_PROPERTY, trialArm } from '@rerun/cloud/billing'
 import { createClient } from '@/supabase/client'
 import { useBoardStore } from '@/stores/board.store'
 import { useForemanStore } from '@/stores/foreman.store'
@@ -11,7 +11,7 @@ import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat'
 import { useRealtimeSubscription } from '@/supabase/useRealtimeSubscription'
 import { enterActiveWorkspace, isWorkspaceSwitchInFlight } from '@/lib/workspace/workspace-switch'
 import { clearTabWorkspace, installWorkspaceHeader, pinTabWorkspace, readTabWorkspace, readUrlWorkspace } from '@/lib/workspace/tab-workspace'
-import { PHONE_STATUS_COLUMNS, phoneStatusOf, type PhoneStatus } from '@/cloud/phone'
+import { PHONE_STATUS_COLUMNS, phoneStatusOf, type PhoneStatus } from '@rerun/cloud/phone'
 import { awaitSignupStamp } from '@/supabase/session/signup-stamp'
 import { Session } from '@supabase/supabase-js'
 import { track, readAttribution, getCookie, identifyPerson, setSharedCookie, deleteSharedCookie } from '@rerun/analytics/client'
@@ -49,6 +49,12 @@ type Workspace = Pick<
 >
 type User = Pick<Database['public']['Tables']['users']['Row'], 'id' | 'created_at' | 'workspace_id' | 'email_notification_prefs' | 'account_role' | 'expert_profile_id' | 'signed_up_at'>
 type WorkspaceAnswers = Database['public']['Tables']['workspace_onboarding']['Row']['answers']
+export type WorkspaceRole = Database['public']['Enums']['workspace_role']
+export type BoxScope = 'all' | 'assigned'
+
+function toBoxScope(value: string | null | undefined): BoxScope {
+    return value === 'assigned' ? 'assigned' : 'all'
+}
 
 const FRESH_SIGNUP_MS = 60 * 60 * 1000
 
@@ -68,6 +74,11 @@ export type SessionContextValue = {
     // workspace and again when it is stamped onboarded, rather than streamed: it is only ever read
     // to pre-filter suggestions.
     workspaceAnswers: WorkspaceAnswers | null
+    // The caller's role in the tab's workspace, `null` until it is read.
+    role: WorkspaceRole | null
+    // Whether the caller uses every Box open to the workspace or only the ones named to them,
+    // `null` until it is read. Meaningless for an admin, who reaches every Box.
+    boxScope: BoxScope | null
     workspaces: Workspace[]
     session: Session | null
     isAnonymous: boolean
@@ -90,6 +101,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
     const [user, setUser] = useState<User | null>(null)
     const [workspace, setWorkspace] = useState<Workspace | null>(null)
     const [loadedAnswers, setLoadedAnswers] = useState<{ workspaceId: number; answers: WorkspaceAnswers | null } | null>(null)
+    const [loadedRole, setLoadedRole] = useState<{ workspaceId: number; role: WorkspaceRole; boxScope: BoxScope } | null>(null)
+    const [roleReads, setRoleReads] = useState(0)
     const [workspaces, setWorkspaces] = useState<Workspace[]>([])
     const [session, setSession] = useState<Session | null>(null)
     const [phoneRead, setPhoneRead] = useState<{ userId: string; status: PhoneStatus } | null>(null)
@@ -176,8 +189,22 @@ export function SessionProvider({ children }: PropsWithChildren) {
         }
     }, [user?.id])
 
-    // Keyed by workspace so a switch never shows the previous workspace's answers while the new ones load.
     const workspaceId = workspace?.id ?? null
+    const memberId = user?.id ?? null
+    const role = loadedRole && loadedRole.workspaceId === workspaceId ? loadedRole.role : null
+    const boxScope = loadedRole && loadedRole.workspaceId === workspaceId ? loadedRole.boxScope : null
+    useEffect(() => {
+        if (!memberId || workspaceId === null) return
+        let cancelled = false
+        void selectMaybeSingle(supabase, 'workspace_members', ['role', 'box_scope'] as const, { user_id: memberId, workspace_id: workspaceId }).then(({ data }) => {
+            if (!cancelled && data) setLoadedRole({ workspaceId, role: data.role, boxScope: toBoxScope(data.box_scope) })
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [memberId, workspaceId, roleReads])
+
+    // Keyed by workspace so a switch never shows the previous workspace's answers while the new ones load.
     const workspaceAnswers = loadedAnswers && loadedAnswers.workspaceId === workspaceId ? loadedAnswers.answers : null
     useEffect(() => {
         if (workspaceId === null) return
@@ -348,7 +375,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
         filter: user?.id ? { column: 'user_id', value: user.id } : undefined,
         enabled: !!user?.id,
         onInsert: () => fetchWorkspaces(),
+        onUpdate: row => {
+            if (row.workspace_id === workspaceId) setLoadedRole({ workspaceId: row.workspace_id, role: row.role, boxScope: toBoxScope(row.box_scope) })
+        },
         onDelete: () => fetchWorkspaces(),
+        onResync: () => setRoleReads(reads => reads + 1),
     })
 
     // Only the latest read lands: an older one still in flight, the one SIGNED_IN fired before the
@@ -407,7 +438,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         router.push(routes.auth)
     }
 
-    return <SessionContext.Provider value={{ user, workspace, workspaceAnswers, workspaces, session, isAnonymous: session?.user?.is_anonymous ?? false, phoneStep, phoneStatus, refreshPhoneStep, loading: userLoading || workspaceLoading, signOut, refreshWorkspace: fetchWorkspace, refreshUser: fetchUser }}>{children}</SessionContext.Provider>
+    return <SessionContext.Provider value={{ user, workspace, workspaceAnswers, role, boxScope, workspaces, session, isAnonymous: session?.user?.is_anonymous ?? false, phoneStep, phoneStatus, refreshPhoneStep, loading: userLoading || workspaceLoading, signOut, refreshWorkspace: fetchWorkspace, refreshUser: fetchUser }}>{children}</SessionContext.Provider>
 }
 
 // For the render labs, which draw session-bound components with no signed-in user behind them.
@@ -426,4 +457,10 @@ export function useSession() {
         throw new Error('useSession must be used within a SessionProvider')
     }
     return context
+}
+
+// An admin of the tab's workspace, as opposed to `useIsAdmin`, which is Rerun staff. False while the
+// role is still loading, so an admin-only control starts disabled rather than flashing open.
+export function useIsWorkspaceAdmin(): boolean {
+    return useSession().role === 'admin'
 }

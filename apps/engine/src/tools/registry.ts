@@ -19,7 +19,8 @@ import { visionTools } from './builtin/vision.js'
 import { computerTools, runOffersComputer } from './builtin/computer.js'
 import { notifyTools } from './builtin/notify.js'
 import { hubTools } from './builtin/hub.js'
-import { paidDataTools } from '../cloud/index.js'
+import { paidDataTools } from './builtin/paid-data.js'
+import { paidDataOffered } from '../paid-data/price.js'
 import { cardTools, foremanCardTools } from './builtin/cards.js'
 import { askUserTool, offersTakeover, requestApprovalTool, requestSecretTool, requestTakeoverTool, suggestServiceTool } from './builtin/hitl.js'
 import { installTools } from './builtin/install.js'
@@ -59,7 +60,7 @@ export async function buildTools(ctx: RunContext): Promise<{ tools: ToolSet; clo
     if (computer) Object.assign(tools, computer.tools)
     if (cfg.notify) Object.assign(tools, notifyTools(ctx))
     if (cfg.hub) Object.assign(tools, hubTools(ctx))
-    if (cfg.paidData) Object.assign(tools, paidDataTools(ctx))
+    if (cfg.paidData && (await paidDataOffered())) Object.assign(tools, paidDataTools(ctx))
     if (cfg.cards) Object.assign(tools, ctx.agent.config.kind === 'foreman' ? foremanCardTools(ctx) : cardTools(ctx))
     if (cfg.askUser) Object.assign(tools, askUserTool(ctx))
     if (cfg.requestApproval) Object.assign(tools, requestApprovalTool(ctx))

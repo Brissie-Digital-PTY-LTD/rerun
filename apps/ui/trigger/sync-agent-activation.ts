@@ -1,6 +1,6 @@
 import { task } from '@trigger.dev/sdk/v3'
 import { stopAgentsOnEngine } from '@/app/api/_services/agent-activation.service'
-import { taskLogger as logger, triggerTask } from '@/cloud/tasks'
+import { taskLogger as logger, triggerTask } from '@rerun/cloud/tasks'
 
 export type SyncAgentActivationPayload = { agentIds: string[] }
 

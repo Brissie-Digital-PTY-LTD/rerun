@@ -13,11 +13,11 @@ vi.mock('@/app/api/_auth/expert', () => ({ hasPendingCreatorTerms: vi.fn(), isEx
 vi.mock('@/app/api/_services/sandbox.service', () => ({ enterSandbox: vi.fn(), ensureSandboxSpace: vi.fn() }))
 vi.mock('@/lib/images/upload', () => ({ uploadPublicImage: mocks.uploadPublicImage }))
 vi.mock('node:dns/promises', () => ({ lookup: mocks.lookup }))
-vi.mock('@/cloud/billing.server', () => ({ grantRerunTopup: mocks.grantRerunTopup }))
-// The public build stubs `@/cloud/billing` with no signup allowance, so the test pins one of its own.
+vi.mock('@rerun/cloud/billing.server', () => ({ grantRerunTopup: mocks.grantRerunTopup }))
+// The public build stubs `@rerun/cloud/billing` with no signup allowance, so the test pins one of its own.
 const SIGNUP_ALLOWANCE_MICROS = vi.hoisted(() => 5_000_000)
-vi.mock('@/cloud/billing', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/cloud/billing')>()), SIGNUP_BUDGET_MICROS: SIGNUP_ALLOWANCE_MICROS }))
-vi.mock('@/cloud/illustrations', () => ({
+vi.mock('@rerun/cloud/billing', async (importOriginal) => ({ ...(await importOriginal<typeof import('@rerun/cloud/billing')>()), SIGNUP_BUDGET_MICROS: SIGNUP_ALLOWANCE_MICROS }))
+vi.mock('@rerun/cloud/illustrations', () => ({
     ILLUSTRATION_ENTRIES: [
         { file: 'green-energy-blob.webp', desc: 'Green blob', color: 'green', form: 'blob' },
         { file: 'blue-vortex-ring.webp', desc: 'Blue vortex', color: 'blue', form: 'vortex' },
@@ -78,9 +78,16 @@ describe('switchWorkspaceAction', () => {
 })
 
 describe('updateWorkspaceAction', () => {
-    function memberDatabase() {
-        return database(table => (table === 'workspace_members' ? { data: { user_id: 'user-1' } } : undefined))
+    function memberDatabase(role: 'admin' | 'member' = 'admin') {
+        return database(table => (table === 'workspace_members' ? { data: { user_id: 'user-1', role } } : undefined))
     }
+
+    it('refuses a member who is not an admin', async () => {
+        const db = memberDatabase('member')
+
+        await expect(updateWorkspaceAction(formOf({ name: 'Acme' }))).resolves.toEqual({ ok: false, error: 'Only an admin can change the workspace settings' })
+        expect(db.writes('workspaces')).toHaveLength(0)
+    })
 
     it('refuses an empty name', async () => {
         const db = memberDatabase()

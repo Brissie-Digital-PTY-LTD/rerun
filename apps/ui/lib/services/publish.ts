@@ -1,3 +1,4 @@
+import { keepVisible } from '@/app/api/_auth/access'
 import { getSpaceConnection } from '@/app/api/_services/space.service'
 import type { Database } from '@/app/api/database.types'
 import { fetchRawFile, listFiles } from '@/lib/engine/client'
@@ -463,10 +464,11 @@ export async function listPublished(agentId: string): Promise<{ files: Published
     return { files: await toPublishedFiles(supabase, data ?? []) }
 }
 
-export async function listWorkspacePublished(workspaceId: number): Promise<PublishedFile[]> {
+// `visibleAgents` narrows the list to the coworkers the caller reaches, before any thumbnail is signed.
+export async function listWorkspacePublished(workspaceId: number, visibleAgents: 'all' | Set<string> = 'all'): Promise<PublishedFile[]> {
     const supabase = createServiceRoleClient()
     const { data } = await selectMany(supabase, 'published_files', LISTED_COLUMNS, { workspace_id: workspaceId }, { column: 'updated_at', ascending: false })
-    return toPublishedFiles(supabase, data ?? [])
+    return toPublishedFiles(supabase, keepVisible(data ?? [], visibleAgents, row => row.agent_id))
 }
 
 export async function getPublishedInWorkspace(workspaceId: number, slug: string): Promise<PublishedFile | null> {

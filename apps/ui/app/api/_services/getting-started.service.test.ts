@@ -4,15 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GettingStartedItem } from '@/lib/onboarding/getting-started'
 import { fakeSupabase, writeMethodOf, type FakeSupabase, type SupabaseResult } from '@/test/supabase-fake'
 import { resolveWorkspaceOwner } from './workspace-owner.service'
-import { extendTrial } from '@/cloud/billing.server'
+import { extendTrial } from '@rerun/cloud/billing.server'
 import { grantGettingStartedReward, markGettingStarted, reportGettingStartedSteps } from './getting-started.service'
-vi.mock('@/cloud/phone', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_PHONE }))
+vi.mock('@rerun/cloud/phone', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_PHONE }))
 
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
 vi.mock('@/lib/engine/client', () => ({ listConnections: vi.fn(), listSchedules: vi.fn() }))
 vi.mock('./workspace-engine.service', () => ({ authenticateEngineToken: vi.fn(), findWorkspaceEngine: vi.fn() }))
-vi.mock('@/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
-vi.mock('@/cloud/billing.server', () => ({ extendTrial: vi.fn(), subscriptionHasCard: vi.fn() }))
+vi.mock('@rerun/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
+vi.mock('@rerun/cloud/billing.server', () => ({ extendTrial: vi.fn(), subscriptionHasCard: vi.fn() }))
 vi.mock('./workspace-owner.service', () => ({ resolveWorkspaceOwner: vi.fn() }))
 vi.mock('@rerun/analytics/server', async importOriginal => ({ ...(await importOriginal<typeof import('@rerun/analytics/server')>()), captureServer: vi.fn() }))
 

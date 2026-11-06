@@ -2,6 +2,7 @@
 
 import { getAgentDetailAction, updateAgentConfigAction } from '@/app/api/_actions/agent.actions'
 import { PanelDeleteButton, PanelEditorBody, PanelEditorFooter, PanelEditorShell } from '@/components/ui/panel-editor'
+import { AgentAccessRow } from '@/components/agent/AgentAccessRow'
 import { SharedLinksSection } from '@/components/agent/share/SharedLinksSection'
 import { TemplateContentLock } from '@/components/agent/TemplateContentLock'
 import { useTemplateContentLock } from '@/hooks/useTemplateContentLock'
@@ -14,6 +15,9 @@ import { Separator } from '@/components/ui/separator'
 import { SkeletonForm } from '@/components/ui/skeleton'
 import { Segmented } from '@/components/ui/segmented'
 import { MarkdownTextarea } from '@/components/ui/markdown-textarea'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { VERBOSITY_LEVELS } from '@rerun/contracts'
 import type { IsoAgent } from '@/lib/board/types'
 import type { EngineVerbosity } from '@/lib/engine/types'
@@ -39,6 +43,8 @@ export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
     const renameAgent = useBoardStore(s => s.renameAgent)
     const openNotifications = useNotificationsStore(s => s.openNotifications)
     const soulLocked = useTemplateContentLock(agent.id)
+    const canManage = useCanManageAgent(agent.id)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
     const [name, setName] = useState(agent.name)
     const [loading, setLoading] = useState(true)
     const [saved, setSaved] = useState(false)
@@ -106,21 +112,24 @@ export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
     return (
         <PanelEditorShell>
             <PanelEditorBody>
-                <Input
-                    label="Name"
-                    hideRequired
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    onBlur={commitName}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                        if (e.key === 'Escape') {
-                            setName(agent.name)
-                            e.currentTarget.blur()
-                        }
-                    }}
-                    className="h-8 text-xs"
-                />
+                <TooltipDisabledReason reason={manageReason} className="flex w-full flex-col">
+                    <Input
+                        label="Name"
+                        hideRequired
+                        disabled={!canManage}
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        onBlur={commitName}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                            if (e.key === 'Escape') {
+                                setName(agent.name)
+                                e.currentTarget.blur()
+                            }
+                        }}
+                        className="h-8 text-xs"
+                    />
+                </TooltipDisabledReason>
 
                 {/* Un agent éteint ne répond plus : son détail engine est inatteignable par construction,
                     pas par panne. Seuls le renommage et la suppression restent utiles ici. */}
@@ -136,9 +145,11 @@ export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
                             render={({ field }) => (
                                 <FormItem className="space-y-1">
                                     <TemplateContentLock locked={soulLocked} subject="system prompt">
-                                        <FormControl>
-                                            <MarkdownTextarea label="Soul (system prompt)" dialogTitle="Edit the system prompt" className="text-xs min-h-32 font-mono" placeholder="You are..." {...field} disabled={soulLocked} />
-                                        </FormControl>
+                                        <TooltipDisabledReason reason={manageReason} className="flex w-full flex-col">
+                                            <FormControl>
+                                                <MarkdownTextarea label="Soul (system prompt)" dialogTitle="Edit the system prompt" className="text-xs min-h-32 font-mono" placeholder="You are..." {...field} disabled={soulLocked || !canManage} />
+                                            </FormControl>
+                                        </TooltipDisabledReason>
                                     </TemplateContentLock>
                                 </FormItem>
                             )}
@@ -150,9 +161,11 @@ export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
                             render={({ field }) => (
                                 <FormItem className="space-y-1">
                                     <Field label="Verbosity" helperText="How long its replies are, not how much work it does.">
-                                        <FormControl>
-                                            <Segmented options={VERBOSITY_OPTIONS} value={field.value} onChange={field.onChange} />
-                                        </FormControl>
+                                        <TooltipDisabledReason reason={manageReason} className="flex w-full flex-col">
+                                            <FormControl>
+                                                <Segmented options={VERBOSITY_OPTIONS} value={field.value} onChange={field.onChange} className={canManage ? undefined : 'pointer-events-none opacity-60'} />
+                                            </FormControl>
+                                        </TooltipDisabledReason>
                                     </Field>
                                 </FormItem>
                             )}
@@ -162,6 +175,8 @@ export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
 
                 <SharedLinksSection agentId={agent.id} />
 
+                <AgentAccessRow agent={agent} />
+
                 <Field label="Notifications">
                     <Button type="button" variant="outline" size="sm" className="w-full justify-start" onClick={() => openNotifications(agent.id)}>
                         <BellIcon className="size-3.5" />
@@ -170,18 +185,22 @@ export function AgentPanelSettings({ agent }: AgentPanelSettingsProps) {
                 </Field>
             </PanelEditorBody>
             <PanelEditorFooter>
-                <DeleteAgentDialog agentId={agent.id} agentName={agent.name}>
-                    <PanelDeleteButton label="Delete coworker" confirm={false} />
-                </DeleteAgentDialog>
-                <Button type="submit" form={SETTINGS_FORM_ID} size="sm" className="flex-1" loading={isSubmitting}>
-                    {saved ? (
-                        <>
-                            <CheckIcon className="size-3.5 mr-1.5 text-emerald-500" /> Saved
-                        </>
-                    ) : (
-                        'Save changes'
-                    )}
-                </Button>
+                <TooltipDisabledReason reason={manageReason}>
+                    <DeleteAgentDialog agentId={agent.id} agentName={agent.name}>
+                        <PanelDeleteButton label="Delete coworker" confirm={false} disabled={!canManage} />
+                    </DeleteAgentDialog>
+                </TooltipDisabledReason>
+                <TooltipDisabledReason reason={manageReason} className="flex-1">
+                    <Button type="submit" form={SETTINGS_FORM_ID} size="sm" className="flex-1" loading={isSubmitting} disabled={!canManage}>
+                        {saved ? (
+                            <>
+                                <CheckIcon className="size-3.5 mr-1.5 text-emerald-500" /> Saved
+                            </>
+                        ) : (
+                            'Save changes'
+                        )}
+                    </Button>
+                </TooltipDisabledReason>
             </PanelEditorFooter>
         </PanelEditorShell>
     )

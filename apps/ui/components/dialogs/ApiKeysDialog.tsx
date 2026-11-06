@@ -1,7 +1,7 @@
 'use client'
 
 import { createApiKeyAction, listApiKeysAction, revokeApiKeyAction, type ApiKeyView } from '@/app/api/_actions/api-keys.actions'
-import { ApiKeyList } from '@/components/dialogs/ApiKeyList'
+import { API_KEYS_ADMIN_ONLY, ApiKeyList } from '@/components/dialogs/ApiKeyList'
 import { CreatedApiKey } from '@/components/dialogs/CreatedApiKey'
 import { McpSnippets } from '@/components/dialogs/McpSnippets'
 import { RevokeApiKeyDialog } from '@/components/dialogs/RevokeApiKeyDialog'
@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { DocsLink } from '@/components/ui/docs-link'
 import { Input } from '@/components/ui/input'
 import { SkeletonList } from '@/components/ui/skeleton'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { Loader2Icon } from '@/lib/icons'
+import { useIsWorkspaceAdmin } from '@/supabase/session/SessionProvider'
 import { track } from '@rerun/analytics/client'
 import { ScrollFade } from '@rerun/ui/primitives'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
@@ -34,6 +36,7 @@ export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     const [busy, setBusy] = useState(false)
     const [createdKey, setCreatedKey] = useState<string | null>(null)
     const [revoking, setRevoking] = useState<ApiKeyView | null>(null)
+    const adminReason = useIsWorkspaceAdmin() ? undefined : API_KEYS_ADMIN_ONLY
 
     const refresh = useCallback(async () => {
         const result = await listApiKeysAction()
@@ -61,7 +64,7 @@ export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
     const create = async () => {
         const name = draft.trim()
-        if (!name || creating) return
+        if (!name || creating || adminReason) return
         setCreating(true)
         const result = await createApiKeyAction(name)
         setCreating(false)
@@ -115,7 +118,7 @@ export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
                                 <section className="min-w-0 space-y-2">
                                     <SectionTitle action={<DocsLink path="/api/authentication">API keys</DocsLink>}>Keys</SectionTitle>
-                                    <ApiKeyList keys={keys} busy={busy} onRevoke={setRevoking} />
+                                    <ApiKeyList keys={keys} busy={busy} disabledReason={adminReason} onRevoke={setRevoking} />
 
                                     <Input
                                         label="New key name"
@@ -130,10 +133,12 @@ export function ApiKeysDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                                         }}
                                     />
                                     <div className="flex justify-end">
-                                        <Button onClick={create} disabled={!draft.trim() || creating}>
-                                            {creating && <Loader2Icon className="animate-spin" />}
-                                            Create key
-                                        </Button>
+                                        <TooltipDisabledReason reason={adminReason}>
+                                            <Button onClick={create} disabled={!draft.trim() || creating || !!adminReason}>
+                                                {creating && <Loader2Icon className="animate-spin" />}
+                                                Create key
+                                            </Button>
+                                        </TooltipDisabledReason>
                                     </div>
                                 </section>
                             </>

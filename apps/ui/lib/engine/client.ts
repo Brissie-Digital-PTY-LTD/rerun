@@ -50,6 +50,7 @@ import {
     type BrainSeedPage,
     type BrainSeedResult,
 } from '@rerun/contracts'
+import { isNetworkFailure } from '@/lib/net/network-error'
 import {
     type EngineAgentConfigPatch,
     type EngineMcpServer,
@@ -162,9 +163,27 @@ export class EngineRequestError extends Error {
     }
 }
 
+// The box did not answer at all (restarting, off the network, too slow). Its message is shown as is
+// by every action that surfaces an engine error, so it is written for the person, not for the logs.
+export class EngineUnreachableError extends Error {
+    constructor(cause: unknown) {
+        super("Couldn't reach your workspace's machine. It may be restarting, try again in a moment.", { cause })
+        this.name = 'EngineUnreachableError'
+    }
+}
+
+async function fetchEngine(url: string, init: RequestInit): Promise<Response> {
+    try {
+        return await fetch(url, init)
+    } catch (err) {
+        if (isNetworkFailure(err)) throw new EngineUnreachableError(err)
+        throw err
+    }
+}
+
 export async function request<T>(conn: EngineConnection, path: string, init: RequestInit, parse: (data: unknown) => T): Promise<T> {
     const signal = init.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
-    const res = await fetch(`${conn.baseUrl}${path}`, { ...init, signal, headers: { ...buildHeaders(conn), ...(init.headers ?? {}) } })
+    const res = await fetchEngine(`${conn.baseUrl}${path}`, { ...init, signal, headers: { ...buildHeaders(conn), ...(init.headers ?? {}) } })
     if (!res.ok) {
         const body = await res.text().catch(() => 'Unknown error')
         throw new EngineRequestError(`rerun-engine ${init.method ?? 'GET'} ${path} failed: ${res.status} ${body}`, res.status)
@@ -392,7 +411,7 @@ export async function exportDbTable(conn: EngineConnection, base: string, table:
     if (params.where && params.where.length > 0) qs.set('where', JSON.stringify(params.where))
     const headers: Record<string, string> = {}
     if (conn.apiKey) headers['Authorization'] = `Bearer ${conn.apiKey}`
-    return fetch(`${conn.baseUrl}${base}/tables/${encodeURIComponent(table)}/export?${qs.toString()}`, { method: 'GET', headers })
+    return fetchEngine(`${conn.baseUrl}${base}/tables/${encodeURIComponent(table)}/export?${qs.toString()}`, { method: 'GET', headers })
 }
 
 export async function deleteDbTableRows(conn: EngineConnection, base: string, table: string, rowids: (number | string)[]): Promise<{ deleted: number }> {
@@ -427,7 +446,7 @@ export async function planAgentArchive(conn: EngineConnection, agentId: string, 
 export async function fetchAgentArchive(conn: EngineConnection, agentId: string, exclude: string[] = []): Promise<Response> {
     const headers: Record<string, string> = {}
     if (conn.apiKey) headers['Authorization'] = `Bearer ${conn.apiKey}`
-    return fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/archive${excludeQuery(exclude)}`, { method: 'GET', headers, signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS) })
+    return fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/archive${excludeQuery(exclude)}`, { method: 'GET', headers, signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS) })
 }
 
 // The tarball is the body rather than a multipart field, so it travels from private storage to
@@ -437,7 +456,7 @@ export async function importAgentArchive(conn: EngineConnection, archive: Blob, 
     const headers: Record<string, string> = { 'Content-Type': 'application/gzip' }
     if (conn.apiKey) headers['Authorization'] = `Bearer ${conn.apiKey}`
     const query = new URLSearchParams({ name, displayName })
-    const res = await fetch(`${conn.baseUrl}/agents/import?${query}`, { method: 'POST', headers, body: archive, signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/import?${query}`, { method: 'POST', headers, body: archive, signal: AbortSignal.timeout(ARCHIVE_TIMEOUT_MS) })
     if (!res.ok) throw new Error(`rerun-engine POST /agents/import failed: ${res.status} ${await res.text().catch(() => 'Unknown error')}`)
     return agentImportResultSchema.parse(await res.json())
 }
@@ -450,7 +469,7 @@ export async function duplicateAgent(conn: EngineConnection, id: string, params:
 }
 
 export async function deleteAgent(conn: EngineConnection, id: string): Promise<void> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(id)}`, { method: 'DELETE', headers: buildHeaders(conn) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(id)}`, { method: 'DELETE', headers: buildHeaders(conn) })
     if (!res.ok && res.status !== 404) {
         const body = await res.text().catch(() => 'Unknown error')
         throw new Error(`rerun-engine DELETE /agents/${id} failed: ${res.status} ${body}`)
@@ -466,14 +485,14 @@ export async function listSessions(conn: EngineConnection, agentId: string): Pro
 // Null when the session does not exist, and when the engine predates this route: the caller falls
 // back to the full listing then.
 export async function getSession(conn: EngineConnection, agentId: string, sessionId: string): Promise<EngineSession | null> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`, { headers: buildHeaders(conn), signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}`, { headers: buildHeaders(conn), signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) })
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`rerun-engine GET /agents/${agentId}/sessions/${sessionId} failed: ${res.status}`)
     return engineSessionSchema.parse(await res.json())
 }
 
 export async function getSessionMessages(conn: EngineConnection, agentId: string, sessionId: string): Promise<EngineMessage[]> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages`, { headers: buildHeaders(conn) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionId)}/messages`, { headers: buildHeaders(conn) })
     if (!res.ok) return []
     return engineMessagesListSchema.parse(await res.json()).messages
 }
@@ -482,8 +501,8 @@ export async function getSessionMessages(conn: EngineConnection, agentId: string
 
 // Returns the raw fetch Response so the caller can read the `x-session-id`
 // header and pipe the SSE body straight through to the browser.
-export async function chat(conn: EngineConnection, agentId: string, params: { sessionId?: string; message: string; connectionId?: string; model?: string; source?: SessionSource; foreman?: ForemanBrief; author?: MessageAuthor; install?: boolean; userLanguage?: string }): Promise<Response> {
-    return fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/chat`, {
+export async function chat(conn: EngineConnection, agentId: string, params: { sessionId?: string; message: string; connectionId?: string; model?: string; source?: SessionSource; foreman?: ForemanBrief; author?: MessageAuthor; install?: boolean; userLanguage?: string; callableAgentIds?: string[] }): Promise<Response> {
+    return fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/chat`, {
         method: 'POST',
         headers: buildHeaders(conn),
         body: JSON.stringify(params),
@@ -495,7 +514,7 @@ export async function chat(conn: EngineConnection, agentId: string, params: { se
 // it has buffered so far and tails the live remainder; returns 204 when the run
 // is finished or its buffer has been evicted.
 export async function reconnectRun(conn: EngineConnection, agentId: string, runId: string): Promise<Response> {
-    return fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}/stream`, {
+    return fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/runs/${encodeURIComponent(runId)}/stream`, {
         method: 'GET',
         headers: buildHeaders(conn),
         signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
@@ -548,7 +567,7 @@ export async function makeDir(conn: EngineConnection, base: string, path: string
 }
 
 export async function deleteFile(conn: EngineConnection, base: string, path: string): Promise<void> {
-    const res = await fetch(`${conn.baseUrl}${base}?path=${encodeURIComponent(path)}`, { method: 'DELETE', headers: buildHeaders(conn) })
+    const res = await fetchEngine(`${conn.baseUrl}${base}?path=${encodeURIComponent(path)}`, { method: 'DELETE', headers: buildHeaders(conn) })
     if (!res.ok && res.status !== 404) {
         const body = await res.text().catch(() => 'Unknown error')
         throw new Error(`rerun-engine DELETE ${base} failed: ${res.status} ${body}`)
@@ -565,7 +584,7 @@ export async function uploadFile(conn: EngineConnection, base: string, file: Fil
     const headers: Record<string, string> = {}
     if (conn.apiKey) headers['Authorization'] = `Bearer ${conn.apiKey}`
     const qs = dir ? `?dir=${encodeURIComponent(dir)}` : ''
-    const res = await fetch(`${conn.baseUrl}${base}/raw${qs}`, { method: 'POST', headers, body: form })
+    const res = await fetchEngine(`${conn.baseUrl}${base}/raw${qs}`, { method: 'POST', headers, body: form })
     if (!res.ok) {
         const body = await res.text().catch(() => 'Unknown error')
         throw new Error(`rerun-engine POST ${base}/raw failed: ${res.status} ${body}`)
@@ -591,7 +610,7 @@ export async function uploadFileStream(conn: EngineConnection, base: string, inp
     if (input.dir) query.set('dir', input.dir)
     if (input.size != null) query.set('size', String(input.size))
 
-    const res = await fetch(`${conn.baseUrl}${base}/raw?${query}`, {
+    const res = await fetchEngine(`${conn.baseUrl}${base}/raw?${query}`, {
         method: 'PUT',
         headers,
         body: input.body,
@@ -696,7 +715,7 @@ export async function fetchRawFile(conn: EngineConnection, base: string, path: s
     const headers: Record<string, string> = {}
     if (conn.apiKey) headers['Authorization'] = `Bearer ${conn.apiKey}`
     if (range) headers['Range'] = range
-    return fetch(`${conn.baseUrl}${base}/raw?path=${encodeURIComponent(path)}`, { method: 'GET', headers })
+    return fetchEngine(`${conn.baseUrl}${base}/raw?path=${encodeURIComponent(path)}`, { method: 'GET', headers })
 }
 
 // --- Skills ---
@@ -725,7 +744,7 @@ export type ImportSkillOptions = { name?: string; description?: string; slug?: s
 // bundled file land, or nothing does and the existing skill is untouched. Pass `slug` to
 // target an existing skill, which is how a skill gets renamed instead of duplicated.
 export async function importSkill(conn: EngineConnection, agentId: string, content: string, files: EngineSkillFilePayload[] = [], options: ImportSkillOptions = {}): Promise<EngineSkill> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/skills/import`, { method: 'POST', headers: buildHeaders(conn), body: JSON.stringify({ content, files, ...options }) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/skills/import`, { method: 'POST', headers: buildHeaders(conn), body: JSON.stringify({ content, files, ...options }) })
     const data = res.status === 204 ? null : await res.json().catch(() => null)
     if (!res.ok) throw new Error((data as { error?: string } | null)?.error ?? 'Failed to import skill')
     return engineSkillSchema.parse(data)
@@ -736,7 +755,7 @@ export function skillFilesBase(agentId: string, slug: string): string {
 }
 
 export async function fetchSkillArchive(conn: EngineConnection, agentId: string, slug: string): Promise<ArrayBuffer> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(slug)}/archive`, { method: 'GET', headers: buildHeaders(conn) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(slug)}/archive`, { method: 'GET', headers: buildHeaders(conn) })
     if (!res.ok) throw new Error(`Failed to download skill ${slug}: ${res.status}`)
     return res.arrayBuffer()
 }
@@ -787,7 +806,7 @@ export async function runScheduleNow(conn: EngineConnection, agentId: string, sl
 }
 
 export async function deleteSchedule(conn: EngineConnection, agentId: string, slug: string): Promise<void> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/schedules/${encodeURIComponent(slug)}`, { method: 'DELETE', headers: buildHeaders(conn) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/schedules/${encodeURIComponent(slug)}`, { method: 'DELETE', headers: buildHeaders(conn) })
     if (!res.ok && res.status !== 404) {
         const body = await res.text().catch(() => 'Unknown error')
         throw new Error(`rerun-engine DELETE /agents/${agentId}/schedules/${slug} failed: ${res.status} ${body}`)
@@ -822,7 +841,7 @@ export async function rotateTriggerToken(conn: EngineConnection, agentId: string
 }
 
 export async function deleteTrigger(conn: EngineConnection, agentId: string, slug: string): Promise<void> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/triggers/${encodeURIComponent(slug)}`, { method: 'DELETE', headers: buildHeaders(conn) })
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/triggers/${encodeURIComponent(slug)}`, { method: 'DELETE', headers: buildHeaders(conn) })
     if (!res.ok && res.status !== 404) {
         const body = await res.text().catch(() => 'Unknown error')
         throw new Error(`rerun-engine DELETE /agents/${agentId}/triggers/${slug} failed: ${res.status} ${body}`)
@@ -832,7 +851,7 @@ export async function deleteTrigger(conn: EngineConnection, agentId: string, slu
 // Not routed through `request`, which turns every non-2xx into a message-only Error: the public
 // webhook route has to tell a wrong token (404) from a wrong method (405) to answer correctly.
 export async function fireTrigger(conn: EngineConnection, agentId: string, slug: string, payload: TriggerFirePayload, signal?: AbortSignal): Promise<TriggerFireOutcome> {
-    const res = await fetch(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/triggers/${encodeURIComponent(slug)}/fire`, {
+    const res = await fetchEngine(`${conn.baseUrl}/agents/${encodeURIComponent(agentId)}/triggers/${encodeURIComponent(slug)}/fire`, {
         method: 'POST',
         headers: buildHeaders(conn),
         body: JSON.stringify(payload),
@@ -850,7 +869,7 @@ export async function getEngineHealth(conn: EngineConnection): Promise<EngineHea
 
 // Null on an engine that predates the route: the caller judges it on /health alone then.
 export async function getEngineDoctor(conn: EngineConnection): Promise<EngineDoctor | null> {
-    const res = await fetch(`${conn.baseUrl}/doctor`, { headers: buildHeaders(conn), signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) })
+    const res = await fetchEngine(`${conn.baseUrl}/doctor`, { headers: buildHeaders(conn), signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) })
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`rerun-engine GET /doctor failed: ${res.status}`)
     return engineDoctorSchema.parse(await res.json())

@@ -63,9 +63,37 @@ export function runOffersComputer(config: AgentConfig, provider: Provider, model
     return offersComputer(config) && modelSeesImages(provider, model, connection)
 }
 
-// One screen per agent and runs of one agent can overlap (a chat, a schedule): the first to touch
-// the screen keeps it until it ends.
+// One screen per agent and runs of one agent can overlap (a chat, a schedule, a call from another
+// coworker): the first to touch the screen keeps it until it ends, and the others wait their turn.
 const screenOwners = new Map<string, RunContext>()
+const screenWaiters = new Map<string, Set<() => void>>()
+// Covers a whole scheduled run (one to three minutes), well inside the CLIs' one-hour tool timeout.
+const SCREEN_WAIT_MS = 5 * 60_000
+const SCREEN_TAKEN = 'Another run of this coworker is using the screen right now. Carry on without it, or tell the user to retry once that run is over.'
+
+function freeScreen(agentId: string): void {
+    screenOwners.delete(agentId)
+    for (const wake of screenWaiters.get(agentId) ?? []) wake()
+}
+
+// True when the screen was released, false when the wait ran out first.
+async function waitForScreen(agentId: string, remainingMs: number, signal: AbortSignal | undefined): Promise<boolean> {
+    const released = new AbortController()
+    const wake = () => released.abort()
+    const waiters = screenWaiters.get(agentId) ?? new Set()
+    waiters.add(wake)
+    screenWaiters.set(agentId, waiters)
+    try {
+        await sleep(remainingMs, undefined, { signal: signal ? AbortSignal.any([signal, released.signal]) : released.signal })
+        return false
+    } catch (err) {
+        if (signal?.aborted || !released.signal.aborted) throw err
+        return true
+    } finally {
+        waiters.delete(wake)
+        if (!waiters.size) screenWaiters.delete(agentId)
+    }
+}
 
 export const agentsOnScreen = (): string[] => [...screenOwners.keys()]
 
@@ -150,16 +178,28 @@ export function computerTools(ctx: RunContext): { tools: ToolSet; release: () =>
     }
     const dropScreens = () => void rm(resolve(tmpdir(), 'rerun-desktop', 'screens', id), { recursive: true, force: true }).catch(() => {})
 
-    const claimScreen = (): Refused | null => {
-        const owner = screenOwners.get(id)
-        if (owner && owner !== ctx) return refused('Another run of this coworker is using the screen right now. Carry on without it, or tell the user to retry once that run is over.')
-        if (!owner) {
-            screenOwners.set(id, ctx)
-            // A browser already on the screen (handed back after a sign-in) is what the run looks at.
-            releases.push(holdDesktop(id), holdOpenBrowser(id), () => {
-                if (screenOwners.get(id) === ctx) screenOwners.delete(id)
-            })
+    // The check and the claim run with no await between them, so two runs woken by the same release
+    // cannot both take the screen.
+    const takeScreen = async (signal: AbortSignal | undefined): Promise<boolean> => {
+        const deadline = Date.now() + SCREEN_WAIT_MS
+        for (;;) {
+            const owner = screenOwners.get(id)
+            if (owner === ctx) return true
+            if (!owner) {
+                screenOwners.set(id, ctx)
+                // A browser already on the screen (handed back after a sign-in) is what the run looks at.
+                releases.push(holdDesktop(id), holdOpenBrowser(id), () => {
+                    if (screenOwners.get(id) === ctx) freeScreen(id)
+                })
+                return true
+            }
+            const remainingMs = deadline - Date.now()
+            if (remainingMs <= 0 || !(await waitForScreen(id, remainingMs, signal))) return false
         }
+    }
+
+    const claimScreen = async (signal: AbortSignal | undefined): Promise<Refused | null> => {
+        if (!(await takeScreen(signal))) return refused(SCREEN_TAKEN)
         if (humanDriving(id)) return refused(HUMAN_DRIVING)
         if (actions >= maxActions) return refused(`This run has used its ${maxActions} screen actions. Tell the user where you got to and end your turn.`)
         actions++
@@ -169,7 +209,7 @@ export function computerTools(ctx: RunContext): { tools: ToolSet; release: () =>
     const onScreen = async (toolSignal: AbortSignal | undefined, settleMs: number, act: (control: ScreenControl, signal: AbortSignal | undefined) => Promise<void>): Promise<Done | Refused | Failed> => {
         const signal = ctx.abortSignal ?? toolSignal
         await handsFree(id, signal)
-        const denied = claimScreen()
+        const denied = await claimScreen(signal)
         if (denied) return denied
         return withKeyedLock(`computer:${id}`, async () => {
             try {

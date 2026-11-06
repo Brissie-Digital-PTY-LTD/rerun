@@ -5,6 +5,9 @@ import { adoptRunSession, RunHistoryList } from '@/components/agent/AgentRunHist
 import { TaskOutcomeFooter } from '@/components/agent/TaskOutcomeFooter'
 import { TriggerEditor } from '@/components/agent/TriggerEditor'
 import { Button } from '@/components/ui/button'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PanelList, PanelListHeader, PanelScroller } from '@/components/ui/panel-list'
 import { PanelRow } from '@/components/ui/panel-row'
@@ -33,6 +36,7 @@ export function AgentPanelTriggers({ agentId, onOpenSession }: AgentPanelTrigger
     const [outcomes, setOutcomes] = useState<Record<string, TaskOutcome>>({})
     const [loading, setLoading] = useState(true)
     const [view, setView] = useState<View>({ mode: 'list' })
+    const canManage = useCanManageAgent(agentId)
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -98,9 +102,11 @@ export function AgentPanelTriggers({ agentId, onOpenSession }: AgentPanelTrigger
     }
 
     const newButton = (
-        <Button size="sm" variant="outline" onClick={() => setView({ mode: 'create' })}>
-            <PlusIcon className="size-3.5 mr-1" /> New
-        </Button>
+        <TooltipDisabledReason reason={canManage ? undefined : BOX_MANAGE_REASON}>
+            <Button size="sm" variant="outline" disabled={!canManage} onClick={() => setView({ mode: 'create' })}>
+                <PlusIcon className="size-3.5 mr-1" /> New
+            </Button>
+        </TooltipDisabledReason>
     )
 
     return (

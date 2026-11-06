@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { RERUN_CLOUD } from '@/cloud/edition'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
 
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 

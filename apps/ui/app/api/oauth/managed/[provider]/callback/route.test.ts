@@ -56,6 +56,7 @@ const CONTEXT: ManagedOAuthContext = {
 
 let agentWorkspace = SESSION_WORKSPACE
 let memberOfAgentWorkspace = true
+let role: 'admin' | 'member' = 'admin'
 let jar: Record<string, string> = {}
 
 function callback(params: Record<string, string>, provider = 'acme') {
@@ -78,10 +79,12 @@ beforeEach(() => {
     vi.stubEnv('ACME_CLIENT_SECRET', 'acme-secret')
     agentWorkspace = SESSION_WORKSPACE
     memberOfAgentWorkspace = true
+    role = 'admin'
     jar = {}
     const db = fakeSupabase(table => {
-        if (table === 'agents') return { data: { workspace_id: agentWorkspace, engine_agent_id: 'engine-agent', template_id: null, disabled_at: null, disabled_reason: null, workspaces: { subscription_status: 'active', is_sandbox: false } } }
-        if (table === 'workspace_members') return { data: memberOfAgentWorkspace ? { user_id: 'user-1' } : null }
+        if (table === 'agents') return { data: { workspace_id: agentWorkspace, space_id: 'space-1', engine_agent_id: 'engine-agent', template_id: null, disabled_at: null, disabled_reason: null, workspaces: { subscription_status: 'active', is_sandbox: false }, space: { visibility: 'workspace' } } }
+        if (table === 'spaces') return { data: { id: 'space-1', workspace_id: agentWorkspace, visibility: 'workspace' } }
+        if (table === 'workspace_members') return { data: memberOfAgentWorkspace ? { user_id: 'user-1', role, box_scope: 'all' } : null }
         return undefined
     })
     vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
@@ -112,7 +115,7 @@ describe('GET /api/oauth/managed/[provider]/callback', () => {
             'acme',
             expect.objectContaining({ accessToken: 'access', tokenEndpoint: 'https://acme.test/token', clientId: 'acme-id', clientSecret: 'acme-secret' }),
         )
-        expect(markManagedAuthorized).toHaveBeenCalledWith('agent-1', 'acme', 'me@acme.test', SESSION_WORKSPACE)
+        expect(markManagedAuthorized).toHaveBeenCalledWith('agent-1', 'acme', 'me@acme.test', { kind: 'workspace', workspaceId: SESSION_WORKSPACE })
         expect(deletesStateCookie(res)).toBe(true)
     })
 
@@ -198,6 +201,18 @@ describe('GET /api/oauth/managed/[provider]/callback', () => {
 
         expect(await res.text()).toContain('Acme is not configured on this server.')
         expect(exchangeManagedCode).not.toHaveBeenCalled()
+    })
+
+    it('writes no token and marks nothing for a member who only uses the Box of the coworker', async () => {
+        role = 'member'
+        withContext(CONTEXT)
+
+        const res = await callback({ code: 'code-1', state: STATE })
+
+        expect(await res.text()).toContain('Only an admin or a manager of this Box can do this')
+        expect(exchangeManagedCode).not.toHaveBeenCalled()
+        expect(putMcpToken).not.toHaveBeenCalled()
+        expect(markManagedAuthorized).not.toHaveBeenCalled()
     })
 
     it('writes no token and marks nothing for an agent of another workspace', async () => {

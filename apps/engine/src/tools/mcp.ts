@@ -4,7 +4,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { LoadedAgent, McpServer } from '../agents/types.js'
+import type { Provider } from '@rerun/contracts'
+import { CLI_PROVIDERS, type LoadedAgent, type McpServer } from '../agents/types.js'
 import { workspaceDir } from '../config/paths.js'
 import { withAuth } from './mcp-auth.js'
 import { withHubHeaders } from './mcp-hub-headers.js'
@@ -22,6 +23,12 @@ export type McpCallResult = Awaited<ReturnType<Client['callTool']>>
 export type McpCall = (name: string, args: Record<string, unknown>) => Promise<McpCallResult>
 export type McpTransport = 'stdio' | 'sse' | 'http'
 export type McpProbe = { ok: boolean; transport: McpTransport; toolNames: string[]; error?: string }
+
+// The name the model of a run sees for a server's tool: the CLIs namespace it themselves, Rerun's own
+// loop registers it through `mcpToolSet`.
+export function mcpToolNameFor(provider: Provider | undefined, serverName: string, toolName: string): string {
+    return provider && CLI_PROVIDERS.has(provider) ? `mcp__${serverName}__${toolName}` : `${serverName}_${toolName}`
+}
 
 export function resolveTransport(server: McpServer): McpTransport {
     if (server.transport) return server.transport
@@ -72,7 +79,7 @@ export function mcpToolSet(serverName: string, tools: McpTool[], call: McpCall):
     const set: ToolSet = {}
     for (const original of tools) {
         const t = modelReadyMcpTool(serverName, original)
-        set[`${serverName}_${t.name}`] = dynamicTool({
+        set[mcpToolNameFor(undefined, serverName, t.name)] = dynamicTool({
             description: t.description ?? t.name,
             inputSchema: jsonSchema(t.inputSchema),
             execute: async args => JSON.stringify((await call(t.name, args as Record<string, unknown>)).content),
@@ -129,7 +136,7 @@ export async function probeMcp(agentId: string, server: McpServer, env: Record<s
     try {
         const opening = prepareMcpServer(agentId, server, env).then(prepared => openMcpClient(prepared, opts.spawn))
         const { client, tools } = await withDeadline(opening, opts.timeoutMs)
-        const toolNames = tools.map(t => `${server.name}_${t.name}`)
+        const toolNames = tools.map(t => t.name)
         await client.close().catch(() => {})
         return { ok: true, transport, toolNames }
     } catch (e) {

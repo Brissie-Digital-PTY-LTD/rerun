@@ -1,4 +1,4 @@
-import { rerunCreditTotalMicros, type RerunCreditColumns } from '@/cloud/billing'
+import { rerunCreditTotalMicros, type RerunCreditColumns } from '@rerun/cloud/billing'
 import { catalogFor, modelLabel, modelPower, type CatalogModel } from '@/lib/engine/models'
 import type { BoxConnection, BoxDefault } from '@/lib/engine/types'
 import { shortUntil } from '@/lib/time'

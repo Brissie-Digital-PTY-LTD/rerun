@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@rerun/cloud/*": ["../../cloud/packages/cloud/src/*", "./cloud-oss/*"]
     }
   },
   "include": [

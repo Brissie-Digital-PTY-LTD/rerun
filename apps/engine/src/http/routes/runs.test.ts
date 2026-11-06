@@ -237,7 +237,7 @@ describe('POST /agents/:id/runs/:rid/cancel', () => {
 
     it('aborts a live run and lets its loop announce the end', async () => {
         const rid = await seedRun(id, sessionId)
-        const controller = registerRunAbort(rid)
+        const controller = registerRunAbort(rid, 'agent-1')
         const res = await cancel(rid)
         expect(await res.json()).toEqual({ ok: true, aborted: true })
         expect(controller.signal.aborted).toBe(true)
@@ -272,7 +272,7 @@ describe('POST /agents/:id/runs/:rid/cancel', () => {
 
     it('still aborts a live loop whose row is already settled', async () => {
         const rid = await seedRun(id, sessionId, { status: 'error' })
-        registerRunAbort(rid)
+        registerRunAbort(rid, 'agent-1')
         expect(await (await cancel(rid)).json()).toEqual({ ok: true, aborted: true })
         expect((await getRun(id, rid))?.status).toBe('error')
         unregisterRunAbort(rid)

@@ -173,6 +173,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          created_by_user_id: string | null
           id: string
           key_hash: string
           key_prefix: string
@@ -184,6 +185,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          created_by_user_id?: string | null
           id?: string
           key_hash: string
           key_prefix: string
@@ -195,6 +197,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          created_by_user_id?: string | null
           id?: string
           key_hash?: string
           key_prefix?: string
@@ -1192,6 +1195,35 @@ export type Database = {
             foreignKeyName: "foreman_conversations_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      foreman_builds: {
+        Row: {
+          finished_at: string | null
+          result: Json | null
+          started_at: string
+          workspace_id: number
+        }
+        Insert: {
+          finished_at?: string | null
+          result?: Json | null
+          started_at?: string
+          workspace_id: number
+        }
+        Update: {
+          finished_at?: string | null
+          result?: Json | null
+          started_at?: string
+          workspace_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "foreman_builds_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
             referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
@@ -2323,6 +2355,55 @@ export type Database = {
         }
         Relationships: []
       }
+      space_members: {
+        Row: {
+          access: string
+          created_at: string
+          granted_by: string | null
+          space_id: string
+          user_id: string
+          workspace_id: number
+        }
+        Insert: {
+          access: string
+          created_at?: string
+          granted_by?: string | null
+          space_id: string
+          user_id: string
+          workspace_id: number
+        }
+        Update: {
+          access?: string
+          created_at?: string
+          granted_by?: string | null
+          space_id?: string
+          user_id?: string
+          workspace_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "space_members_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "space_members_space_id_workspace_id_fkey"
+            columns: ["space_id", "workspace_id"]
+            isOneToOne: false
+            referencedRelation: "spaces"
+            referencedColumns: ["id", "workspace_id"]
+          },
+          {
+            foreignKeyName: "space_members_user_id_workspace_id_fkey"
+            columns: ["user_id", "workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspace_members"
+            referencedColumns: ["user_id", "workspace_id"]
+          },
+        ]
+      }
       spaces: {
         Row: {
           col_end: number
@@ -2332,6 +2413,7 @@ export type Database = {
           name: string | null
           row_end: number
           row_start: number
+          visibility: string
           workspace_id: number
         }
         Insert: {
@@ -2342,6 +2424,7 @@ export type Database = {
           name?: string | null
           row_end: number
           row_start: number
+          visibility?: string
           workspace_id: number
         }
         Update: {
@@ -2352,6 +2435,7 @@ export type Database = {
           name?: string | null
           row_end?: number
           row_start?: number
+          visibility?: string
           workspace_id?: number
         }
         Relationships: [
@@ -3238,6 +3322,7 @@ export type Database = {
       workspace_invitations: {
         Row: {
           accepted_at: string | null
+          box_scope: string
           created_at: string
           email: string
           expires_at: string
@@ -3249,6 +3334,7 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          box_scope?: string
           created_at?: string
           email: string
           expires_at: string
@@ -3260,6 +3346,7 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          box_scope?: string
           created_at?: string
           email?: string
           expires_at?: string
@@ -3288,17 +3375,23 @@ export type Database = {
       }
       workspace_members: {
         Row: {
+          box_scope: string
           created_at: string
+          role: Database["public"]["Enums"]["workspace_role"]
           user_id: string
           workspace_id: number
         }
         Insert: {
+          box_scope?: string
           created_at?: string
+          role?: Database["public"]["Enums"]["workspace_role"]
           user_id: string
           workspace_id: number
         }
         Update: {
+          box_scope?: string
           created_at?: string
+          role?: Database["public"]["Enums"]["workspace_role"]
           user_id?: string
           workspace_id?: number
         }
@@ -3649,6 +3742,7 @@ export type Database = {
         Args: { p_micros: number; p_workspace_id: number }
         Returns: undefined
       }
+      current_admin_workspace_ids: { Args: never; Returns: number[] }
       current_workspace_ids: { Args: never; Returns: number[] }
       email_domain_is_blocked: { Args: { p_email: string }; Returns: boolean }
       engine_box_metric_series: {
@@ -3674,6 +3768,8 @@ export type Database = {
         Args: { p_micros: number; p_workspace_id: number }
         Returns: undefined
       }
+      manageable_agent_ids: { Args: never; Returns: string[] }
+      manageable_space_ids: { Args: never; Returns: string[] }
       mark_getting_started: {
         Args: { p_item: string; p_workspace_id: number }
         Returns: undefined
@@ -3731,6 +3827,8 @@ export type Database = {
           title: string
         }[]
       }
+      visible_agent_ids: { Args: never; Returns: string[] }
+      visible_space_ids: { Args: never; Returns: string[] }
     }
     Enums: {
       account_role: "member" | "expert"
@@ -3803,6 +3901,7 @@ export type Database = {
         | "restoring"
         | "restored"
         | "failed"
+      workspace_role: "admin" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4008,6 +4107,7 @@ export const Constants = {
         "restored",
         "failed",
       ],
+      workspace_role: ["admin", "member"],
     },
   },
 } as const

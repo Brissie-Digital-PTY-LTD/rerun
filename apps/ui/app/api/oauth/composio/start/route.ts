@@ -1,10 +1,11 @@
 import { parseServiceRegistryKey } from '@rerun/contracts'
-import { assertAgentInWorkspace } from '@/app/api/_auth/ownership'
+import { assertAgentAccess } from '@/app/api/_auth/access'
 import { resolveAgentTarget } from '@/app/api/_services/chat.service'
 import { loadManifest } from '@/app/api/_services/services.service'
 import { composioConfigured, composioUserId, initiateConnectedAccount } from '@/lib/composio/client'
 import { COMPOSIO_COOKIE_PATH, COMPOSIO_COOKIE_PREFIX, type ComposioOAuthContext, composioCallbackUrl, createComposioState, encodeComposioContext } from '@/lib/composio/oauth'
 import { readRegistry, resolveRegistryEntry } from '@/lib/services/registry'
+import { describeSignInError } from '@/lib/net/network-error'
 import { NextResponse } from 'next/server'
 
 // Begin a Composio connect flow: ask Composio for a hosted sign-in link scoped to a
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
         const body = (await req.json()) as { agentId: string; key?: string; slug?: string }
         const { agentId } = body
         const key = body.key ?? body.slug ?? ''
-        await assertAgentInWorkspace(agentId)
+        const { actor } = await assertAgentAccess(agentId, 'manage')
 
         if (!composioConfigured()) return NextResponse.json({ error: 'Composio connections are not configured on this server.' }, { status: 400 })
 
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
         const manifest = await loadManifest(key)
         const method = manifest?.authMethods.find(m => m.kind === 'composio' && m.composio)
         // An extra account's server is `<template>-<instanceId>`, a name only its registry entry holds.
-        const { conn, engineAgentId } = await resolveAgentTarget(agentId)
+        const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
         const entry = resolveRegistryEntry(await readRegistry(conn, engineAgentId), key)?.entry
         const serverName = entry?.composio?.serverName ?? (instanceId ? undefined : method?.mcpServers[0]?.name)
         if (!manifest || !method?.composio || !serverName) {
@@ -57,6 +58,6 @@ export async function POST(req: Request) {
         })
         return res
     } catch (err) {
-        return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to start the connection' }, { status: 400 })
+        return NextResponse.json({ error: describeSignInError(err, 'Failed to start the connection') }, { status: 400 })
     }
 }

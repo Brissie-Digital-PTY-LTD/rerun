@@ -81,9 +81,9 @@ scheduleRoutes.post('/:slug/run', async c => {
     // prompt and tools, and run a second install beside the real one. Skipping the setup switches
     // the schedules on, which lifts this.
     if (hasPendingSetup(await getAgent(agentId)) && !schedule.enabled) throw setupPending()
-    // A manual run is a deliberate probe: it may clear the budget latch, or re-arm it and show the
-    // failure in the UI.
-    const { runId, sessionId } = await fireSchedule(agentId, schedule, { markFired: false, ignoreBudgetLatch: true })
+    // A manual run is a deliberate probe: it may clear a budget or subscription latch, or re-arm it
+    // and show the failure in the UI.
+    const { runId, sessionId } = await fireSchedule(agentId, schedule, { markFired: false, manual: true })
     return c.json({ runId, sessionId }, 202)
 })
 

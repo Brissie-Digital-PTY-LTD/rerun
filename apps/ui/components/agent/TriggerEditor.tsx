@@ -14,6 +14,9 @@ import { Input } from '@/components/ui/input'
 import { SkeletonRows } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { MarkdownTextarea } from '@/components/ui/markdown-textarea'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import type { EngineTrigger, EngineTriggerMethod } from '@/lib/engine/types'
 import { HistoryIcon } from '@/lib/icons'
 import { useCallback, useEffect, useState } from 'react'
@@ -34,6 +37,8 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
     const { pick, setPick, availableGroups, providerFor, agentModel } = useRunModel(agentId)
     // Only the prompt is sealed: the URL, the methods and the on/off switch stay available.
     const promptLocked = useTemplateContentLock(agentId) && isEdit
+    const canManage = useCanManageAgent(agentId)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
     const [loading, setLoading] = useState(isEdit)
     const [trigger, setTrigger] = useState<EngineTrigger | null>(null)
     const [name, setName] = useState('')
@@ -113,7 +118,7 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
 
     return (
         <PanelEditorShell>
-            <PanelEditorHeader title={isEdit ? 'Edit trigger' : 'New trigger'} onBack={onBack}>
+            <PanelEditorHeader title={isEdit ? (canManage ? 'Edit trigger' : 'Trigger') : 'New trigger'} onBack={onBack}>
                 {isEdit && onShowHistory && (
                     <Button size="sm" variant="ghost" onClick={onShowHistory}>
                         <HistoryIcon className="size-3.5 mr-1" /> History
@@ -123,26 +128,26 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
             <PanelEditorBody>
                 {error && <p className="text-xs text-destructive">{error}</p>}
                 <Input label="Name" helperText={isEdit ? "Name can't be changed (it sets the URL)." : 'The URL is derived from this name.'} hideRequired value={name} onChange={e => setName(e.target.value)} disabled={isEdit} placeholder="GitHub push" className="h-8 text-sm" />
-                <Input label="Description" hideRequired value={description} onChange={e => setDescription(e.target.value)} placeholder="Fires when a commit lands on main" className="h-8 text-sm" />
+                <Input label="Description" hideRequired value={description} onChange={e => setDescription(e.target.value)} disabled={!canManage} placeholder="Fires when a commit lands on main" className="h-8 text-sm" />
 
-                {isEdit && trigger && <TriggerUrlField agentId={agentId} slug={trigger.slug} token={trigger.token} rotating={rotating} onRotate={handleRotate} />}
+                {isEdit && trigger && <TriggerUrlField agentId={agentId} slug={trigger.slug} token={trigger.token} rotating={rotating} onRotate={handleRotate} rotateDisabledReason={manageReason} />}
 
                 <Field label="Accepted methods" helperText={methods.includes('GET') ? 'GET is for services that can only call a plain URL. Link previews and browser visits are ignored.' : 'Most services send POST.'}>
                     <div className="flex flex-wrap gap-3">
                         {ALL_METHODS.map(method => (
                             <label key={method} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                                <Checkbox size="sm" checked={methods.includes(method)} onCheckedChange={checked => toggleMethod(method, checked === true)} />
+                                <Checkbox size="sm" checked={methods.includes(method)} disabled={!canManage} onCheckedChange={checked => toggleMethod(method, checked === true)} />
                                 {method}
                             </label>
                         ))}
                     </div>
                 </Field>
 
-                <RunModelField id="trigger-model" value={pick} onChange={setPick} availableGroups={availableGroups} agentModel={agentModel} helperText="The model this trigger runs under when it fires. Requires the provider's API key." />
+                <RunModelField id="trigger-model" value={pick} onChange={setPick} availableGroups={availableGroups} agentModel={agentModel} disabled={!canManage} helperText="The model this trigger runs under when it fires. Requires the provider's API key." />
 
                 {isEdit && (
                     <Field orientation="row" label="Enabled">
-                        <Switch checked={enabled} onCheckedChange={setEnabled} />
+                        <Switch checked={enabled} disabled={!canManage} onCheckedChange={setEnabled} />
                     </Field>
                 )}
 
@@ -155,7 +160,7 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
                         helperText="What the coworker runs when the URL is called (a fresh session each time). The caller payload is attached below it."
                         value={body}
                         onChange={setBody}
-                        disabled={promptLocked}
+                        disabled={promptLocked || !canManage}
                         className="text-xs min-h-32 font-mono"
                         placeholder="A commit just landed. Review the diff in the payload and post a summary to Slack."
                     />
@@ -163,16 +168,23 @@ export function TriggerEditor({ agentId, slug, onDone, onBack, onShowHistory }: 
 
             </PanelEditorBody>
             <PanelEditorFooter>
-                {isEdit && <PanelDeleteButton
-                        label="Delete trigger"
-                        busy={deleting}
-                        onClick={handleDelete}
-                        confirmTitle={`Delete ${name || 'this trigger'}?`}
-                        confirmDescription="Its webhook URL stops responding right away. Anything still calling it starts failing."
-                    />}
-                <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={!canSave}>
-                    {isEdit ? 'Save changes' : 'Create trigger'}
-                </Button>
+                {isEdit && (
+                    <TooltipDisabledReason reason={manageReason}>
+                        <PanelDeleteButton
+                            label="Delete trigger"
+                            busy={deleting}
+                            disabled={!canManage}
+                            onClick={handleDelete}
+                            confirmTitle={`Delete ${name || 'this trigger'}?`}
+                            confirmDescription="Its webhook URL stops responding right away. Anything still calling it starts failing."
+                        />
+                    </TooltipDisabledReason>
+                )}
+                <TooltipDisabledReason reason={manageReason} className="flex-1">
+                    <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={!canSave || !canManage}>
+                        {isEdit ? 'Save changes' : 'Create trigger'}
+                    </Button>
+                </TooltipDisabledReason>
             </PanelEditorFooter>
         </PanelEditorShell>
     )

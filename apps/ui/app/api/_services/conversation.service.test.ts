@@ -1,4 +1,5 @@
-import { assertAgentInWorkspace, type WorkspaceContext } from '@/app/api/_auth/ownership'
+import { assertAgentAccess, visibleSpaceIds, type Actor } from '@/app/api/_auth/access'
+import { type WorkspaceContext } from '@/app/api/_auth/ownership'
 import { createSessionRow, getSessionEngineContext, lastRunError, listSessionRuns, readUsageSeed, resolveAgentTarget } from '@/app/api/_services/chat.service'
 import { transformEngineMessages } from '@/lib/chat/engine-history'
 import { cancelRun, getSession, getSessionMessages, listRuns, listSessions, listSkillProposals } from '@/lib/engine/client'
@@ -13,12 +14,18 @@ import { adoptEngineSession, cancelSessionRuns, EMPTY_SESSION_SNAPSHOT, listAgen
 vi.mock('@/supabase/supabase-helpers', () => ({ selectMany: vi.fn(), selectMaybeSingle: vi.fn() }))
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
 vi.mock('@/supabase/server', () => ({ createClient: vi.fn() }))
-vi.mock('@/app/api/_auth/ownership', async importOriginal => ({ ...(await importOriginal<typeof import('@/app/api/_auth/ownership')>()), assertAgentInWorkspace: vi.fn(), assertSessionInWorkspace: vi.fn() }))
+vi.mock('@/app/api/_auth/access', async importOriginal => {
+    const actual = await importOriginal<typeof import('@/app/api/_auth/access')>()
+    return { ...actual, assertAgentAccess: vi.fn(), assertSessionInWorkspace: vi.fn(), visibleSpaceIds: vi.fn(actual.visibleSpaceIds) }
+})
 vi.mock('@/app/api/_services/chat.service', () => ({ createSessionRow: vi.fn(), resolveAgentTarget: vi.fn(), getSessionEngineContext: vi.fn(), updateSessionStatus: vi.fn(), lastRunError: vi.fn(), listSessionRuns: vi.fn(), readUsageSeed: vi.fn() }))
 vi.mock('@/lib/engine/client', () => ({ cancelRun: vi.fn(), getSession: vi.fn(), getSessionMessages: vi.fn(), listRuns: vi.fn(), listSessions: vi.fn(), listSkillProposals: vi.fn() }))
 vi.mock('@/lib/chat/engine-history', () => ({ transformEngineMessages: vi.fn() }))
 
-const ctx = { supabase: {}, workspace: { id: 7 } } as unknown as WorkspaceContext
+const ctx = { userId: 'admin', role: 'admin', boxScope: 'all', supabase: {}, workspace: { id: 7 } } as unknown as WorkspaceContext
+const memberCtx = { ...ctx, userId: 'member', role: 'member' } as WorkspaceContext
+const adminActor: Actor = { kind: 'user', userId: 'admin', workspaceId: 7, role: 'admin', boxScope: 'all' }
+const reached = (agent = { workspace_id: 7, space_id: 'space-1', engine_agent_id: 'engine-agent' }) => ({ actor: adminActor, access: 'manage' as const, agent })
 
 function session(agentId: string, id: string, updatedAt: string, status = 'idle') {
     return { id, agent_id: agentId, title: `${id} title`, status, updated_at: updatedAt, engine_session_id: `engine-${id}`, source: 'dashboard' }
@@ -75,6 +82,17 @@ describe('listWorkspaceConversationOverview', () => {
         expect(vi.mocked(selectMany).mock.calls[1][3]).toEqual({ agent_id: ['a'] })
     })
 
+    it('leaves out the coworkers of a Box the member does not reach, without asking for their conversations', async () => {
+        vi.mocked(visibleSpaceIds).mockResolvedValueOnce(new Set(['open']))
+        answers([{ id: 'a', space_id: 'open' }, { id: 'hidden', space_id: 'closed' }] as never, [session('a', 's1', '2026-09-18T10:00:00Z')], [])
+
+        const overview = await listWorkspaceConversationOverview(memberCtx)
+
+        expect(overview.map(row => row.agentId)).toEqual(['a'])
+        expect(vi.mocked(selectMany).mock.calls[1][3]).toEqual({ agent_id: ['a'] })
+        expect(vi.mocked(selectMany).mock.calls[2][3]).toMatchObject({ agent_id: ['a'] })
+    })
+
     it('does not query anything else when the workspace has no agent', async () => {
         vi.mocked(selectMany).mockResolvedValueOnce({ data: [], error: null } as never)
 
@@ -111,6 +129,17 @@ describe('markSessionsHandled', () => {
         await markSessionsHandled(ctx, 'all')
 
         expect(db.writes('sessions')[0].filters.map(call => call.args[0])).toEqual(['agent_id', 'status'])
+    })
+
+    it("never clears a conversation of a coworker outside the member's Boxes, even on all", async () => {
+        const db = fakeSupabase()
+        vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
+        vi.mocked(visibleSpaceIds).mockResolvedValueOnce(new Set(['open']))
+        vi.mocked(selectMany).mockResolvedValueOnce({ data: [{ id: 'a', space_id: 'open' }, { id: 'hidden', space_id: 'closed' }], error: null } as never)
+
+        await markSessionsHandled(memberCtx, 'all')
+
+        expect(db.writes('sessions')[0].filters[0].args).toEqual(['agent_id', ['a']])
     })
 
     it('writes nothing when the workspace has no agent', async () => {
@@ -169,7 +198,7 @@ describe('adoptEngineSession', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         vi.mocked(createServiceRoleClient).mockReturnValue(fakeSupabase().client)
-        vi.mocked(assertAgentInWorkspace).mockResolvedValue({ workspace_id: 7, space_id: 'space-1', engine_agent_id: 'engine-agent' })
+        vi.mocked(assertAgentAccess).mockResolvedValue(reached())
         vi.mocked(resolveAgentTarget).mockResolvedValue({ conn: {}, engineAgentId: 'engine-agent' } as never)
         vi.mocked(createSessionRow).mockResolvedValue('new-session' as never)
     })
@@ -192,7 +221,7 @@ describe('adoptEngineSession', () => {
     })
 
     it('refuses an agent from another workspace before any read', async () => {
-        vi.mocked(assertAgentInWorkspace).mockRejectedValueOnce(new Error('Agent not found'))
+        vi.mocked(assertAgentAccess).mockRejectedValueOnce(new Error('Agent not found'))
 
         await expect(adoptEngineSession('agent-1', 'es-1', 'Title')).rejects.toThrow('Agent not found')
         expect(selectMaybeSingle).not.toHaveBeenCalled()
@@ -206,7 +235,8 @@ describe('adoptEngineSession', () => {
 
         await expect(adoptEngineSession('agent-1', 'es-1', 'Title')).resolves.toBe('new-session')
 
-        expect(resolveAgentTarget).toHaveBeenCalledWith('agent-1', 7)
+        expect(assertAgentAccess).toHaveBeenCalledWith('agent-1', 'use', undefined)
+        expect(resolveAgentTarget).toHaveBeenCalledWith('agent-1', adminActor)
         expect(listSessions).not.toHaveBeenCalled()
 
         expect(vi.mocked(selectMaybeSingle).mock.calls[1][1]).toBe('agents')
@@ -299,6 +329,14 @@ describe('searchWorkspaceConversations', () => {
         expect(vi.mocked(selectMany).mock.calls[1].slice(3)).toEqual([{ agent_id: ['b'] }, { column: 'updated_at', ascending: false }, 8])
     })
 
+    it("finds nothing on a coworker of a Box the member does not reach, without reading its conversations", async () => {
+        vi.mocked(visibleSpaceIds).mockResolvedValueOnce(new Set(['open']))
+        vi.mocked(selectMany).mockResolvedValueOnce({ data: [{ id: 'a', space_id: 'open' }, { id: 'hidden', space_id: 'closed' }], error: null } as never)
+
+        expect(await searchWorkspaceConversations(memberCtx, 'report', 'hidden')).toEqual([])
+        expect(selectMany).toHaveBeenCalledTimes(1)
+    })
+
     it('finds nothing on an agent of another workspace, without reading its conversations', async () => {
         vi.mocked(selectMany).mockResolvedValueOnce({ data: [{ id: 'a' }], error: null } as never)
 
@@ -312,7 +350,7 @@ describe('listAgentConversations', () => {
 
     beforeEach(() => {
         vi.clearAllMocks()
-        vi.mocked(assertAgentInWorkspace).mockResolvedValue({ workspace_id: 7, space_id: 'space-1', engine_agent_id: 'engine-agent' })
+        vi.mocked(assertAgentAccess).mockResolvedValue(reached())
         vi.mocked(resolveAgentTarget).mockRejectedValue(new Error('no box'))
         vi.mocked(createServiceRoleClient).mockReturnValue({} as never)
     })

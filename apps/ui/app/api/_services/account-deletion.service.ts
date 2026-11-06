@@ -2,11 +2,12 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { Database } from '@/app/api/database.types'
-import { stopWorkspaceCharges, subscriptionStillCharges, uninstallWorkspaceApps } from '@/cloud/account'
+import { stopWorkspaceCharges, subscriptionStillCharges, uninstallWorkspaceApps } from '@rerun/cloud/account'
 import type { AccountDeletionBlocker } from '@/lib/auth/account-deletion'
 import { deletedAccountEmailFor } from '@/lib/auth/placeholder-email'
 import { DEFAULT_WORKSPACE_NAME } from '@/lib/naming/workspace-name'
-import { selectAll } from '@/supabase/supabase-helpers'
+import { isLastAdmin, setMemberRole } from '@/app/api/_services/members.service'
+import { selectAll, selectMany } from '@/supabase/supabase-helpers'
 
 type Client = SupabaseClient<Database>
 type AgentUpdate = Database['public']['Tables']['agents']['Update']
@@ -55,7 +56,17 @@ export async function accountDeletionBlockers(admin: Client, userId: string): Pr
     return blockersAmong(await workspacesOf(admin, userId))
 }
 
+// The last admin leaving hands the workspace to the earliest member, so it is never left with no one
+// who can pay for it or let anyone in.
 async function leaveSharedWorkspace(admin: Client, userId: string, workspace: OwnWorkspace) {
+    if (await isLastAdmin(admin, workspace.id, userId)) {
+        const { data: members } = await selectMany(admin, 'workspace_members', ['user_id'] as const, { workspace_id: workspace.id, user_id: { neq: userId } }, { column: 'created_at' }, 1)
+        const heir = members?.[0]
+        if (heir) {
+            const { error } = await setMemberRole(admin, workspace.id, heir.user_id, 'admin')
+            if (error) throw new Error(error)
+        }
+    }
     const { error } = await admin.from('workspace_members').delete().eq('workspace_id', workspace.id).eq('user_id', userId)
     if (error) throw new Error(error.message)
 }

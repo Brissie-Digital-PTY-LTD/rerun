@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
   // scripts to unless it is listed here. A Conductor cloud workspace serves it behind
   // *.conductor.show: without that origin the page arrives but never hydrates, so every click dies.
   allowedDevOrigins: [...(process.env.ALLOWED_DEV_ORIGINS?.split(",") ?? []), "*.conductor.show"],
-  transpilePackages: ["@rerun/ui", "@rerun/db", "@rerun/analytics"],
+  transpilePackages: ["@rerun/ui", "@rerun/emails", "@rerun/db", "@rerun/analytics"],
   // ssh2 (the Incus hosts transport) loads an optional native crypto binding; bundled, Turbopack
   // cannot place the .node asset in an ESM chunk. Left external, Node requires it at runtime and
   // falls back to pure JS when the binding is missing.
@@ -23,10 +23,13 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "64mb" },
   },
+  // The brand pages live in the back office of Rerun Cloud, an app of its own.
   async redirects() {
+    const adminUrl = process.env.NEXT_PUBLIC_ADMIN_URL;
+    if (!adminUrl) return [];
     return [
-      { source: "/logo", destination: "/admin/brand/logo", permanent: false },
-      { source: "/brand/:path*", destination: "/admin/brand/:path*", permanent: false },
+      { source: "/logo", destination: `${adminUrl}/admin/brand/logo`, permanent: false },
+      { source: "/brand/:path*", destination: `${adminUrl}/admin/brand/:path*`, permanent: false },
     ];
   },
   async rewrites() {

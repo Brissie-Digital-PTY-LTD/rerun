@@ -1,11 +1,12 @@
 'use server'
 
 import type { Database, Json } from '@/app/api/database.types'
-import { assertSessionInWorkspace, requireWorkspaceContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
+import { actorFromContext, assertAgentInWorkspace, assertSessionInWorkspace, isAdminActor, requireLightSessionActor } from '@/app/api/_auth/access'
+import { requireWorkspaceContext, type WorkspaceContext } from '@/app/api/_auth/ownership'
 import { readSessionMessages } from '@/app/api/_services/conversation.service'
 import { engineSessionOf, readForemanEngineMessages } from '@/lib/foreman/conversation'
 import { MESSAGE_FEEDBACK_CATEGORY_VALUES, type MessageFeedbackRating } from '@rerun/contracts'
-import { selectMany } from '@/supabase/supabase-helpers'
+import { selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { z } from 'zod'
 
@@ -44,7 +45,7 @@ export async function rateMessageAction(input: z.input<typeof rateSchema>): Prom
 
     const ctx = await requireWorkspaceContext()
     const { userId, workspace, supabase } = ctx
-    const owner = scope === 'foreman' ? await foremanFeedbackOwner(ctx, sessionId) : await agentFeedbackOwner(workspace.id, sessionId)
+    const owner = scope === 'foreman' ? await foremanFeedbackOwner(ctx, sessionId) : await agentFeedbackOwner(ctx, sessionId)
     if (!owner) return { ok: false, error: 'Conversation not found' }
     // A vote names a message of the conversation it is about, not any string: each one copies the
     // transcript with it.
@@ -75,13 +76,23 @@ export async function rateMessageAction(input: z.input<typeof rateSchema>): Prom
 
 type FeedbackOwner = { keys: Pick<MessageFeedbackInsert, 'agent_id' | 'session_id' | 'foreman_conversation_id'>; onConflict: string; transcript: unknown[] }
 
-async function agentFeedbackOwner(workspaceId: number, sessionId: string): Promise<FeedbackOwner> {
-    const session = await assertSessionInWorkspace(sessionId, Promise.resolve(workspaceId))
+async function agentFeedbackOwner(ctx: WorkspaceContext, sessionId: string): Promise<FeedbackOwner> {
+    const session = await assertSessionInWorkspace(sessionId, actorFromContext(ctx))
     const transcript = await readSessionMessages(sessionId).catch(() => [])
     return { keys: { agent_id: session.agent_id, session_id: sessionId }, onConflict: 'session_id,message_id', transcript }
 }
 
-async function foremanFeedbackOwner(ctx: Awaited<ReturnType<typeof requireWorkspaceContext>>, conversationId: string): Promise<FeedbackOwner | null> {
+// A vote on a coworker's message is reached through that coworker, like its conversation. The
+// foreman's have no coworker and stay the workspace's.
+async function reachableFeedbackWorkspaceId(id: string): Promise<number> {
+    const actor = await requireLightSessionActor()
+    if (isAdminActor(actor)) return actor.workspaceId
+    const { data } = await selectMaybeSingle(createServiceRoleClient(), 'message_feedback', ['agent_id'] as const, { id, workspace_id: actor.workspaceId })
+    if (data?.agent_id) await assertAgentInWorkspace(data.agent_id, 'use', actor)
+    return actor.workspaceId
+}
+
+async function foremanFeedbackOwner(ctx: WorkspaceContext, conversationId: string): Promise<FeedbackOwner | null> {
     if ((await engineSessionOf(ctx, conversationId))?.backend !== 'engine') return null
     const transcript = await readForemanEngineMessages(ctx, conversationId).catch(() => [])
     return { keys: { foreman_conversation_id: conversationId }, onConflict: 'foreman_conversation_id,message_id', transcript }
@@ -92,7 +103,8 @@ export async function updateMessageFeedbackAction(input: z.input<typeof detailsS
     if (!parsed.success) return { ok: false, error: 'Invalid feedback' }
     const { id, category, details } = parsed.data
 
-    const workspaceId = await requireWorkspaceId()
+    const workspaceId = await reachableFeedbackWorkspaceId(id).catch(() => null)
+    if (workspaceId === null) return { ok: false, error: 'Feedback not found' }
     const { error } = await createServiceRoleClient()
         .from('message_feedback')
         .update<MessageFeedbackUpdate>({ category, details: details || null, updated_at: new Date().toISOString() })
@@ -105,7 +117,8 @@ export async function updateMessageFeedbackAction(input: z.input<typeof detailsS
 export async function clearMessageFeedbackAction(id: string): Promise<MessageFeedbackResult> {
     if (!z.string().uuid().safeParse(id).success) return { ok: false, error: 'Invalid feedback' }
 
-    const workspaceId = await requireWorkspaceId()
+    const workspaceId = await reachableFeedbackWorkspaceId(id).catch(() => null)
+    if (workspaceId === null) return { ok: false, error: 'Feedback not found' }
     const { error } = await createServiceRoleClient().from('message_feedback').delete().eq('id', id).eq('workspace_id', workspaceId)
     if (error) return { ok: false, error: error.message }
     return { ok: true }

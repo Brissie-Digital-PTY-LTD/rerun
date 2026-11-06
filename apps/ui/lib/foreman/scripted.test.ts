@@ -5,10 +5,10 @@ import { intakeBoxes } from '@/lib/onboarding/intake'
 import type { ForemanState } from './phase'
 
 const writePlan = vi.fn()
-const buildTeam = vi.fn()
+const buildTeamOnce = vi.fn()
 
 vi.mock('./onboarding-tools', () => ({ writePlan }))
-vi.mock('./build-team', () => ({ buildTeam }))
+vi.mock('./build-once', () => ({ buildTeamOnce }))
 const owedTemplatePurchase = vi.fn()
 vi.mock('./template-purchase', () => ({ owedTemplatePurchase }))
 const loadStarterPack = vi.fn()
@@ -290,7 +290,7 @@ describe('runScript', () => {
     it('puts the purchase card up as a call left for the card to answer', async () => {
         const { chunks, writer } = recorder()
         const purchase = { slug: 'buyer-signals', title: 'Find prospects with buyer signals', pricing: { model: 'one_time' as const, amountCents: 2900, currency: 'usd' } }
-        await runScript({ kind: 'offer_purchase', purchase }, { ctx: CTX, writer })
+        await runScript({ kind: 'offer_purchase', purchase }, { ctx: CTX, writer, reload: async () => stateAt('build') })
 
         expect(chunks.map(chunk => chunk.type)).toEqual(['start', 'start-step', 'tool-input-available', 'finish-step', 'finish'])
         expect(chunks[2]).toMatchObject({ toolName: 'open_template_purchase', input: purchase })
@@ -299,7 +299,7 @@ describe('runScript', () => {
     it('puts the starter pack up as a call left for the cards to answer', async () => {
         const { chunks, writer } = recorder()
         const pack = { cards: [], boxes: [] }
-        await runScript({ kind: 'offer_pack', pack }, { ctx: CTX, writer })
+        await runScript({ kind: 'offer_pack', pack }, { ctx: CTX, writer, reload: async () => stateAt('build') })
 
         expect(chunks.map(chunk => chunk.type)).toEqual(['start', 'start-step', 'tool-input-available', 'finish-step', 'finish'])
         expect(chunks[2]).toMatchObject({ toolName: 'show_starter_pack', input: pack })
@@ -307,7 +307,7 @@ describe('runScript', () => {
 
     it('puts the trial card up as an open_checkout call left for the card to answer', async () => {
         const { chunks, writer } = recorder()
-        await runScript({ kind: 'offer_trial' }, { ctx: CTX, writer })
+        await runScript({ kind: 'offer_trial' }, { ctx: CTX, writer, reload: async () => stateAt('build') })
 
         expect(chunks.map(chunk => chunk.type)).toEqual(['start', 'start-step', 'tool-input-available', 'finish-step', 'finish'])
         expect(chunks[2]).toMatchObject({ toolName: 'open_checkout', input: {} })
@@ -316,7 +316,7 @@ describe('runScript', () => {
     it('writes the template they arrived on as an already picked card before the trial card', async () => {
         const { chunks, writer } = recorder()
         const template = { templates: [{ slug: 'buyer-signals', title: 'Find prospects with buyer signals', why: '' }], box: 'Sales', boxes: [{ name: 'Sales' }] }
-        await runScript({ kind: 'offer_trial', template }, { ctx: CTX, writer })
+        await runScript({ kind: 'offer_trial', template }, { ctx: CTX, writer, reload: async () => stateAt('build') })
 
         expect(chunks.map(chunk => chunk.type)).toEqual(['start', 'start-step', 'tool-input-available', 'tool-output-available', 'tool-input-available', 'finish-step', 'finish'])
         expect(chunks[2]).toMatchObject({ toolName: 'show_templates', input: template })
@@ -325,12 +325,12 @@ describe('runScript', () => {
     })
 
     it('streams the build under one call id and closes on an empty step, so the browser does not send it back', async () => {
-        buildTeam.mockImplementation(async ({ emit }: { emit: (tasks: unknown[]) => void }) => {
+        buildTeamOnce.mockImplementation(async ({ emit }: { emit: (tasks: unknown[]) => void }) => {
             emit([{ title: 'Closer', status: 'running', steps: 1 }])
             return { boxes: [], agents: [], failed: [] }
         })
         const { chunks, writer } = recorder()
-        await runScript({ kind: 'build', state: stateAt('build') }, { ctx: CTX, writer })
+        await runScript({ kind: 'build', state: stateAt('build') }, { ctx: CTX, writer, reload: async () => stateAt('build') })
 
         expect(chunks.map(chunk => chunk.type)).toEqual(['start', 'start-step', 'tool-input-available', 'data-delegate', 'tool-output-available', 'finish-step', 'start-step', 'finish-step', 'finish'])
         const call = chunks[2]
@@ -340,9 +340,9 @@ describe('runScript', () => {
     })
 
     it('reports a build that failed as a failed call rather than breaking the stream', async () => {
-        buildTeam.mockRejectedValue(new Error('No machine is available right now'))
+        buildTeamOnce.mockRejectedValue(new Error('No machine is available right now'))
         const { chunks, writer } = recorder()
-        await runScript({ kind: 'build', state: stateAt('build') }, { ctx: CTX, writer })
+        await runScript({ kind: 'build', state: stateAt('build') }, { ctx: CTX, writer, reload: async () => stateAt('build') })
 
         expect(chunks.find(chunk => chunk.type === 'tool-output-error')).toMatchObject({ errorText: 'No machine is available right now' })
         expect(chunks.at(-1)?.type).toBe('finish')

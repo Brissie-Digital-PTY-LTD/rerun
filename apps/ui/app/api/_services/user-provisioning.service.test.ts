@@ -6,8 +6,8 @@ import { fakeSupabase, type FakeSupabase } from '@/test/supabase-fake'
 const payloads = (client: FakeSupabase) => client.writes('user_phones').map(write => write.payload)
 
 const grantRerunTopup = vi.fn()
-vi.mock('@/cloud/billing.server', () => ({ grantRerunTopup: (...args: unknown[]) => grantRerunTopup(...args) }))
-vi.mock('@/cloud/illustrations', () => ({ ILLUSTRATION_ENTRIES: [] }))
+vi.mock('@rerun/cloud/billing.server', () => ({ grantRerunTopup: (...args: unknown[]) => grantRerunTopup(...args) }))
+vi.mock('@rerun/cloud/illustrations', () => ({ ILLUSTRATION_ENTRIES: [] }))
 
 let service = fakeSupabase()
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: () => service.client }))
@@ -66,7 +66,7 @@ describe('provisionUser and the phone step', () => {
 
         expect(request.writes('users')).toEqual([])
         expect(service.writes('users').map(write => write.payload)).toEqual([expect.objectContaining({ id: 'user-1', workspace_id: 7 })])
-        expect(service.writes('workspace_members').map(write => write.payload)).toEqual([{ user_id: 'user-1', workspace_id: 7 }])
+        expect(service.writes('workspace_members').map(write => write.payload)).toEqual([{ user_id: 'user-1', workspace_id: 7, role: 'admin' }])
     })
 })
 

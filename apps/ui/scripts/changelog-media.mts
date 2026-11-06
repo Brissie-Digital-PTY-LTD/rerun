@@ -1,5 +1,5 @@
 // Turns a screen recording into the GIF a changelog entry points at, dropped in a temp file whose
-// path the skill posts to /api/admin/changelog/image. A still image needs none of this: post it
+// path the skill posts to the admin app's /api/admin/changelog/image. A still image needs none of this: post it
 // straight, the route resizes it.
 //
 // Run: ../engine/node_modules/.bin/tsx scripts/changelog-media.mts <source> [options]
@@ -49,4 +49,4 @@ await run('ffmpeg', ['-y', '-ss', option('start', '0'), '-t', option('duration',
 
 const kb = Math.round((await stat(out)).size / 1024)
 console.log(`${out} ${kb} kB`)
-console.log(`  upload: curl -sS -X POST "$UI_URL/api/admin/changelog/image" -H "Authorization: Bearer $ADMIN_API_TOKEN" -F "file=@${out}"`)
+console.log(`  upload: curl -sS -X POST "$ADMIN_URL/api/admin/changelog/image" -H "Authorization: Bearer $ADMIN_API_TOKEN" -F "file=@${out}"`)

@@ -13,9 +13,10 @@ type ToolInvocationPart = {
     type: `tool-${string}`
     toolCallId: string
     toolName: string
-    state: 'input-available' | 'output-available'
+    state: 'input-available' | 'output-available' | 'output-error'
     input: unknown
     output?: unknown
+    errorText?: string
 }
 type UIMessagePart = TextPart | ToolInvocationPart
 export type HistoryMessage = { id: string; role: 'user' | 'assistant'; parts: UIMessagePart[]; metadata?: { authorId?: string; createdAt?: string } }
@@ -113,6 +114,13 @@ export function transformEngineMessages(messages: EngineMessage[]): HistoryMessa
     return result
 }
 
+// A failed call is stored the way the AI SDK hands it back to the model, as an error envelope.
+function storedToolError(output: unknown): string | null {
+    const envelope = output as { type?: unknown; value?: unknown } | null
+    if (envelope?.type !== 'error-json' && envelope?.type !== 'error-text') return null
+    return typeof envelope.value === 'string' ? envelope.value : JSON.stringify(envelope.value)
+}
+
 type StoredToolCall = { toolCallId?: string; id?: string; toolName?: string; name?: string; function?: { name?: string }; input?: unknown; args?: unknown; arguments?: unknown }
 
 function toolPartOf(call: unknown, toolResults: Map<string, unknown>): ToolInvocationPart {
@@ -122,6 +130,8 @@ function toolPartOf(call: unknown, toolResults: Map<string, unknown>): ToolInvoc
     const rawInput = c.input ?? c.args ?? c.arguments ?? {}
     const input = withHitlVersion(toolName, typeof rawInput === 'string' ? safeParse(rawInput) : rawInput)
     const output = toolResults.get(toolCallId)
+    const errorText = storedToolError(output)
+    if (errorText !== null) return { type: `tool-${toolName}`, toolCallId, toolName, state: 'output-error', input, errorText }
     // An unresolved tool call (no matching tool-result) is still awaiting input, e.g. a paused
     // ask_user / request_approval. Keep it 'input-available' so the pinned block re-renders on reload.
     if (output !== undefined) return { type: `tool-${toolName}`, toolCallId, toolName, state: 'output-available', input, output }

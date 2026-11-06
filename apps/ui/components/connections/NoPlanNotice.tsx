@@ -3,8 +3,8 @@
 import { useTransition } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { isSubscriptionEntitled, trialOffer } from '@/cloud/billing'
-import { startPlan } from '@/cloud/billing.client'
+import { isSubscriptionEntitled, trialOffer } from '@rerun/cloud/billing'
+import { startPlan } from '@rerun/cloud/billing.client'
 import { cn } from '@/lib/utils'
 import { useSession } from '@/supabase/session/SessionProvider'
 

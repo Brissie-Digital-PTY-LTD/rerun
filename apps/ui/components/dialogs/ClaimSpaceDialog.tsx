@@ -1,8 +1,9 @@
 'use client'
 
-import { NewBoxForm } from '@/components/dialogs/new-box/NewBoxForm'
+import { NewBoxForm, type NewBoxIntro } from '@/components/dialogs/new-box/NewBoxForm'
 import { SplitDialogContent } from '@/components/dialogs/SplitDialogContent'
 import { Dialog, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { useBoxViewer } from '@/hooks/useBoxAccess'
 import type { SpaceSide } from '@/lib/board/space-layout'
 import { useBoxNameSuggestions } from '@/lib/onboarding/useBoxNameSuggestions'
 import { useBoardStore } from '@/stores/board.store'
@@ -13,17 +14,24 @@ import { useSession } from '@/supabase/session/SessionProvider'
 // Box s'empile alors sous les autres.
 export type ClaimSpaceTarget = { spaceId: string; side: SpaceSide }
 
+export const BOX_FIRST_INTRO: NewBoxIntro = { heading: 'Create a Box first', description: 'Your new coworker lands in it, and you manage it.' }
+
 // One column rather than the house form and aside, like New agent: the Box being named is the
 // illustration, and it leads. The frame keeps the house size.
-export function ClaimSpaceDialog({ target, open = !!target, onClose }: { target: ClaimSpaceTarget | null; open?: boolean; onClose: () => void }) {
+//
+// `onCreated`, when given, is called instead of `onClose` once the Box exists: a flow that asked
+// for the Box goes on, while `onClose` alone means it was dismissed.
+export function ClaimSpaceDialog({ target, open = !!target, onClose, onCreated, intro }: { target: ClaimSpaceTarget | null; open?: boolean; onClose: () => void; onCreated?: () => void; intro?: NewBoxIntro }) {
     const { workspace } = useSession()
     const claimSpace = useBoardStore(s => s.claimSpace)
+    const viewer = useBoxViewer()
     const suggestions = useBoxNameSuggestions()
 
     async function create(name: string) {
         if (!workspace) return
-        await claimSpace(workspace.id, name, target ?? undefined)
-        onClose()
+        await claimSpace(workspace.id, name, target ?? undefined, viewer)
+        if (onCreated) onCreated()
+        else onClose()
     }
 
     return (
@@ -31,7 +39,7 @@ export function ClaimSpaceDialog({ target, open = !!target, onClose }: { target:
             <SplitDialogContent aside={null} gridClassName="sm:grid-cols-1">
                 <DialogTitle className="sr-only">New Box</DialogTitle>
                 <DialogDescription className="sr-only">Name the Box, or pick a suggested name.</DialogDescription>
-                <NewBoxForm suggestions={suggestions} onCreate={create} />
+                <NewBoxForm suggestions={suggestions} onCreate={create} intro={intro} />
             </SplitDialogContent>
         </Dialog>
     )

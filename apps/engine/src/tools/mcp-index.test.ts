@@ -47,6 +47,13 @@ describe('buildMcpIndex', () => {
         ])
     })
 
+    it('gives the tool name format of the model the run is on', async () => {
+        const agent = agentWith('idx-format', [{ name: 'local', command: 'npx' }])
+        expect(await buildMcpIndex(agent, 'claude')).toContain('Their tools are loaded as `mcp__<name>__<tool>`.')
+        expect(await buildMcpIndex(agent, 'codex')).toContain('Their tools are loaded as `mcp__<name>__<tool>`.')
+        expect(await buildMcpIndex(agent, 'rerun')).toContain('Their tools are loaded as `<name>_<tool>`.')
+    })
+
     it('treats an unreadable token or an unusable server name as not authenticated', async () => {
         await mkdir(mcpDir('idx-broken'), { recursive: true })
         await writeFile(mcpTokenPath('idx-broken', 'corrupt'), '{', 'utf8')

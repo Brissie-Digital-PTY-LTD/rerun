@@ -1,5 +1,6 @@
 {
     "name": "@rerun/analytics",
+    "license": "AGPL-3.0-only",
     "version": "0.1.0",
     "private": true,
     "type": "module",
@@ -22,6 +23,5 @@
         "posthog-js": "^1.301.1",
         "@types/node": "^20",
         "typescript": "^5"
-    },
-    "license": "AGPL-3.0-only"
+    }
 }

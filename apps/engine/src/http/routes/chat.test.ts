@@ -7,14 +7,14 @@ process.env.RERUN_DATA_DIR = mkdtempSync(resolve(tmpdir(), 'rerun-chat-'))
 process.env.RERUN_API_KEY = ''
 
 const state = vi.hoisted(() => ({
-    calls: [] as { agent: { id: string; brief?: unknown }; sessionId: string; message: string; override: unknown; runId: string; trigger?: { userLanguage?: string } }[],
+    calls: [] as { agent: { id: string; brief?: unknown }; sessionId: string; message: string; override: unknown; runId: string; trigger?: { userLanguage?: string; callableAgentIds?: string[] } }[],
     runAgentError: null as Error | null,
     startRunError: null as Error | null,
 }))
 
 vi.mock('../../runtime/loop.js', async importOriginal => ({
     ...(await importOriginal<typeof import('../../runtime/loop.js')>()),
-    runAgent: async (agent: { id: string; brief?: unknown }, sessionId: string, message: string, override: unknown, _writer: unknown, runId: string, trigger?: { userLanguage?: string }) => {
+    runAgent: async (agent: { id: string; brief?: unknown }, sessionId: string, message: string, override: unknown, _writer: unknown, runId: string, trigger?: { userLanguage?: string; callableAgentIds?: string[] }) => {
         state.calls.push({ agent, sessionId, message, override, runId, trigger })
         if (state.runAgentError) throw state.runAgentError
         const { releaseSession } = await import('../../runtime/run-control.js')
@@ -188,5 +188,12 @@ describe('POST /agents/:id/chat', () => {
         await (await chat(id, { message: 'hi', userLanguage: 'French' })).text()
 
         expect(state.calls.map(call => call.trigger?.userLanguage)).toEqual(['French', undefined])
+    })
+
+    it('hands the run the coworkers its author reaches, and nothing when the hub names none', async () => {
+        await (await chat(id, { message: 'hi', callableAgentIds: ['agent-x'] })).text()
+        await (await chat(id, { message: 'again' })).text()
+
+        expect(state.calls.map(call => call.trigger?.callableAgentIds)).toEqual([['agent-x'], undefined])
     })
 })

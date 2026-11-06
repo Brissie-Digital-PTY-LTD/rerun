@@ -268,7 +268,7 @@ export async function buildSystemPrompt(agent: LoadedAgent, trigger: RunTrigger 
         cfg.memory ? buildMemoryIndex(agent.id).catch(() => '') : Promise.resolve(''),
         cfg.db ? readAgentDbSchema(agent.id).catch(() => '') : Promise.resolve(''),
         cfg.sharedDb ? readSharedDbSchema(SHARED_SCHEMA_BUDGET).catch(() => '') : Promise.resolve(''),
-        buildMcpIndex(agent).catch(() => ''),
+        buildMcpIndex(agent, provider).catch(() => ''),
         cfg.brain ? buildBrainSection().catch(() => '') : Promise.resolve(''),
     ])
 

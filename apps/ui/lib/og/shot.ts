@@ -19,7 +19,7 @@ export type Capture = { body: Buffer; contentType: string }
 
 // `requestUrl` is what the render page is reached on in dev, where the port is whatever `next dev`
 // settled for and rarely matches NEXT_PUBLIC_APP_URL. In production the request may arrive on an
-// internal Railway host, so the configured public origin wins.
+// internal host of the reverse proxy, so the configured public origin wins.
 function renderOrigin(requestUrl: string): string {
     if (DEV) return new URL(requestUrl).origin
     return process.env.NEXT_PUBLIC_APP_URL ?? site.url

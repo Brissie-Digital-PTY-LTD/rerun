@@ -1,8 +1,8 @@
 import { FOREMAN_PHASES, type ForemanClient, type ForemanPhase } from '@rerun/contracts'
 
 import type { OnboardingAnswers } from '@/app/actions/onboarding'
-import type { PriceArm } from '@/cloud/billing'
-import { RERUN_CLOUD } from '@/cloud/edition'
+import type { PriceArm } from '@rerun/cloud/billing'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
 import type { ForemanAgentRow, ForemanSpaceRow } from './board-map'
 import type { KickoffIntent } from './kickoff-marker'
 
@@ -202,4 +202,8 @@ export type ForemanState = {
     userEmail: string | null
     spaces: ForemanSpaceRow[]
     agents: ForemanAgentRow[]
+    // Boxes of the workspace the person is not open to, left out of `spaces`, and whether that
+    // person is a member rather than an admin.
+    hiddenBoxes?: number
+    isMember?: boolean
 }

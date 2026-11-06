@@ -1,3 +1,5 @@
+import { BOX_MANAGE_ONLY, BOX_NOT_FOUND, COWORKER_NOT_FOUND, enforce, readSpaceAccess, type Actor } from '@/app/api/_auth/access'
+import { AuthorizationError } from '@/app/api/_auth/ownership'
 import type { Database } from '@/app/api/database.types'
 import {
     createAgent as engineCreateAgent,
@@ -25,6 +27,8 @@ type CreateAgentParams = {
     // The INSTALL.md a copy of this agent replays on its new owner's account. Only meaningful
     // alongside config.setup.required, which is what decides whether it ever runs.
     installMd?: string
+    // Who creates it. Creating a coworker in a Box takes `manage` on that Box.
+    actor: Actor
     workspaceId: number
     spaceId: string
     // Explicit grid anchor chosen by the user during placement. When omitted we fall
@@ -79,11 +83,17 @@ export async function findFreeCellsInSpace(supabase: ReturnType<typeof createSer
 // workspace runs on one engine, and the agent keeps its folder, its handle and its sessions. The
 // anchor has to move with it: a tile is drawn at its own col/row whichever Box owns it, so keeping
 // the old one would park it in the rectangle it just left.
-export async function moveAgentToBox(agentId: string, spaceId: string): Promise<{ ok: true; position: GridPosition } | { ok: false; error: string }> {
+// Moving changes who sees the coworker, so it takes `manage` on the Box it leaves and on the one it
+// joins.
+export async function moveAgentToBox(agentId: string, spaceId: string, actor: Actor): Promise<{ ok: true; position: GridPosition } | { ok: false; error: string }> {
     const supabase = createServiceRoleClient()
-    const { data: agent } = await selectSingle(supabase, 'agents', ['space_id'] as const, { id: agentId })
-    if (!agent) return { ok: false, error: 'Coworker not found' }
+    const { data: agent } = await selectSingle(supabase, 'agents', ['space_id', 'workspace_id'] as const, { id: agentId })
+    if (!agent || agent.workspace_id !== actor.workspaceId) return { ok: false, error: 'Coworker not found' }
     if (agent.space_id === spaceId) return { ok: false, error: 'This coworker is already in that Box' }
+    const [from, to] = await Promise.all([readSpaceAccess(actor, agent.space_id), readSpaceAccess(actor, spaceId)])
+    if (from === 'none') return { ok: false, error: 'Coworker not found' }
+    if (to === 'none') return { ok: false, error: 'Box not found' }
+    if (from !== 'manage' || to !== 'manage') return { ok: false, error: BOX_MANAGE_ONLY }
 
     // Refused rather than moved unplaced: an unplaced agent leaves the board, and the toolbar badge
     // that brings it back is a worse place than the one it already had.
@@ -94,6 +104,11 @@ export async function moveAgentToBox(agentId: string, spaceId: string): Promise<
     if (error) return { ok: false, error: `Failed to move agent: ${error.message}` }
 
     return { ok: true, position }
+}
+
+async function assertCanCreateIn(actor: Actor, workspaceId: number, spaceId: string): Promise<void> {
+    if (actor.workspaceId !== workspaceId) throw new AuthorizationError(BOX_NOT_FOUND)
+    enforce(await readSpaceAccess(actor, spaceId), 'manage', BOX_NOT_FOUND)
 }
 
 function allocateHandle(displayName: string, taken: Set<string>): string {
@@ -132,6 +147,7 @@ export async function createAgent(params: CreateAgentParams) {
     if (!name || !workspaceId || !spaceId) {
         throw new Error('name, workspaceId and spaceId are required')
     }
+    await assertCanCreateIn(params.actor, workspaceId, spaceId)
 
     // The plan caps active agents, not stored ones: without a free slot the agent is still built,
     // it just arrives switched off and waits for the user to free a slot or buy one.
@@ -179,6 +195,8 @@ export async function createAgent(params: CreateAgentParams) {
 }
 
 type ImportAgentParams = {
+    // Who creates it. Creating a coworker in a Box takes `manage` on that Box.
+    actor: Actor
     archive: Blob
     name: string
     handle: string
@@ -196,6 +214,7 @@ type ImportAgentParams = {
 // back from the tarball rather than from the caller.
 export async function importAgent(params: ImportAgentParams) {
     const { archive, name, handle, workspaceId, spaceId, position, templateId } = params
+    await assertCanCreateIn(params.actor, workspaceId, spaceId)
 
     const enabled = await hasFreeAgentSlot(workspaceId)
 
@@ -239,6 +258,8 @@ export async function importAgent(params: ImportAgentParams) {
 }
 
 type DuplicateAgentParams = {
+    // Who creates it. Creating a coworker in a Box takes `manage` on that Box.
+    actor: Actor
     agentRowId: string
     workspaceId: number
     spaceId: string
@@ -271,6 +292,10 @@ export async function duplicateAgent(params: DuplicateAgentParams): Promise<Dupl
     const supabase = createServiceRoleClient()
     const { data: source } = await selectSingle(supabase, 'agents', ['name', 'space_id', 'engine_agent_id', 'description', 'template_id', 'workspace_id'] as const, { id: agentRowId })
     if (!source || source.workspace_id !== workspaceId || !source.engine_agent_id) throw new Error('Coworker not found')
+    // A copy carries its source's whole setup, keys and connected services included, so both Boxes
+    // have to be managed: the source like a share link, the copy's like any creation.
+    enforce(await readSpaceAccess(params.actor, source.space_id), 'manage', COWORKER_NOT_FOUND)
+    await assertCanCreateIn(params.actor, workspaceId, spaceId)
     const enabled = await hasFreeAgentSlot(workspaceId)
     const name = duplicateAgentName(source.name)
     const handle = await deriveUniqueHandle(supabase, workspaceId, name)

@@ -104,7 +104,9 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
                         setSelected(requestedTable)
                         return
                     }
-                    toast.error('Table not found', { description: requestedTable })
+                    // Only worth saying when another table opens in its place: an empty database
+                    // already shows its own empty state.
+                    if (result.length > 0) toast.error('Table not found', { description: requestedTable })
                 }
                 setSelected(prev => pinnedTable ?? (prev && result.some(t => t.name === prev) ? prev : (result[0]?.name ?? null)))
             })
@@ -402,7 +404,19 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
     if (loadingTables) return <DataBrowserSkeleton />
 
     if (error) {
-        return <EmptyState className="h-full" icon={DatabaseIcon} title="Database unavailable" description={error} />
+        return (
+            <EmptyState
+                className="h-full"
+                icon={DatabaseIcon}
+                title="Database unavailable"
+                description={error}
+                action={
+                    <Button variant="outline" size="sm" onClick={() => void loadTables()}>
+                        Try again
+                    </Button>
+                }
+            />
+        )
     }
 
     if (tables.length === 0) {
@@ -465,6 +479,7 @@ export function DataBrowser({ source, initial, onInitialConsumed, onExpand, tabl
                                     onExport={exportTable}
                                     onPurgeTable={() => setPurgeDialogOpen(true)}
                                     onDropTable={() => setTableDialogOpen(true)}
+                                    tableActionsReason={source.tableActionsReason}
                                 />
                             }
                         />

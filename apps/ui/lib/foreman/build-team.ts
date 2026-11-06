@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { workspaceActor } from '@/app/api/_auth/access'
 import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { createAgent, deriveUniqueHandles, findFreeCellsInSpace } from '@/app/api/_services/agent.service'
 import { createBoxesBatch } from '@/app/api/_services/box.service'
@@ -49,7 +50,7 @@ type AgentItem = Extract<ForemanPlanItem, { kind: 'agent' }>
 
 const nameKey = (name: string) => name.trim().toLowerCase()
 
-function titleOf(item: ForemanPlanItem): string {
+export function titleOf(item: ForemanPlanItem): string {
     if (item.kind === 'agent') return item.name
     if (item.kind === 'template') return item.title ?? item.slug
     return item.name ?? 'Shared coworker'
@@ -141,6 +142,7 @@ export async function buildTeam({ ctx, state, emit, signal }: BuildTeamOptions):
     }
     publish()
     const stopHeartbeat = startHeartbeat(publish)
+    const actor = workspaceActor(ctx.workspace.id)
 
     try {
         // A Box already on the board under the same name is reused: a build that stopped halfway is
@@ -149,7 +151,7 @@ export async function buildTeam({ ctx, state, emit, signal }: BuildTeamOptions):
         const boxes: BuiltBox[] = []
         const failed: BuildTeamResult['failed'] = []
         const missing = boxNamesOf(state).filter(name => !existing.has(nameKey(name)))
-        const created = await createBoxesBatch({ workspaceId: ctx.workspace.id, userId: ctx.userId, names: missing })
+        const created = await createBoxesBatch({ workspaceId: ctx.workspace.id, userId: ctx.userId, actor, names: missing })
         const spaceIdByName = new Map([...existing].map(([key, space]) => [key, space.id]))
         created.forEach((result, index) => {
             if (!result.ok) {
@@ -189,6 +191,7 @@ export async function buildTeam({ ctx, state, emit, signal }: BuildTeamOptions):
                         installMd: onboardingInstall(item, state.intent),
                         workspaceId: ctx.workspace.id,
                         spaceId,
+                        actor,
                         handle: handles[order],
                         enabled: order < slots,
                         position: cells.get(spaceId)?.shift(),
@@ -261,7 +264,7 @@ export async function buildTeam({ ctx, state, emit, signal }: BuildTeamOptions):
 // with no slot cannot be reached yet, and it still installs as its author wrote it.
 async function focusInstall(workspaceId: number, agentId: string, focus: string): Promise<void> {
     try {
-        const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+        const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceActor(workspaceId), 'manage')
         const detail = await engineGetAgent(conn, engineAgentId)
         if (!detail.install.trim()) return
         await patchAgent(conn, engineAgentId, { install: installWithFocus(detail.install, focus) })

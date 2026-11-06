@@ -6,6 +6,9 @@ import { ConfirmDialog } from '@/components/dialogs/ConfirmDialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { Icon } from '@/components/ui/icon'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { formatBytes } from '@/lib/files/format'
 import { Link2 } from '@/lib/icons'
 import { Stripes } from '@rerun/ui/primitives'
@@ -92,7 +95,7 @@ function ShareAgentBody({ agentId, agentName, onClose }: { agentId: string; agen
                         <Button type="button" variant="outline" onClick={onClose}>
                             Cancel
                         </Button>
-                        <CreateLinkButton flow={flow} agentName={agentName} />
+                        <CreateLinkButton flow={flow} agentId={agentId} agentName={agentName} />
                     </>
                 )}
             </DialogFooter>
@@ -102,12 +105,14 @@ function ShareAgentBody({ agentId, agentName, onClose }: { agentId: string; agen
 
 // Sending the agent alone needs no ceremony. Sending someone's memories, database or files out of
 // the workspace does, and the confirmation spells out what that means rather than asking twice.
-function CreateLinkButton({ flow, agentName }: { flow: ShareFlow; agentName: string }) {
+function CreateLinkButton({ flow, agentId, agentName }: { flow: ShareFlow; agentId: string; agentName: string }) {
+    const canManage = useCanManageAgent(agentId)
     const button = (
-        <Button type="button" disabled={flow.busy || flow.loading || !flow.plan} onClick={flow.carriesData ? undefined : () => void flow.create()}>
+        <Button type="button" disabled={!canManage || flow.busy || flow.loading || !flow.plan} onClick={flow.carriesData ? undefined : () => void flow.create()}>
             {flow.busy ? 'Packing the coworker…' : 'Create link'}
         </Button>
     )
+    if (!canManage) return <TooltipDisabledReason reason={BOX_MANAGE_REASON}>{button}</TooltipDisabledReason>
     if (!flow.carriesData || !flow.plan) return button
 
     const carried = [

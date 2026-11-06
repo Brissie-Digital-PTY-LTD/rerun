@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Directory = Map<string, AuthorProfile>
 
-const UNNAMED = 'Teammate'
+export const UNNAMED = 'Teammate'
 // Someone who joined after the directory was read is missing from it, and so is someone who left:
 // only a fresh read tells them apart, and it is not worth more than one a minute.
 const REFRESH_AFTER_MS = 60_000

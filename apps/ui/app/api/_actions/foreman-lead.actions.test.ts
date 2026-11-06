@@ -13,6 +13,9 @@ const { createServiceRoleClient } = await import('@/supabase/serviceRole')
 const { readLeadInstallAction, startLeadSetupAction } = await import('./foreman-lead.actions')
 
 const WORKSPACE_ID = 7
+const ADMIN = { user_id: 'user-1', role: 'admin', box_scope: 'all' }
+let MEMBERSHIP: { user_id: string; role: string; box_scope: string } = ADMIN
+let SPACE_VISIBILITY = 'workspace'
 
 function eqsOf(calls: readonly SupabaseCall[]): Record<string, unknown> {
     return Object.fromEntries(calls.filter(call => call.method === 'eq').map(call => call.args))
@@ -20,8 +23,10 @@ function eqsOf(calls: readonly SupabaseCall[]): Record<string, unknown> {
 
 function database(agentWorkspaceId: number): FakeSupabase {
     return fakeSupabase((table, calls) => {
-        if (table === 'workspace_members') return { data: { user_id: 'user-1' } }
+        if (table === 'workspace_members') return { data: MEMBERSHIP }
         if (table === 'agents') return { data: { workspace_id: agentWorkspaceId, space_id: 'space-1', engine_agent_id: 'engine-1' } }
+        if (table === 'spaces') return { data: { id: 'space-1', workspace_id: agentWorkspaceId, visibility: SPACE_VISIBILITY } }
+        if (table === 'space_members') return { data: null }
         if (table === 'sessions' && eqsOf(calls).agent_id === 'agent-1') return { data: [{ id: 'conversation-1' }] }
         return undefined
     })
@@ -31,6 +36,8 @@ let db: FakeSupabase
 
 beforeEach(() => {
     vi.clearAllMocks()
+    MEMBERSHIP = ADMIN
+    SPACE_VISIBILITY = 'workspace'
     mocks.getServerSession.mockResolvedValue({
         user: { id: 'user-1', workspace_id: WORKSPACE_ID },
         workspace: { id: WORKSPACE_ID, name: 'Acme' },
@@ -49,8 +56,9 @@ describe('readLeadInstallAction', () => {
 
     it('reads a lead without a conversation as not started', async () => {
         db = fakeSupabase(table => {
-            if (table === 'workspace_members') return { data: { user_id: 'user-1' } }
+            if (table === 'workspace_members') return { data: MEMBERSHIP }
             if (table === 'agents') return { data: { workspace_id: WORKSPACE_ID, space_id: 'space-1', engine_agent_id: 'engine-1' } }
+            if (table === 'spaces') return { data: { id: 'space-1', workspace_id: WORKSPACE_ID, visibility: 'workspace' } }
             if (table === 'sessions') return { data: [] }
             return undefined
         })
@@ -91,8 +99,9 @@ describe('startLeadSetupAction', () => {
 
     it('starts the install when the lead has no conversation yet', async () => {
         db = fakeSupabase(table => {
-            if (table === 'workspace_members') return { data: { user_id: 'user-1' } }
+            if (table === 'workspace_members') return { data: MEMBERSHIP }
             if (table === 'agents') return { data: { workspace_id: WORKSPACE_ID, space_id: 'space-1', engine_agent_id: 'engine-1' } }
+            if (table === 'spaces') return { data: { id: 'space-1', workspace_id: WORKSPACE_ID, visibility: 'workspace' } }
             if (table === 'sessions') return { data: [] }
             return undefined
         })
@@ -103,10 +112,30 @@ describe('startLeadSetupAction', () => {
         expect(mocks.startAgentSetup.mock.calls[0][1]).toEqual({ agents: [{ agentId: 'agent-1', message: 'kickoff' }] })
     })
 
+    it('refuses a member whose Box is closed to them, without reading its conversations', async () => {
+        MEMBERSHIP = { user_id: 'user-1', role: 'member', box_scope: 'all' }
+        SPACE_VISIBILITY = 'restricted'
+        db = database(WORKSPACE_ID)
+        vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
+
+        await expect(startLeadSetupAction('agent-1')).resolves.toEqual({ ok: false, error: 'Coworker not found' })
+        expect(db.chainsOn('sessions')).toHaveLength(0)
+        expect(mocks.startAgentSetup).not.toHaveBeenCalled()
+    })
+
+    it('lets a member start a lead in a Box open to the workspace', async () => {
+        MEMBERSHIP = { user_id: 'user-1', role: 'member', box_scope: 'all' }
+        db = database(WORKSPACE_ID)
+        vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
+
+        await expect(startLeadSetupAction('agent-1')).resolves.toEqual({ ok: true, conversationId: 'conversation-1', runId: null })
+    })
+
     it('reports an agent without a free slot as inactive', async () => {
         db = fakeSupabase(table => {
-            if (table === 'workspace_members') return { data: { user_id: 'user-1' } }
+            if (table === 'workspace_members') return { data: MEMBERSHIP }
             if (table === 'agents') return { data: { workspace_id: WORKSPACE_ID, space_id: 'space-1', engine_agent_id: 'engine-1' } }
+            if (table === 'spaces') return { data: { id: 'space-1', workspace_id: WORKSPACE_ID, visibility: 'workspace' } }
             if (table === 'sessions') return { data: [] }
             return undefined
         })

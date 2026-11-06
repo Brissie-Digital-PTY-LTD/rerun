@@ -15,6 +15,11 @@ const state = vi.hoisted(() => ({
     schedules: {} as Record<string, unknown[] | Error>,
     due: new Set<string>(),
     provider: 'rerun' as string,
+    connectionId: undefined as string | undefined,
+    computer: true,
+    liveRuns: false,
+    liveRunIds: [] as string[],
+    launchError: null as Error | null,
     sent: [] as Array<Record<string, unknown>>,
     runs: [] as Array<{ agentId: string; sessionId: string; message: string; override: unknown; trigger: unknown; runId: string; finish: (o: Outcome) => void }>,
     markFired: vi.fn(async (_agentId: string, _slug: string, _at: string) => {}),
@@ -23,8 +28,9 @@ const state = vi.hoisted(() => ({
 }))
 
 vi.mock('../agents/availability.js', () => ({
-    automationModel: async (_agent: unknown, schedule: { model?: string | null }) => ({ provider: state.provider, model: schedule.model ?? 'm' }),
+    automationModel: async (_agent: unknown, schedule: { model?: string | null }) => ({ provider: state.provider, model: schedule.model ?? 'm', ...(state.connectionId ? { connectionId: state.connectionId } : {}) }),
 }))
+vi.mock('../tools/builtin/computer.js', () => ({ offersComputer: () => state.computer }))
 vi.mock('../agents/loader.js', () => ({
     listAgentIdsOnDisk: async () => {
         if (state.agentIds instanceof Error) throw state.agentIds
@@ -59,19 +65,36 @@ vi.mock('./notify.js', () => ({
         return { delivered: true }
     },
 }))
-vi.mock('./headless-run.js', () => ({
-    startHeadlessRun: async (agent: { id: string }, sessionId: string, message: string, override: unknown, trigger: unknown) => {
-        let finish!: (o: Outcome) => void
-        const settled = new Promise<Outcome>(r => (finish = r))
-        const runId = `run-${state.runs.length + 1}`
-        state.runs.push({ agentId: agent.id, sessionId, message, override, trigger, runId, finish })
-        return { runId, settled }
-    },
-}))
+vi.mock('./headless-run.js', async () => {
+    const { registerRunAbort, unregisterRunAbort } = await import('./run-control.js')
+    return {
+        startHeadlessRun: async (agent: { id: string }, sessionId: string, message: string, override: unknown, trigger: unknown) => {
+            if (state.launchError) {
+                const err = state.launchError
+                state.launchError = null
+                throw err
+            }
+            let finish!: (o: Outcome) => void
+            const settled = new Promise<Outcome>(r => (finish = r))
+            const runId = `run-${state.runs.length + 1}`
+            // The real run registers itself before `startHeadlessRun` hands back, and unregisters
+            // itself as it settles.
+            if (state.liveRuns) {
+                registerRunAbort(runId, agent.id)
+                state.liveRunIds.push(runId)
+                void settled.finally(() => unregisterRunAbort(runId))
+            }
+            state.runs.push({ agentId: agent.id, sessionId, message, override, trigger, runId, finish })
+            return { runId, settled }
+        },
+    }
+})
 
 const { afterEach, beforeEach, describe, expect, it } = await import('vitest')
 const { fireSchedule, startScheduler } = await import('./scheduler.js')
 const { armBudgetLatch, clearBudgetLatch } = await import('./budget-latch.js')
+const { armPlanLimitLatch, clearPlanLimitLatch } = await import('../connections/plan-limits.js')
+const { registerRunAbort, unregisterRunAbort } = await import('./run-control.js')
 const { HttpError } = await import('../lib/errors.js')
 const { logger } = await import('../lib/logger.js')
 type Schedule = import('../schedules/loader.js').Schedule
@@ -90,6 +113,10 @@ beforeEach(() => {
     state.schedules = {}
     state.due = new Set()
     state.provider = 'rerun'
+    state.connectionId = undefined
+    state.computer = true
+    state.liveRuns = false
+    state.launchError = null
 })
 
 afterEach(async () => {
@@ -100,6 +127,9 @@ afterEach(async () => {
     state.markFired.mockClear()
     state.sweep.mockClear()
     clearBudgetLatch()
+    clearPlanLimitLatch('claude-sub')
+    unregisterRunAbort('live-call')
+    for (const runId of state.liveRunIds.splice(0)) unregisterRunAbort(runId)
     vi.useRealTimers()
     vi.restoreAllMocks()
 })
@@ -125,7 +155,7 @@ describe('fireSchedule', () => {
     it('fires through the latch when asked to ignore it', async () => {
         armBudgetLatch()
 
-        await fireSchedule('on', schedule('forced'), { ignoreBudgetLatch: true })
+        await fireSchedule('on', schedule('forced'), { manual: true })
 
         expect(state.runs).toHaveLength(1)
     })
@@ -138,6 +168,67 @@ describe('fireSchedule', () => {
 
         expect(state.runs).toHaveLength(1)
         expect(state.runs[0].override).toEqual({ provider: 'openai', model: 'm' })
+    })
+
+    // A coworker called by another one at 15:28 had not touched its screen yet when its 15:30
+    // schedule fired, took the screen first, and left the called run with nothing to drive.
+    it('leaves the schedule due while another run of a coworker with a screen is live', async () => {
+        registerRunAbort('live-call', 'on')
+
+        const err = await fireSchedule('on', schedule('busy')).catch(e => e)
+
+        expect(err).toBeInstanceOf(HttpError)
+        expect(err.status).toBe(409)
+        expect(state.markFired).not.toHaveBeenCalled()
+        expect(state.sent).toHaveLength(0)
+        expect(state.runs).toHaveLength(0)
+
+        unregisterRunAbort('live-call')
+        await fireSchedule('on', schedule('busy'))
+        expect(state.runs).toHaveLength(1)
+    })
+
+    it('fires beside a live run when the coworker has no screen to fight over', async () => {
+        registerRunAbort('live-call', 'on')
+        state.computer = false
+
+        await fireSchedule('on', schedule('no-screen'))
+
+        expect(state.runs).toHaveLength(1)
+    })
+
+    it('leaves the schedule due while its subscription is spent, and fires once it resets', async () => {
+        state.provider = 'claude'
+        state.connectionId = 'claude-sub'
+        const now = Date.now()
+        armPlanLimitLatch('claude-sub', now)
+
+        const err = await fireSchedule('on', schedule('spent')).catch(e => e)
+
+        expect(err).toBeInstanceOf(HttpError)
+        expect(err.status).toBe(429)
+        expect(state.markFired).not.toHaveBeenCalled()
+        expect(state.runs).toHaveLength(0)
+
+        state.connectionId = 'other-sub'
+        await fireSchedule('on', schedule('other-connection'))
+        expect(state.runs).toHaveLength(1)
+
+        state.connectionId = 'claude-sub'
+        vi.useFakeTimers({ now: now + 31 * 60_000, toFake: ['Date'] })
+        await fireSchedule('on', schedule('spent'))
+        expect(state.runs).toHaveLength(2)
+    })
+
+    it('fires a manual run through every latch', async () => {
+        armBudgetLatch()
+        registerRunAbort('live-call', 'on')
+        state.connectionId = 'claude-sub'
+        armPlanLimitLatch('claude-sub')
+
+        await fireSchedule('on', schedule('manual-probe'), { manual: true })
+
+        expect(state.runs).toHaveLength(1)
     })
 
     it('stamps the schedule, opens a schedule session, announces it and starts the run', async () => {
@@ -273,5 +364,68 @@ describe('startScheduler', () => {
         await vi.advanceTimersByTimeAsync(30_000)
         stop()
         expect(errors).toHaveBeenCalledWith({ agent: 'on', schedule: 'skipped', err: 'Error: read-only fs' }, 'scheduled run failed')
+    })
+
+    it('treats a busy coworker and a spent subscription as routine skips', async () => {
+        vi.useFakeTimers()
+        const errors = vi.spyOn(logger, 'error').mockImplementation(() => undefined as never)
+        const debug = vi.spyOn(logger, 'debug').mockImplementation(() => undefined as never)
+        state.agentIds = ['on']
+        state.schedules = { on: [schedule('held')] }
+        state.due = new Set(['held'])
+        registerRunAbort('live-call', 'on')
+
+        const stop = startScheduler()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(debug).toHaveBeenCalledWith({ agent: 'on', schedule: 'held' }, 'scheduled run skipped: another run of the coworker is live')
+
+        unregisterRunAbort('live-call')
+        state.connectionId = 'claude-sub'
+        armPlanLimitLatch('claude-sub')
+        await vi.advanceTimersByTimeAsync(30_000)
+        expect(debug).toHaveBeenCalledWith({ agent: 'on', schedule: 'held' }, 'scheduled run skipped: subscription limit latched')
+
+        clearPlanLimitLatch('claude-sub')
+        await vi.advanceTimersByTimeAsync(30_000)
+        stop()
+        expect(errors).not.toHaveBeenCalled()
+        expect(state.runs).toHaveLength(1)
+    })
+
+    it('fires the schedules of one coworker one after the other when two are due together', async () => {
+        vi.useFakeTimers()
+        const debug = vi.spyOn(logger, 'debug').mockImplementation(() => undefined as never)
+        state.liveRuns = true
+        state.agentIds = ['on']
+        state.schedules = { on: [schedule('first'), schedule('second')] }
+        state.due = new Set(['first', 'second'])
+
+        const stop = startScheduler()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(state.runs.map(r => (r.trigger as { slug: string }).slug)).toEqual(['first'])
+        expect(state.markFired).toHaveBeenCalledTimes(1)
+        expect(debug).toHaveBeenCalledWith({ agent: 'on', schedule: 'second' }, 'scheduled run skipped: another run of the coworker is live')
+
+        state.due.delete('first')
+        state.runs[0].finish({ kind: 'done' })
+        await vi.advanceTimersByTimeAsync(30_000)
+        stop()
+        expect(state.runs.map(r => (r.trigger as { slug: string }).slug)).toEqual(['first', 'second'])
+    })
+
+    it('still fails loudly on a conflict the launch raises without a hold code', async () => {
+        vi.useFakeTimers()
+        const errors = vi.spyOn(logger, 'error').mockImplementation(() => undefined as never)
+        const debug = vi.spyOn(logger, 'debug').mockImplementation(() => undefined as never)
+        state.agentIds = ['on']
+        state.schedules = { on: [schedule('plain')] }
+        state.due = new Set(['plain'])
+        state.launchError = new HttpError(409, 'session already claimed')
+
+        const stop = startScheduler()
+        await vi.advanceTimersByTimeAsync(0)
+        stop()
+        expect(errors).toHaveBeenCalledWith({ agent: 'on', schedule: 'plain', err: 'HttpError: session already claimed' }, 'scheduled run failed')
+        expect(debug).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('scheduled run skipped'))
     })
 })

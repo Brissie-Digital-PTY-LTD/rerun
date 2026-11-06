@@ -4,7 +4,9 @@ import { deleteAgentTableRowsAction, dropAgentTableAction, listAgentTablesAction
 import { DataBrowser } from '@/components/data/DataBrowser'
 import { PanelDialogContent } from '@/components/dialogs/PanelDialogContent'
 import { Dialog, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { viewActions, type DataFocus, type DataSource } from '@/lib/data/source'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
+import { tablesOrThrow, viewActions, type DataFocus, type DataSource } from '@/lib/data/source'
 import { agentFileRawUrl } from '@/lib/files/raw-url'
 import { useMemo, useState } from 'react'
 import { withTabWorkspace } from '@/lib/workspace/tab-workspace'
@@ -17,15 +19,17 @@ type AgentPanelDataProps = {
 
 export function AgentPanelData({ agentId, initial, onInitialConsumed }: AgentPanelDataProps) {
     const [expanded, setExpanded] = useState<DataFocus | null>(null)
+    const canManage = useCanManageAgent(agentId)
     const source = useMemo<DataSource>(
         () => ({
             scope: 'agent',
             storageKey: `agent:${agentId}`,
-            listTables: () => listAgentTablesAction(agentId),
+            listTables: () => listAgentTablesAction(agentId).then(tablesOrThrow),
             readRows: (table, params) => readAgentTableRowsAction(agentId, table, params),
             deleteRows: (table, rowids) => deleteAgentTableRowsAction(agentId, table, rowids),
             dropTable: table => dropAgentTableAction(agentId, table),
             purgeTable: table => purgeAgentTableAction(agentId, table),
+            tableActionsReason: canManage ? undefined : BOX_MANAGE_REASON,
             exportUrl: (table, params) => {
                 const qs = new URLSearchParams({ agentId, table, format: params.format })
                 if (params.sort) qs.set('sort', params.sort)
@@ -41,7 +45,7 @@ export function AgentPanelData({ agentId, initial, onInitialConsumed }: AgentPan
             emptyDescription:
                 'Your coworker has its own private database. When it needs to store structured data (contacts, results, tracking lists), it creates tables here that you can browse anytime.',
         }),
-        [agentId],
+        [agentId, canManage],
     )
 
     return (

@@ -1,5 +1,7 @@
 import { resolveShareInclude, type AgentShareInclude } from '@rerun/contracts'
+import { assertAgentInWorkspace, keepVisible, type Actor } from '@/app/api/_auth/access'
 import { workspaceFounderUserId } from '@/app/api/_auth/ownership'
+import { assertCanManageShare, shareManageableAgentIds } from '@/lib/agents/share-access'
 import { createAgentShare, planAgentShare } from '@/lib/agents/share-create'
 import { listWorkspaceShares, revokeAgentShare } from '@/lib/agents/share-read'
 import { requireAgreement, requireConfirmation, requireString } from '@/lib/mcp/args'
@@ -14,8 +16,9 @@ import { dispatchTemplateTool } from './mcp-templates.service'
 // page anyone installs from — so it has to be reached first, and it resolves nothing before its
 // switch either.
 //
-// Every handler takes its workspace from the authenticated API key. The functions in lib/agents
-// re-check it against the row they load, which is the same chokepoint the browser session uses.
+// Every handler runs as the caller: the workspace for an API key, the member a foreman turn speaks
+// for. A link exports a coworker's whole setup, so each one takes `manage` on its Box, the rule the
+// share dialog holds to. The functions in lib/agents re-check the workspace against the row they load.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -31,12 +34,14 @@ function describeInclude(include: AgentShareInclude): string {
     return carried.length === 1 ? carried[0] : `${carried.slice(0, -1).join(', ')} and ${carried[carried.length - 1]}`
 }
 
-export async function dispatchShareTool(workspaceId: number, name: string, args: Record<string, unknown>): Promise<unknown> {
+export async function dispatchShareTool(actor: Actor, name: string, args: Record<string, unknown>): Promise<unknown> {
     const supabase = createServiceRoleClient()
+    const workspaceId = actor.workspaceId
 
     switch (name) {
         case 'plan_agent_share': {
             const agentId = requireId(args, 'agentId')
+            await assertAgentInWorkspace(agentId, 'manage', actor)
             const plan = await planAgentShare(supabase, agentId, workspaceId)
             return {
                 agentId,
@@ -52,6 +57,7 @@ export async function dispatchShareTool(workspaceId: number, name: string, args:
         case 'create_agent_share': {
             const agentId = requireId(args, 'agentId')
             const include = resolveShareInclude(args.include)
+            await assertAgentInWorkspace(agentId, 'manage', actor)
 
             // Gated on the intention, not on the contents: unlike the dialog, which has already
             // priced the buckets on screen, knowing here whether a switch is empty would cost a
@@ -59,7 +65,7 @@ export async function dispatchShareTool(workspaceId: number, name: string, args:
             // decision either way.
             if (include.memories || include.database || include.files) requireAgreement(args, describeInclude(include))
 
-            const userId = await workspaceFounderUserId(workspaceId)
+            const userId = actor.kind === 'user' ? actor.userId : await workspaceFounderUserId(workspaceId)
             if (!userId) throw new Error('This workspace has no member, so no author can be resolved from this key.')
 
             const { token, url, warnings, reused } = await createAgentShare(supabase, { agentRowId: agentId, workspaceId, userId, include })
@@ -71,7 +77,8 @@ export async function dispatchShareTool(workspaceId: number, name: string, args:
         }
 
         case 'list_agent_shares': {
-            const shares = await listWorkspaceShares(supabase, workspaceId)
+            const [all, manageable] = await Promise.all([listWorkspaceShares(supabase, workspaceId), shareManageableAgentIds(actor)])
+            const shares = keepVisible(all, manageable, share => share.sourceAgentId)
             return {
                 shares: shares.map(share => ({
                     shareId: share.id,
@@ -89,6 +96,7 @@ export async function dispatchShareTool(workspaceId: number, name: string, args:
         case 'revoke_agent_share': {
             requireConfirmation(args, 'the shared copy of this coworker and the archive behind it')
             const shareId = requireId(args, 'shareId')
+            await assertCanManageShare(supabase, shareId, actor)
             await revokeAgentShare(supabase, shareId, workspaceId)
             return { shareId, revoked: true }
         }

@@ -5,6 +5,9 @@ import { setAgentSkillSummaries } from '@/hooks/useAgentSkillSummaries'
 import { SkillEditor } from '@/components/agent/skills/SkillEditor'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import type { EngineSkillWithSource } from '@/lib/engine/types'
 import { BlocksIcon, FileTextIcon, FolderUpIcon, Layers, Loader2Icon, PlusIcon, UploadIcon } from '@/lib/icons'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -34,6 +37,8 @@ export function AgentPanelSkills({ agentId, focusSlug, onFocusConsumed }: AgentP
     const [importNotice, setImportNotice] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const folderInputRef = useRef<HTMLInputElement>(null)
+    const canManage = useCanManageAgent(agentId)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
 
     // Kept in refs rather than in load's deps: the slug is honoured once, and the callback comes
     // inline from the panel, so a fresh identity on every render would refetch forever.
@@ -120,11 +125,13 @@ export function AgentPanelSkills({ agentId, focusSlug, onFocusConsumed }: AgentP
     const actionButtons = (
         <div className="flex items-center gap-1.5">
             <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" disabled={importing}>
-                        {importing ? <Loader2Icon className="size-3.5 mr-1 animate-spin" /> : <UploadIcon className="size-3.5 mr-1" />} Upload
-                    </Button>
-                </DropdownMenuTrigger>
+                <TooltipDisabledReason reason={manageReason}>
+                    <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="outline" disabled={importing || !canManage}>
+                            {importing ? <Loader2Icon className="size-3.5 mr-1 animate-spin" /> : <UploadIcon className="size-3.5 mr-1" />} Upload
+                        </Button>
+                    </DropdownMenuTrigger>
+                </TooltipDisabledReason>
                 <DropdownMenuContent align="end">
                     <DropdownMenuItem className="whitespace-nowrap" onSelect={() => fileInputRef.current?.click()}>
                         <FileTextIcon />
@@ -136,9 +143,11 @@ export function AgentPanelSkills({ agentId, focusSlug, onFocusConsumed }: AgentP
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
-            <Button size="sm" variant="outline" onClick={() => setView({ mode: 'create' })}>
-                <PlusIcon className="size-3.5 mr-1" /> New
-            </Button>
+            <TooltipDisabledReason reason={manageReason}>
+                <Button size="sm" variant="outline" disabled={!canManage} onClick={() => setView({ mode: 'create' })}>
+                    <PlusIcon className="size-3.5 mr-1" /> New
+                </Button>
+            </TooltipDisabledReason>
         </div>
     )
 

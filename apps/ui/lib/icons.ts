@@ -41,6 +41,7 @@ import {
     Box as LucideBox,
     BoxIcon as LucideBoxIcon,
     Boxes as LucideBoxes,
+    BrainCircuit as LucideBrainCircuit,
     BrainCircuitIcon as LucideBrainCircuitIcon,
     BrainIcon as LucideBrainIcon,
     BriefcaseIcon as LucideBriefcaseIcon,
@@ -207,6 +208,7 @@ import {
     MessageCircleQuestionIcon as LucideMessageCircleQuestionIcon,
     MessageSquare as LucideMessageSquare,
     MessageSquareIcon as LucideMessageSquareIcon,
+    MessageSquarePlus as LucideMessageSquarePlus,
     MessageSquareReply as LucideMessageSquareReply,
     MessageSquareText as LucideMessageSquareText,
     MessagesSquare as LucideMessagesSquare,
@@ -275,6 +277,7 @@ import {
     ShieldAlertIcon as LucideShieldAlertIcon,
     ShieldCheck as LucideShieldCheck,
     ShieldCheckIcon as LucideShieldCheckIcon,
+    ShipWheelIcon as LucideShipWheelIcon,
     ShoppingBagIcon as LucideShoppingBagIcon,
     Siren as LucideSiren,
     SlidersHorizontalIcon as LucideSlidersHorizontalIcon,
@@ -316,6 +319,7 @@ import {
     Upload as LucideUpload,
     UploadIcon as LucideUploadIcon,
     UserCheck as LucideUserCheck,
+    UserCogIcon as LucideUserCogIcon,
     UserIcon as LucideUserIcon,
     UserPlus as LucideUserPlus,
     UserRoundIcon as LucideUserRoundIcon,
@@ -555,6 +559,7 @@ export const Menu: LucideIcon = LucideMenu
 export const MessageCircle: LucideIcon = LucideMessageCircle
 export const MessageCircleQuestionIcon: LucideIcon = LucideMessageCircleQuestionIcon
 export const MessageSquareIcon: LucideIcon = LucideMessageSquareIcon
+export const MessagePlusIcon: LucideIcon = LucideMessageSquarePlus
 export const MessagesSquare: LucideIcon = LucideMessagesSquare
 export const MicIcon: LucideIcon = LucideMicIcon
 export const Minimize2Icon: LucideIcon = LucideMinimize2Icon
@@ -687,5 +692,9 @@ export const XIcon: LucideIcon = LucideXIcon
 export const Zap: LucideIcon = LucideZap
 export const ZapIcon: LucideIcon = LucideZapIcon
 export const ZapOffIcon: LucideIcon = LucideZapOffIcon
+export const RobotIcon: LucideIcon = LucideUsers
+export const ShipWheelIcon: LucideIcon = LucideShipWheelIcon
+export const UserCogIcon: LucideIcon = LucideUserCogIcon
+export const BrainNodesIcon: LucideIcon = LucideBrainCircuit
 export const Loader2: LucideIcon = SpinnerIcon
 export const Loader2Icon: LucideIcon = SpinnerIcon

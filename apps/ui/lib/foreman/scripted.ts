@@ -4,7 +4,7 @@ import { createIdGenerator, type UIMessage, type UIMessageStreamWriter } from 'a
 
 import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import type { SubRunTask } from '@/lib/chat/sub-run-progress'
-import { buildTeam } from './build-team'
+import { buildTeamOnce } from './build-once'
 import { isKickoffText } from './kickoff-marker'
 import { writePlan, type WrittenPlan } from './onboarding-tools'
 import { foremanPhase, isNamedReadyMade, type ForemanPhase, type ForemanState } from './phase'
@@ -224,7 +224,7 @@ async function buildOrPurchase(ctx: WorkspaceContext, state: ForemanState): Prom
     return purchase ? { kind: 'offer_purchase', purchase } : { kind: 'build', state }
 }
 
-export async function runScript(script: ForemanScript, { ctx, writer, signal }: { ctx: WorkspaceContext; writer: UIMessageStreamWriter; signal?: AbortSignal }): Promise<void> {
+export async function runScript(script: ForemanScript, { ctx, writer, signal, reload }: { ctx: WorkspaceContext; writer: UIMessageStreamWriter; signal?: AbortSignal; reload: () => Promise<ForemanState> }): Promise<void> {
     const toolCallId = TOOL_CALL_ID()
     writer.write({ type: 'start' })
     writer.write({ type: 'start-step' })
@@ -257,7 +257,7 @@ export async function runScript(script: ForemanScript, { ctx, writer, signal }: 
     // render on its own as a delegation.
     const emit = (tasks: SubRunTask[]) => writer.write({ type: 'data-delegate', id: toolCallId, data: { tasks } })
     try {
-        const result = await buildTeam({ ctx, state: script.state, emit, signal })
+        const result = await buildTeamOnce({ ctx, state: script.state, emit, signal, reload })
         writer.write({ type: 'tool-output-available', toolCallId, output: result })
     } catch (err) {
         writer.write({ type: 'tool-output-error', toolCallId, errorText: err instanceof Error ? err.message : String(err) })

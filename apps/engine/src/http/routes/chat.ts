@@ -1,4 +1,4 @@
-import { chatRequestSchema, type SessionSource } from '@rerun/contracts'
+import { chatRequestSchema, ENGINE_SESSION_NOT_FOUND, type SessionSource } from '@rerun/contracts'
 import { Hono } from 'hono'
 import { resolveRunModel } from '../../agents/availability.js'
 import { getAgent } from '../../agents/registry.js'
@@ -32,7 +32,7 @@ chatRoutes.post('/chat', async c => {
     const claim = body.install && !body.sessionId ? await claimInstallSession(agentId, () => createSession(agentId, undefined, undefined, source)) : null
     if (claim && 'inFlight' in claim) return c.json({ error: 'the installation is already under way in another conversation', code: 'install_in_flight', sessionId: claim.inFlight }, 409)
     const session = claim ? claim.session : await resolveSession(agentId, body.sessionId, source)
-    if (!session) return c.json({ error: 'session not found for this agent' }, 404)
+    if (!session) return c.json({ error: ENGINE_SESSION_NOT_FOUND }, 404)
     const override = { connectionId: body.connectionId, provider: body.provider, model: body.model }
     // The same resolution the run makes, so the message names the pair that really ran: the
     // provider of the connection the override picked, and the model the plan lets it run.
@@ -52,7 +52,7 @@ chatRoutes.post('/chat', async c => {
     })
     const response = toResumableStreamResponse(run.id, async writer => {
         try {
-            const agentRun = await runAgent(runAgentView, session.id, body.message, override, writer, run.id, { source: 'chat', author: body.author, userLanguage: claim ? body.userLanguage : undefined })
+            const agentRun = await runAgent(runAgentView, session.id, body.message, override, writer, run.id, { source: 'chat', author: body.author, userLanguage: claim ? body.userLanguage : undefined, callableAgentIds: body.callableAgentIds })
             mergeRunStream(writer, agentRun, meta)
         } catch (err) {
             // runAgent registers the run's abort controller itself, and unregistering it is what

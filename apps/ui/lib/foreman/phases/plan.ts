@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 
-import { RERUN_CLOUD } from '@/cloud/edition'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
 import { intakeBoxes } from '@/lib/onboarding/intake'
 import { describeNeed } from '../needs'
 import { foremanUseCases } from '../phase'

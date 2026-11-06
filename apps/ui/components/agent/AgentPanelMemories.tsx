@@ -6,6 +6,9 @@ import { ClearMemoriesDialog } from '@/components/dialogs/ClearMemoriesDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import type { EngineMemory } from '@/lib/engine/types'
 import { BrainIcon, PlusIcon, SearchIcon, Trash2Icon, XIcon } from '@/lib/icons'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -19,7 +22,7 @@ type AgentPanelMemoriesProps = {
     agentId: string
 }
 
-function MemoryRow({ memory, onDelete }: { memory: EngineMemory; onDelete?: () => void }) {
+function MemoryRow({ memory, deleteDisabledReason, onDelete }: { memory: EngineMemory; deleteDisabledReason?: string; onDelete?: () => void }) {
     return (
         <PanelRow
             className="items-start gap-2"
@@ -43,14 +46,17 @@ function MemoryRow({ memory, onDelete }: { memory: EngineMemory; onDelete?: () =
             }
             actions={
                 onDelete && (
-                    <PanelDeleteButton
-                        label="Delete memory"
-                        size="icon-xs"
-                        onClick={onDelete}
-                        confirmTitle="Delete this memory?"
-                        confirmDescription="The coworker forgets it for good. This cannot be undone."
-                        className="opacity-0 transition-opacity group-hover:opacity-100"
-                    />
+                    <TooltipDisabledReason reason={deleteDisabledReason}>
+                        <PanelDeleteButton
+                            label="Delete memory"
+                            size="icon-xs"
+                            disabled={!!deleteDisabledReason}
+                            onClick={onDelete}
+                            confirmTitle="Delete this memory?"
+                            confirmDescription="The coworker forgets it for good. This cannot be undone."
+                            className="opacity-0 transition-opacity group-hover:opacity-100"
+                        />
+                    </TooltipDisabledReason>
                 )
             }
         >
@@ -72,6 +78,8 @@ export function AgentPanelMemories({ agentId }: AgentPanelMemoriesProps) {
     const [recall, setRecall] = useState<EngineMemory[] | null>(null)
     const [searching, setSearching] = useState(false)
     const [confirmClear, setConfirmClear] = useState(false)
+    const canManage = useCanManageAgent(agentId)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -149,19 +157,23 @@ export function AgentPanelMemories({ agentId }: AgentPanelMemoriesProps) {
                             </button>
                         )}
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setCreating(c => !c)}>
-                        <PlusIcon className="size-3.5 mr-1" /> New
-                    </Button>
-                    {memories.length > 0 && (
-                        <Button size="icon-sm" variant="destructive" onClick={() => setConfirmClear(true)} title="Clear all memories" aria-label="Clear all memories">
-                            <Trash2Icon />
+                    <TooltipDisabledReason reason={manageReason}>
+                        <Button size="sm" variant="outline" disabled={!canManage} onClick={() => setCreating(c => !c)}>
+                            <PlusIcon className="size-3.5 mr-1" /> New
                         </Button>
+                    </TooltipDisabledReason>
+                    {memories.length > 0 && (
+                        <TooltipDisabledReason reason={manageReason}>
+                            <Button size="icon-sm" variant="destructive" disabled={!canManage} onClick={() => setConfirmClear(true)} title="Clear all memories" aria-label="Clear all memories">
+                                <Trash2Icon />
+                            </Button>
+                        </TooltipDisabledReason>
                     )}
                 </div>
                 {recall !== null && <p className="text-[11px] text-muted-foreground">{searching ? 'Searching…' : `${recall.length} recalled for "${query}"`}</p>}
             </PanelListHeader>
 
-            {creating && (
+            {creating && canManage && (
                 <div className="flex flex-col gap-2 p-3 border-b border-border bg-muted/30">
                     <Textarea value={content} onChange={e => setContent(e.target.value)} placeholder="The user prefers concise answers." className="text-xs min-h-20" />
                     <div className="flex gap-2">
@@ -183,9 +195,11 @@ export function AgentPanelMemories({ agentId }: AgentPanelMemoriesProps) {
                     description={recall !== null ? undefined : 'Your coworker saves long-term facts about you and its work here, so it keeps context across conversations.'}
                     action={
                         recall === null ? (
-                            <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
-                                <PlusIcon className="size-3.5 mr-1" /> Add memory
-                            </Button>
+                            <TooltipDisabledReason reason={manageReason}>
+                                <Button size="sm" variant="outline" disabled={!canManage} onClick={() => setCreating(true)}>
+                                    <PlusIcon className="size-3.5 mr-1" /> Add memory
+                                </Button>
+                            </TooltipDisabledReason>
                         ) : undefined
                     }
                 />
@@ -193,7 +207,7 @@ export function AgentPanelMemories({ agentId }: AgentPanelMemoriesProps) {
                 <PanelScroller>
                     <PanelList>
                         {shown.map((m, i) => (
-                            <MemoryRow key={m.id ?? i} memory={m} onDelete={m.id ? () => handleDelete(m.id!) : undefined} />
+                            <MemoryRow key={m.id ?? i} memory={m} deleteDisabledReason={manageReason} onDelete={m.id ? () => handleDelete(m.id!) : undefined} />
                         ))}
                     </PanelList>
                 </PanelScroller>

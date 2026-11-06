@@ -1,6 +1,6 @@
 import { isPremiumModel, modelLabel } from '@rerun/contracts'
 import { requireWorkspaceId } from '@/app/api/_auth/ownership'
-import { isPremiumModelEntitled } from '@/cloud/billing'
+import { isPremiumModelEntitled } from '@rerun/cloud/billing'
 import { setBoxPlan } from '@/lib/engine/client'
 import type { EngineConnection } from '@/lib/engine/types'
 import { createServiceRoleClient } from '@/supabase/serviceRole'

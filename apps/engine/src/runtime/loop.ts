@@ -15,6 +15,7 @@ import { syncCodexAuth } from '../connections/codex-auth.js'
 import { forgetCredentialRejected, recordCredentialRejected } from '../connections/credential-rejections.js'
 import { recordRefusedModel } from '../connections/cli-models.js'
 import { refreshCodexPlanLimits } from '../connections/codex-plan-limits.js'
+import { armPlanLimitLatch, clearPlanLimitLatch } from '../connections/plan-limits.js'
 import { refreshOpencodePlanLimits } from '../connections/opencode-plan-limits.js'
 import { behaviourOf } from '../agents/opencode.js'
 import { buildSystemPrompt, nowBlock, recallMemories, recallSection, systemPromptText, userBlock, userLanguageBlock } from '../agents/systemPrompt.js'
@@ -31,6 +32,7 @@ import { touchSession } from '../db/repos/sessions.js'
 import { logger } from '../lib/logger.js'
 import { newId, nowIso } from '../lib/ids.js'
 import { buildTools } from '../tools/registry.js'
+import { callTargetsOf } from '../tools/builtin/call-agent.js'
 import { toolPayloadChars } from '../tools/payload.js'
 import { prepareMcpServer } from '../tools/mcp.js'
 import { withPooledRelays } from '../tools/mcp-relay.js'
@@ -221,7 +223,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
     // and headless callers the row was already inserted, and a throw in `resolveRunModel` or the
     // tool/MCP setup would otherwise leave it `running` forever with no terminal event for the hub.
     const run = runId ? { id: runId } : await startRun(baseAgent.id, sessionId)
-    const controller = registerRunAbort(run.id)
+    const controller = registerRunAbort(run.id, baseAgent.id)
     const author = trigger.source === 'chat' ? trigger.author : undefined
 
     let agent = baseAgent
@@ -303,7 +305,10 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             text = settlement.text
             usage = settlement.usage
             costMicros = settlement.costMicros
-            if (connection) forgetCredentialRejected(connection.id)
+            if (connection) {
+                forgetCredentialRejected(connection.id)
+                clearPlanLimitLatch(connection.id)
+            }
             outcome = { kind: 'done' }
         } else if (settlement.kind === 'cancelled') {
             forgetCodexThread(agent.id, sessionId)
@@ -321,6 +326,7 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
             forgetCodexThread(agent.id, sessionId)
             logger.error({ err: errorMessage, errorCode, agent: agent.id, run: run.id }, 'run error')
             if (errorCode === RERUN_BUDGET_ERROR_CODE) armBudgetLatch()
+            if (errorCode === RUN_ERROR_CODES.usageLimit && connection && connection.id !== RERUN_CONNECTION_ID) armPlanLimitLatch(connection.id)
             // The token is still on file, so the connection would keep reading "Ready" while every
             // run on it fails. The keyless Rerun connection answers for the hub's key, not the user's.
             if (errorCode === RUN_ERROR_CODES.unauthorized && connection && connection.id !== RERUN_CONNECTION_ID) recordCredentialRejected(connection.id)
@@ -406,13 +412,14 @@ async function runTurn(baseAgent: LoadedAgent, sessionId: string, userText: stri
         ;({ connection, provider, model } = resolved)
         const t0 = Date.now()
         const order = turnOrder(provider, await answeringModel(provider, model))
-        const ctx: RunContext = { agent, sessionId, logger, provider, model, turnOrder: order, author, writer, abortSignal: controller.signal, callTargets: [], hostBreaker: new HostBreaker(), partialResults, skillProposals }
+        const callableAgentIds = trigger.source === 'chat' ? trigger.callableAgentIds : undefined
+        const ctx: RunContext = { agent, sessionId, logger, provider, model, turnOrder: order, author, writer, abortSignal: controller.signal, callTargets: [], callableAgentIds, hostBreaker: new HostBreaker(), partialResults, skillProposals }
 
         ctx.runId = run.id
         const triggerSlug = 'slug' in trigger ? trigger.slug : null
         void setRunContext(agent.id, run.id, { provider, model, triggerSource: trigger.source, triggerSlug }).catch(() => {})
 
-        const callTargetsP = agent.config.tools.callAgent ? listAgentIndex().then(idx => idx.filter(a => a.id !== agent.id && !a.name.endsWith(' delegate'))) : Promise.resolve([])
+        const callTargetsP = agent.config.tools.callAgent ? listAgentIndex().then(idx => callTargetsOf(idx, agent.id, callableAgentIds)) : Promise.resolve([])
         const toolsP = callTargetsP.then(callTargets => {
             ctx.callTargets = callTargets
             return buildTools(ctx)

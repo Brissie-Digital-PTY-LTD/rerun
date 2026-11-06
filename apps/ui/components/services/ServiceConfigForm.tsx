@@ -1,7 +1,7 @@
 'use client'
 
 import { McpOAuthAuthorize } from '@/components/agent/McpOAuthAuthorize'
-import { AppAccountPicker } from '@/cloud/apps.client'
+import { AppAccountPicker } from '@rerun/cloud/apps.client'
 import { AuthMethodPicker, methodKindLabel } from '@/components/services/AuthMethodPicker'
 import { ComposioConnect } from '@/components/services/ComposioConnect'
 import { ManagedConnect } from '@/components/services/ManagedConnect'
@@ -10,7 +10,7 @@ import { useServiceSetupDriver } from '@/components/services/service-setup-drive
 import { openPendingSignInPopup } from '@/components/services/sign-in-popup'
 import { Button } from '@/components/ui/button'
 import { PanelSteps } from '@/components/ui/panel-steps'
-import { isAppSlug, type AppSlug } from '@/cloud/apps'
+import { isAppSlug, type AppSlug } from '@rerun/cloud/apps'
 import type { AppTarget, AuthMethodSummary, ComposioTarget, ManagedTarget, OAuthTarget } from '@/lib/services/types'
 import { ArrowLeftIcon, CheckCircle2Icon, ExternalLinkIcon, Loader2Icon } from '@/lib/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'

@@ -1,6 +1,7 @@
 import { selectMany, selectSingle } from '@/supabase/supabase-helpers'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { readSpaceAccess, workspaceActor, type Actor } from '@/app/api/_auth/access'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 
 import { findFreeCellInSpace, moveAgentToBox } from './agent.service'
@@ -19,6 +20,10 @@ vi.mock('@/supabase/supabase-helpers', () => ({ selectMany: vi.fn(), selectSingl
 vi.mock('@/lib/copy-name', () => ({ duplicateAgentName: vi.fn() }))
 vi.mock('./capacity.service', () => ({ PLAN_LIMIT_REASON: 'plan_limit', hasFreeAgentSlot: vi.fn() }))
 vi.mock('./space.service', () => ({ getSpaceConnection: vi.fn() }))
+vi.mock('@/app/api/_auth/access', async importOriginal => ({ ...(await importOriginal<typeof import('@/app/api/_auth/access')>()), readSpaceAccess: vi.fn() }))
+
+const admin = workspaceActor(1)
+const member: Actor = { kind: 'user', userId: 'u2', workspaceId: 1, role: 'member', boxScope: 'all' }
 
 describe('findFreeCellInSpace', () => {
     beforeEach(() => {
@@ -49,26 +54,41 @@ describe('moveAgentToBox', () => {
         update.mockReturnValue({ eq })
         vi.mocked(createServiceRoleClient).mockReturnValue({ from: () => ({ update }) } as never)
         vi.mocked(selectSingle).mockImplementation(((_client: unknown, table: string) =>
-            Promise.resolve(table === 'agents' ? { data: { space_id: 'from' } } : { data: { col_start: 10, row_start: 0, col_end: 17, row_end: 7 } })) as never)
+            Promise.resolve(table === 'agents' ? { data: { space_id: 'from', workspace_id: 1 } } : { data: { col_start: 10, row_start: 0, col_end: 17, row_end: 7 } })) as never)
         vi.mocked(selectMany).mockResolvedValue({ data: [] } as never)
+        vi.mocked(readSpaceAccess).mockResolvedValue('manage')
     })
 
     it('moves the anchor along with the Box, so the tile is drawn where it now belongs', async () => {
-        await expect(moveAgentToBox('agent', 'to')).resolves.toEqual({ ok: true, position: { col: 10, row: 0 } })
+        await expect(moveAgentToBox('agent', 'to', admin)).resolves.toEqual({ ok: true, position: { col: 10, row: 0 } })
         expect(update).toHaveBeenCalledWith({ space_id: 'to', col: 10, row: 0 })
     })
 
     it('refuses a full Box rather than leaving the agent unplaced', async () => {
         vi.mocked(selectMany).mockResolvedValue({ data: [{ col: 10, row: 0 }, { col: 12, row: 0 }, { col: 14, row: 0 }, { col: 16, row: 0 }] } as never)
         vi.mocked(selectSingle).mockImplementation(((_client: unknown, table: string) =>
-            Promise.resolve(table === 'agents' ? { data: { space_id: 'from' } } : { data: { col_start: 10, row_start: 0, col_end: 17, row_end: 1 } })) as never)
+            Promise.resolve(table === 'agents' ? { data: { space_id: 'from', workspace_id: 1 } } : { data: { col_start: 10, row_start: 0, col_end: 17, row_end: 1 } })) as never)
 
-        await expect(moveAgentToBox('agent', 'to')).resolves.toEqual({ ok: false, error: 'That Box has no room left. Free a cell in it first.' })
+        await expect(moveAgentToBox('agent', 'to', admin)).resolves.toEqual({ ok: false, error: 'That Box has no room left. Free a cell in it first.' })
         expect(update).not.toHaveBeenCalled()
     })
 
     it('refuses the Box the agent is already in', async () => {
-        await expect(moveAgentToBox('agent', 'from')).resolves.toEqual({ ok: false, error: 'This coworker is already in that Box' })
+        await expect(moveAgentToBox('agent', 'from', admin)).resolves.toEqual({ ok: false, error: 'This coworker is already in that Box' })
+        expect(update).not.toHaveBeenCalled()
+    })
+
+    it('refuses a member who does not manage both Boxes, before touching the row', async () => {
+        vi.mocked(readSpaceAccess).mockImplementation(async (_actor, spaceId) => (spaceId === 'from' ? 'manage' : 'use'))
+        await expect(moveAgentToBox('agent', 'to', member)).resolves.toEqual({ ok: false, error: 'Only an admin or a manager of this Box can do this' })
+
+        vi.mocked(readSpaceAccess).mockImplementation(async (_actor, spaceId) => (spaceId === 'from' ? 'manage' : 'none'))
+        await expect(moveAgentToBox('agent', 'to', member)).resolves.toEqual({ ok: false, error: 'Box not found' })
+        expect(update).not.toHaveBeenCalled()
+    })
+
+    it('refuses a coworker of another workspace', async () => {
+        await expect(moveAgentToBox('agent', 'to', workspaceActor(2))).resolves.toEqual({ ok: false, error: 'Coworker not found' })
         expect(update).not.toHaveBeenCalled()
     })
 })

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/app/api/database.types'
-import { MARKETPLACE_ENABLED } from '@/cloud/marketplace'
+import { MARKETPLACE_ENABLED } from '@rerun/cloud/marketplace'
 import { selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'
 
 // Who may install what. A purchase belongs to the workspace, like every other thing Rerun bills, so

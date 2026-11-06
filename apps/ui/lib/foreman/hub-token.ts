@@ -6,7 +6,9 @@ import { createHmac, timingSafeEqual } from 'crypto'
 // Twelve hours outlive the longest run the turn starts.
 export const FOREMAN_HUB_TOKEN_TTL_MS = 12 * 60 * 60 * 1000
 
-type ForemanHubClaims = { ws: number; exp: number }
+// `uid` is the member the turn speaks for, so the hub acts with their access rather than the
+// workspace's. A token minted before it existed carries none and still acts as the workspace.
+export type ForemanHubClaims = { ws: number; uid?: string; exp: number }
 
 function secret(): string | undefined {
     return process.env.FOREMAN_HUB_TOKEN_SECRET || undefined
@@ -16,29 +18,30 @@ function sign(key: string, payload: string): string {
     return createHmac('sha256', key).update(payload).digest('base64url')
 }
 
-export function mintForemanHubToken(workspaceId: number, now = Date.now()): string | null {
+export function mintForemanHubToken(workspaceId: number, userId?: string | null, now = Date.now()): string | null {
     const key = secret()
     if (!key) return null
-    const claims: ForemanHubClaims = { ws: workspaceId, exp: now + FOREMAN_HUB_TOKEN_TTL_MS }
+    const claims: ForemanHubClaims = { ws: workspaceId, ...(userId ? { uid: userId } : {}), exp: now + FOREMAN_HUB_TOKEN_TTL_MS }
     const payload = Buffer.from(JSON.stringify(claims)).toString('base64url')
     return `${payload}.${sign(key, payload)}`
 }
 
-export function verifyForemanHubToken(raw: string | null | undefined, workspaceId: number, now = Date.now()): boolean {
+export function verifyForemanHubToken(raw: string | null | undefined, workspaceId: number, now = Date.now()): ForemanHubClaims | null {
     const key = secret()
-    if (!key || !raw) return false
+    if (!key || !raw) return null
     const [payload, signature, ...rest] = raw.split('.')
-    if (!payload || !signature || rest.length > 0) return false
+    if (!payload || !signature || rest.length > 0) return null
     const expected = Buffer.from(sign(key, payload))
     const given = Buffer.from(signature)
-    if (expected.length !== given.length || !timingSafeEqual(expected, given)) return false
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null
     let claims: Partial<ForemanHubClaims>
     try {
         claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Partial<ForemanHubClaims>
     } catch {
-        return false
+        return null
     }
-    return claims.ws === workspaceId && typeof claims.exp === 'number' && claims.exp > now
+    if (claims.ws !== workspaceId || typeof claims.exp !== 'number' || claims.exp <= now) return null
+    return { ws: claims.ws, exp: claims.exp, ...(typeof claims.uid === 'string' && claims.uid ? { uid: claims.uid } : {}) }
 }
 
 // Required as soon as the hub holds a secret to sign with. Without one (a local hub) a foreman call

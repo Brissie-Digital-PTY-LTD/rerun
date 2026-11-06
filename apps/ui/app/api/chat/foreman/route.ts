@@ -3,9 +3,9 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { foremanClientSchema } from '@rerun/contracts'
 
 import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
-import { isPhoneStepPending } from '@/cloud/phone.server'
-import { logRerunUsage, meteredFetch, type OpenRouterUsage } from '@/cloud/billing.server'
-import { MICROS_PER_USD } from '@/cloud/billing'
+import { isPhoneStepPending } from '@rerun/cloud/phone.server'
+import { logRerunUsage, meteredFetch, type OpenRouterUsage } from '@rerun/cloud/billing.server'
+import { MICROS_PER_USD } from '@rerun/cloud/billing'
 import { engineSessionOf, loadForemanConversation, saveForemanConversation } from '@/lib/foreman/conversation'
 import { dedupeMessagesById } from '@/lib/foreman/dedupe-messages'
 import { foremanErrorText } from '@/lib/foreman/error-text'
@@ -18,7 +18,7 @@ import { sealPendingWidgets } from '@/lib/foreman/seal-pending'
 import { loadForemanState } from '@/lib/foreman/state'
 import { withoutVoiceMarkers } from '@/lib/foreman/strip-voice'
 import { foremanSystemPrompt } from '@/lib/foreman/prompt'
-import { PHONE_REQUIRED_MESSAGE } from '@/cloud/phone'
+import { PHONE_REQUIRED_MESSAGE } from '@rerun/cloud/phone'
 import { prepareScript, runScript } from '@/lib/foreman/scripted'
 import { foremanActiveTools, foremanTools } from '@/lib/foreman/tools'
 import { createForemanTurn } from '@/lib/foreman/turn'
@@ -97,7 +97,8 @@ export async function POST(req: Request): Promise<Response> {
     // place it cannot be re-asserted at turn 40, and pruneMessages never touches a user text part,
     // so it survives however long the conversation runs.
     const client = foremanClientSchema.catch('web').parse(body.client)
-    const state = await loadForemanState(ctx, req.headers.get('accept-language'), arrivingIntent(messages), client)
+    const loadState = () => loadForemanState(ctx, req.headers.get('accept-language'), arrivingIntent(messages), client)
+    const state = await loadState()
 
     // No machine to build on and none in the pool: the browser shows the waitlist wall and sends
     // nothing, and whatever reaches here anyway is turned away before a single token is spent.
@@ -118,7 +119,7 @@ export async function POST(req: Request): Promise<Response> {
             onFinish: ({ messages: transcript }) => {
                 void saveForemanConversation(ctx, sessionId, transcript).catch(err => console.error('[foreman] failed to persist:', err))
             },
-            execute: ({ writer }) => runScript(script, { ctx, writer, signal: req.signal }),
+            execute: ({ writer }) => runScript(script, { ctx, writer, signal: req.signal, reload: loadState }),
         })
         return createUIMessageStreamResponse({ stream: scripted })
     }

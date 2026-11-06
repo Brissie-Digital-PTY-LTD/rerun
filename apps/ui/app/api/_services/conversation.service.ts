@@ -1,4 +1,5 @@
-import { AuthorizationError, assertAgentInWorkspace, assertSessionInWorkspace, type WorkspaceContext } from '@/app/api/_auth/ownership'
+import { actorFromContext, assertAgentAccess, assertSessionInWorkspace, keepVisible, visibleSpaceIds, type Actor } from '@/app/api/_auth/access'
+import { AuthorizationError, type WorkspaceContext } from '@/app/api/_auth/ownership'
 import { createSessionRow, getSessionEngineContext, lastRunError, listSessionRuns, readUsageSeed, resolveAgentTarget, type SessionUsageSeed, updateSessionStatus } from '@/app/api/_services/chat.service'
 import { type HistoryMessage, transformEngineMessages } from '@/lib/chat/engine-history'
 import { ATTENTION_NOTIFICATION_COLUMNS, attentionDetailsOf, attentionNotificationsFilter } from '@/lib/notifications/attention-details'
@@ -28,14 +29,14 @@ export type SessionHistoryEntry = {
 // Session history for an agent: Supabase-mirrored sessions merged with
 // engine-only sessions that were initiated by another agent (call_agent),
 // so those show up in the history like regular ones until adopted.
-export async function listAgentSessions(agentId: string): Promise<SessionHistoryEntry[]> {
-    const { workspace_id: workspaceId } = await assertAgentInWorkspace(agentId)
+export async function listAgentSessions(agentId: string, actor?: Actor): Promise<SessionHistoryEntry[]> {
+    const { actor: caller } = await assertAgentAccess(agentId, 'use', actor)
 
     const supabase = createServiceRoleClient()
 
     const [{ data: rows }, target] = await Promise.all([
         selectMany(supabase, 'sessions', ['id', 'title', 'status', 'updated_at', 'engine_session_id', 'origin_agent_id', 'source', 'automation_name', 'outcome'] as const, { agent_id: agentId }),
-        resolveAgentTarget(agentId, workspaceId).catch(() => null),
+        resolveAgentTarget(agentId, caller).catch(() => null),
     ])
     const supabaseRows = rows ?? []
 
@@ -96,7 +97,7 @@ export async function listAgentSessions(agentId: string): Promise<SessionHistory
 // The app's list of a coworker's conversations: the history, plus what the inbox knows of each one,
 // whether a run finished since the caller last opened it, and what a waiting one asks.
 export async function listAgentConversations(ctx: WorkspaceContext, agentId: string): Promise<Conversation[]> {
-    const entries = await listAgentSessions(agentId)
+    const entries = await listAgentSessions(agentId, actorFromContext(ctx))
     const waiting = entries.flatMap(entry => (entry.id && needsHuman(entry.status) ? [{ id: entry.id, agent_id: entry.agentId, engine_session_id: entry.engineSessionId, title: entry.title, updated_at: entry.updatedAt }] : []))
     const filter = attentionNotificationsFilter(waiting)
 
@@ -116,6 +117,13 @@ export async function listAgentConversations(ctx: WorkspaceContext, agentId: str
     }))
 }
 
+// The workspace's coworkers whose Box the caller reaches: every list of conversations stops there.
+async function reachableAgents(ctx: WorkspaceContext): Promise<{ id: string; name: string }[]> {
+    const [{ data, error }, spaces] = await Promise.all([selectMany(ctx.supabase, 'agents', ['id', 'name', 'space_id'] as const, { workspace_id: ctx.workspace.id }), visibleSpaceIds(actorFromContext(ctx))])
+    if (error) throw error
+    return keepVisible(data ?? [], spaces, agent => agent.space_id)
+}
+
 const OVERVIEW_COLUMNS = ['id', 'agent_id', 'title', 'status', 'updated_at', 'engine_session_id', 'source'] as const
 
 // What the app badges on an agent row: a conversation it cannot move forward without a human. An
@@ -132,10 +140,7 @@ const LATEST_SCAN_LIMIT = 1000
 // another one, not adopted yet) are left out on purpose: they are always idle, so they change
 // neither the count nor the latest row, and skipping them is what keeps this off the Boxes.
 export async function listWorkspaceConversationOverview(ctx: WorkspaceContext): Promise<AgentConversationsOverview> {
-    const { data: agentRows, error: agentsError } = await selectMany(ctx.supabase, 'agents', ['id'] as const, { workspace_id: ctx.workspace.id })
-    if (agentsError) throw agentsError
-
-    const agentIds = (agentRows ?? []).map(a => a.id)
+    const agentIds = (await reachableAgents(ctx)).map(a => a.id)
     if (agentIds.length === 0) return []
 
     const { data: recent, error: recentError } = await selectMany(ctx.supabase, 'sessions', OVERVIEW_COLUMNS, { agent_id: agentIds }, { column: 'updated_at', ascending: false }, LATEST_SCAN_LIMIT)
@@ -175,17 +180,14 @@ const AGENT_RECENT_LIMIT = 8
 export type { ConversationHit } from '@rerun/contracts'
 
 // Conversations found by their title, newest first, for the control center. Scoped through the
-// workspace's own agents, which is also what proves a given `agentId` belongs to the caller. With
+// coworkers the caller reaches, which is also what proves a given `agentId` is the caller's to read. With
 // an agent and no text it lists that agent's latest ones. Engine-only conversations have no row to
 // match and are left out, as in the overview above.
 export async function searchWorkspaceConversations(ctx: WorkspaceContext, query: string, agentId?: string): Promise<ConversationHit[]> {
     const text = sanitizeIlike(query)
     if (!text && !agentId) return []
 
-    const { data: agentRows, error: agentsError } = await selectMany(ctx.supabase, 'agents', ['id'] as const, { workspace_id: ctx.workspace.id })
-    if (agentsError) throw agentsError
-
-    const workspaceAgentIds = (agentRows ?? []).map(a => a.id)
+    const workspaceAgentIds = (await reachableAgents(ctx)).map(a => a.id)
     const agentIds = agentId ? workspaceAgentIds.filter(id => id === agentId) : workspaceAgentIds
     if (agentIds.length === 0) return []
 
@@ -210,10 +212,7 @@ const TO_HANDLE_PAGE = 50
 // Everything in the workspace waiting on its human, the list the web's To handle tab shows for one
 // agent at a time, bounded and with the blocking requests first.
 export async function listWorkspaceToHandle(ctx: WorkspaceContext): Promise<ToHandleList> {
-    const { data: agentRows, error: agentsError } = await selectMany(ctx.supabase, 'agents', ['id', 'name'] as const, { workspace_id: ctx.workspace.id })
-    if (agentsError) throw agentsError
-
-    const namesById = new Map((agentRows ?? []).map(a => [a.id, a.name]))
+    const namesById = new Map((await reachableAgents(ctx)).map(a => [a.id, a.name]))
     if (namesById.size === 0) return { items: [], total: 0 }
 
     const agentIds = [...namesById.keys()]
@@ -241,15 +240,12 @@ export async function listWorkspaceToHandle(ctx: WorkspaceContext): Promise<ToHa
 }
 
 // Acknowledging without answering, the same write the board store makes behind « Mark as read ».
-// `'all'` empties the workspace, which is what the button of that name promises even when the list
-// it sits above only showed a page. The agent filter is what scopes the write to the workspace; the
+// `'all'` empties what the caller reaches, which is what the button of that name promises even when
+// the list it sits above only showed a page. The agent filter is what scopes the write; the
 // status filter is the race guard: a conversation back in `working` between the render and the tap
 // belongs to its run.
 export async function markSessionsHandled(ctx: WorkspaceContext, sessionIds: string[] | 'all'): Promise<void> {
-    const { data: agentRows, error } = await selectMany(ctx.supabase, 'agents', ['id'] as const, { workspace_id: ctx.workspace.id })
-    if (error) throw error
-
-    const agentIds = (agentRows ?? []).map(a => a.id)
+    const agentIds = (await reachableAgents(ctx)).map(a => a.id)
     if (agentIds.length === 0) return
 
     const supabase = createServiceRoleClient()
@@ -264,14 +260,15 @@ export async function markSessionsHandled(ctx: WorkspaceContext, sessionIds: str
 
 // Creates the Supabase mirror row for an engine-only session so it can be
 // opened and continued like a regular session. Idempotent per engine session.
-export async function adoptEngineSession(agentId: string, engineSessionId: string, title: string): Promise<string> {
-    const { workspace_id: workspaceId } = await assertAgentInWorkspace(agentId)
+export async function adoptEngineSession(agentId: string, engineSessionId: string, title: string, actor?: Actor): Promise<string> {
+    const { actor: caller, agent } = await assertAgentAccess(agentId, 'use', actor)
+    const workspaceId = agent.workspace_id
     const supabase = createServiceRoleClient()
 
     const { data: existing } = await selectMaybeSingle(supabase, 'sessions', ['id'] as const, { agent_id: agentId, engine_session_id: engineSessionId })
     if (existing) return existing.id
 
-    const target = await resolveAgentTarget(agentId, workspaceId)
+    const target = await resolveAgentTarget(agentId, caller)
     const session = (await getSession(target.conn, target.engineAgentId, engineSessionId)) ?? (await listSessions(target.conn, target.engineAgentId)).find(s => s.id === engineSessionId)
     // A row is only ever a mirror of a session this agent holds: the column is unique across
     // workspaces, so a made-up id would otherwise squat another workspace's session.

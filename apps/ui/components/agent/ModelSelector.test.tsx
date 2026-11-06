@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // One it writes on its own pins the conversation for good: a workspace running on Claude ended up
 // spending its Rerun credit, and being told it was used up, after a single failed read of the agent.
 
-const mocks = vi.hoisted(() => ({ getAgentContextAction: vi.fn(), listAiConnectionsAction: vi.fn() }))
+const mocks = vi.hoisted(() => ({ getAgentContextAction: vi.fn(), listAiConnectionsAction: vi.fn(), updateAgentConfigAction: vi.fn(), canManage: true, boardAgentIds: [] as string[] }))
 
-vi.mock('@/app/api/_actions/agent.actions', () => ({ getAgentContextAction: mocks.getAgentContextAction, updateAgentConfigAction: vi.fn() }))
+vi.mock('@/app/api/_actions/agent.actions', () => ({ getAgentContextAction: mocks.getAgentContextAction, updateAgentConfigAction: mocks.updateAgentConfigAction }))
 vi.mock('@/app/api/_actions/workspace-connection.actions', () => ({
     listAiConnectionsAction: mocks.listAiConnectionsAction,
     createAiConnectionAction: vi.fn(),
@@ -23,6 +23,8 @@ vi.mock('@/supabase/session/SessionProvider', () => ({
     useOptionalSession: () => null,
 }))
 vi.mock('@rerun/analytics/client', () => ({ track: vi.fn() }))
+vi.mock('@/hooks/useBoxAccess', () => ({ useCanManageAgent: () => mocks.canManage }))
+vi.mock('@/stores/board.store', () => ({ useBoardStore: (select: (state: { agents: { id: string }[] }) => unknown) => select({ agents: mocks.boardAgentIds.map(id => ({ id })) }) }))
 
 const connection = (id: string, provider: string, models: string[]) => ({
     id,
@@ -111,5 +113,49 @@ describe('ModelSelector override', () => {
         mocks.getAgentContextAction.mockResolvedValue(modelContext({ connectionId: 'gone', model: 'gpt-6-astra', resolvedConnectionId: 'gone', resolvedModel: 'gpt-6-astra' }))
         await mount('stale-pin')
         expect(storedOverride('stale-pin')).toEqual({ connectionId: 'claude-1', model: 'claude-sonnet-5-5' })
+    })
+})
+
+describe('ModelSelector coworker default', () => {
+    beforeEach(() => {
+        vi.resetModules()
+        localStorage.clear()
+        mocks.getAgentContextAction.mockResolvedValue(FOLLOWS_CLAUDE)
+        mocks.listAiConnectionsAction.mockResolvedValue(CLAUDE_DEFAULT)
+        mocks.updateAgentConfigAction.mockReset()
+    })
+    afterEach(() => {
+        act(() => root?.unmount())
+        root = null
+        container?.remove()
+        mocks.canManage = true
+        mocks.boardAgentIds = []
+    })
+
+    async function openPicker() {
+        const trigger = container!.querySelector('button')!
+        await act(async () => {
+            trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
+            trigger.click()
+        })
+        await settle()
+    }
+
+    it('keeps the star out of reach of someone who only uses the coworker', async () => {
+        mocks.canManage = false
+        mocks.boardAgentIds = ['used']
+        await mount('used')
+        await openPicker()
+        const star = document.querySelector<HTMLButtonElement>('button[aria-label="Make Sonnet 5.5 this coworker\'s default"]')
+        expect(star).not.toBeNull()
+        expect(star!.disabled).toBe(true)
+    })
+
+    it('leaves the star open to a manager', async () => {
+        mocks.boardAgentIds = ['managed']
+        await mount('managed')
+        await openPicker()
+        const star = document.querySelector<HTMLButtonElement>('button[aria-label="Make Sonnet 5.5 this coworker\'s default"]')
+        expect(star?.disabled).toBe(false)
     })
 })

@@ -1,10 +1,10 @@
 'use server'
 
 import { after } from 'next/server'
-import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { requireAdminContext, requireWorkspaceContext, toBoxScope, type BoxScope, type WorkspaceRole } from '@/app/api/_auth/ownership'
 import type { Database } from '@/app/api/database.types'
-import { listMemberProfiles, resolveMemberIdentities } from '@/app/api/_services/members.service'
-import { BANNER_WARM_BACKGROUND_MS, EMAIL_DELIVERY, emailBoardBanner, sendWorkspaceInviteEmail } from '@/cloud/email'
+import { demoteKeepingAnAdmin, isLastAdmin, LAST_ADMIN, listMemberProfiles, resolveMemberIdentities, setMemberRole } from '@/app/api/_services/members.service'
+import { BANNER_WARM_BACKGROUND_MS, EMAIL_DELIVERY, emailBoardBanner, sendWorkspaceInviteEmail } from '@rerun/cloud/email'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { getServerSession } from '@/supabase/session/getServerSession'
 import { selectAll, selectCount, selectMaybeSingle } from '@/supabase/supabase-helpers'
@@ -17,6 +17,7 @@ import { randomUuid } from '@/lib/random-uuid'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.rerun.build'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const MEMBERS_ADMIN_ONLY = 'Only an admin can manage members'
 
 type ServiceClient = SupabaseClient<Database>
 
@@ -27,37 +28,39 @@ async function resolveMemberEmails(supabase: ServiceClient, userIds: string[]): 
     return emails
 }
 
-export type WorkspaceMember = { userId: string; email: string | null }
+export type WorkspaceMember = { userId: string; email: string | null; role: WorkspaceRole; boxScope: BoxScope }
 
 // Who signs a message in a conversation. Names and photos live in the auth records, which
 // no member can read from the browser.
 export async function listMemberProfilesAction(): Promise<MemberProfile[]> {
     return listMemberProfiles(await requireWorkspaceContext())
 }
-export type WorkspaceInviteRow = { id: string; email: string; status: string; createdAt: string }
+export type WorkspaceInviteRow = { id: string; email: string; status: string; createdAt: string; boxScope: BoxScope }
 
-export async function listWorkspaceMembersAction(): Promise<ActionResult<{ members: WorkspaceMember[]; invites: WorkspaceInviteRow[]; currentUserId: string }>> {
+export async function listWorkspaceMembersAction(): Promise<ActionResult<{ members: WorkspaceMember[]; invites: WorkspaceInviteRow[]; currentUserId: string; currentRole: WorkspaceRole }>> {
     try {
-        const { userId, workspace, supabase } = await requireWorkspaceContext()
+        const { userId, role, workspace, supabase } = await requireWorkspaceContext()
 
-        const { data: memberRows } = await selectAll(supabase, 'workspace_members', ['user_id'] as const, { workspace_id: workspace.id }, { column: 'created_at', ascending: true })
+        const { data: memberRows } = await selectAll(supabase, 'workspace_members', ['user_id', 'role', 'box_scope'] as const, { workspace_id: workspace.id }, { column: 'created_at', ascending: true })
         const rows = memberRows ?? []
         const emails = await resolveMemberEmails(supabase, rows.map(m => m.user_id))
-        const members: WorkspaceMember[] = rows.map(m => ({ userId: m.user_id, email: emails.get(m.user_id) ?? null }))
+        const members: WorkspaceMember[] = rows.map(m => ({ userId: m.user_id, email: emails.get(m.user_id) ?? null, role: m.role, boxScope: toBoxScope(m.box_scope) }))
 
-        const { data: inviteRows } = await selectAll(supabase, 'workspace_invitations', ['id', 'email', 'status', 'created_at'] as const, { workspace_id: workspace.id, status: 'pending' }, { column: 'created_at', ascending: true })
-        const invites: WorkspaceInviteRow[] = (inviteRows ?? []).map(i => ({ id: i.id, email: i.email, status: i.status, createdAt: i.created_at }))
+        const { data: inviteRows } = await selectAll(supabase, 'workspace_invitations', ['id', 'email', 'status', 'created_at', 'box_scope'] as const, { workspace_id: workspace.id, status: 'pending' }, { column: 'created_at', ascending: true })
+        const invites: WorkspaceInviteRow[] = (inviteRows ?? []).map(i => ({ id: i.id, email: i.email, status: i.status, createdAt: i.created_at, boxScope: toBoxScope(i.box_scope) }))
 
-        return { ok: true, members, invites, currentUserId: userId }
+        return { ok: true, members, invites, currentUserId: userId, currentRole: role }
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to load members' }
     }
 }
 
-// `inviteUrl` comes back where no email leaves, for the person inviting to pass on.
-export async function inviteToWorkspaceAction(rawEmail: string): Promise<ActionResult<{ inviteUrl?: string }>> {
+// `inviteUrl` comes back where no email leaves, for the person inviting to pass on. `boxScope` is
+// copied onto the membership when the invitation is accepted.
+export async function inviteToWorkspaceAction(rawEmail: string, rawBoxScope: BoxScope = 'all'): Promise<ActionResult<{ inviteUrl?: string }>> {
     try {
-        const { userId, userEmail, workspace, supabase } = await requireWorkspaceContext()
+        const { userId, userEmail, workspace, supabase } = await requireAdminContext(MEMBERS_ADMIN_ONLY)
+        const boxScope = toBoxScope(rawBoxScope)
 
         const email = rawEmail.trim().toLowerCase()
         if (!EMAIL_RE.test(email)) return { ok: false, error: 'Enter a valid email address' }
@@ -67,7 +70,7 @@ export async function inviteToWorkspaceAction(rawEmail: string): Promise<ActionR
         const memberEmails = await resolveMemberEmails(supabase, memberIds)
         if ([...memberEmails.values()].includes(email)) return { ok: false, error: 'This person is already a member of the workspace.' }
 
-        const { data: existingInvite } = await selectMaybeSingle(supabase, 'workspace_invitations', ['id', 'token'] as const, { workspace_id: workspace.id, email, status: 'pending' })
+        const { data: existingInvite } = await selectMaybeSingle(supabase, 'workspace_invitations', ['id', 'token', 'box_scope'] as const, { workspace_id: workspace.id, email, status: 'pending' })
 
         let token = existingInvite?.token
         if (!existingInvite) {
@@ -84,8 +87,12 @@ export async function inviteToWorkspaceAction(rawEmail: string): Promise<ActionR
                 token,
                 invited_by: userId,
                 status: 'pending',
+                box_scope: boxScope,
                 expires_at: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
             })
+            if (error) return { ok: false, error: error.message }
+        } else if (toBoxScope(existingInvite.box_scope) !== boxScope) {
+            const { error } = await supabase.from('workspace_invitations').update<Database['public']['Tables']['workspace_invitations']['Update']>({ box_scope: boxScope }).eq('id', existingInvite.id)
             if (error) return { ok: false, error: error.message }
         }
 
@@ -105,7 +112,7 @@ export async function inviteToWorkspaceAction(rawEmail: string): Promise<ActionR
 
 export async function revokeInvitationAction(invitationId: string): Promise<ActionResult> {
     try {
-        const { workspace, supabase } = await requireWorkspaceContext()
+        const { workspace, supabase } = await requireAdminContext(MEMBERS_ADMIN_ONLY)
 
         const { data: invite } = await selectMaybeSingle(supabase, 'workspace_invitations', ['workspace_id'] as const, { id: invitationId })
         if (!invite || invite.workspace_id !== workspace.id) return { ok: false, error: 'Invitation not found' }
@@ -120,11 +127,12 @@ export async function revokeInvitationAction(invitationId: string): Promise<Acti
 
 export async function removeMemberAction(targetUserId: string): Promise<ActionResult> {
     try {
-        const { userId, workspace, supabase } = await requireWorkspaceContext()
+        const { userId, workspace, supabase } = await requireAdminContext(MEMBERS_ADMIN_ONLY)
         if (targetUserId === userId) return { ok: false, error: 'You cannot remove yourself from the workspace.' }
 
         const { data: target } = await selectMaybeSingle(supabase, 'workspace_members', ['user_id'] as const, { user_id: targetUserId, workspace_id: workspace.id })
         if (!target) return { ok: false, error: 'This user is not a member of the workspace.' }
+        if (await isLastAdmin(supabase, workspace.id, targetUserId)) return { ok: false, error: LAST_ADMIN }
 
         const { data: targetUser } = await selectMaybeSingle(supabase, 'users', ['workspace_id'] as const, { id: targetUserId })
         if (targetUser?.workspace_id === workspace.id) {
@@ -140,6 +148,47 @@ export async function removeMemberAction(targetUserId: string): Promise<ActionRe
         return { ok: true }
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to remove member' }
+    }
+}
+
+export async function setMemberRoleAction(targetUserId: string, role: WorkspaceRole): Promise<ActionResult> {
+    try {
+        const { workspace, supabase } = await requireAdminContext(MEMBERS_ADMIN_ONLY)
+
+        const { data: target } = await selectMaybeSingle(supabase, 'workspace_members', ['role'] as const, { user_id: targetUserId, workspace_id: workspace.id })
+        if (!target) return { ok: false, error: 'This user is not a member of the workspace.' }
+        if (target.role === role) return { ok: true }
+        if (role === 'member' && (await isLastAdmin(supabase, workspace.id, targetUserId))) return { ok: false, error: LAST_ADMIN }
+
+        const { error } = role === 'member' ? await demoteKeepingAnAdmin(supabase, workspace.id, targetUserId) : await setMemberRole(supabase, workspace.id, targetUserId, role)
+        if (error) return { ok: false, error }
+        return { ok: true }
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'Failed to change the role' }
+    }
+}
+
+// Whether a member uses every Box open to the workspace or only the ones named to them. An admin
+// reaches every Box whatever the scope, so theirs is not changed.
+export async function setMemberBoxScopeAction(targetUserId: string, boxScope: BoxScope): Promise<ActionResult> {
+    try {
+        const { workspace, supabase } = await requireAdminContext(MEMBERS_ADMIN_ONLY)
+        if (boxScope !== 'all' && boxScope !== 'assigned') return { ok: false, error: 'Unknown scope' }
+
+        const { data: target } = await selectMaybeSingle(supabase, 'workspace_members', ['role', 'box_scope'] as const, { user_id: targetUserId, workspace_id: workspace.id })
+        if (!target) return { ok: false, error: 'This user is not a member of the workspace.' }
+        if (target.role === 'admin') return { ok: false, error: 'Admins have access to every Box' }
+        if (toBoxScope(target.box_scope) === boxScope) return { ok: true }
+
+        const { error } = await supabase
+            .from('workspace_members')
+            .update<Database['public']['Tables']['workspace_members']['Update']>({ box_scope: boxScope })
+            .eq('user_id', targetUserId)
+            .eq('workspace_id', workspace.id)
+        if (error) return { ok: false, error: error.message }
+        return { ok: true }
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'Failed to change the Boxes of this member' }
     }
 }
 
@@ -180,7 +229,7 @@ export async function acceptInvitationAction(token: string): Promise<ActionResul
     if (!user?.id || !session?.email) return { ok: false, error: 'You must be signed in to accept an invitation.' }
 
     const supabase = createServiceRoleClient()
-    const { data: invite } = await selectMaybeSingle(supabase, 'workspace_invitations', ['id', 'workspace_id', 'email', 'status', 'expires_at'] as const, { token })
+    const { data: invite } = await selectMaybeSingle(supabase, 'workspace_invitations', ['id', 'workspace_id', 'email', 'status', 'expires_at', 'box_scope'] as const, { token })
     if (!invite) return { ok: false, error: 'Invitation not found' }
     if (invite.status !== 'pending') return { ok: false, error: 'This invitation is no longer valid.' }
     if (new Date(invite.expires_at).getTime() < Date.now()) return { ok: false, error: 'This invitation has expired.' }
@@ -207,12 +256,14 @@ export async function acceptInvitationAction(token: string): Promise<ActionResul
         const { data: seatsTaken } = await selectCount(supabase, 'workspace_members', { workspace_id: invite.workspace_id })
         if (workspace?.max_seats != null && (seatsTaken ?? 0) >= workspace.max_seats) {
             await releaseInvitation()
-            return { ok: false, error: 'This workspace has no seat left. Ask the owner to free one.' }
+            return { ok: false, error: 'This workspace has no seat left. Ask an admin to free one.' }
         }
 
         const { error } = await supabase.from('workspace_members').insert<Database['public']['Tables']['workspace_members']['Insert']>({
             user_id: user.id,
             workspace_id: invite.workspace_id,
+            role: 'member',
+            box_scope: toBoxScope(invite.box_scope),
         })
         if (error) {
             await releaseInvitation()

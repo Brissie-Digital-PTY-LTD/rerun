@@ -91,3 +91,28 @@ export function planLimitWindowsFromOpencode(body: unknown): PlanLimitWindow[] {
 export function spentPlanWindow(connectionId: string): PlanLimitWindow | null {
     return readings.get(connectionId)?.windows.find(window => window.usedPercent >= 100) ?? null
 }
+
+// A spent subscription fails every run within seconds until its window resets, so the scheduler
+// holds the connection's schedules until then. The reset time is read when the hold is checked, not
+// when it is armed: Codex and OpenCode refresh their windows during the run's teardown, seconds
+// after the refusal armed the hold, and Claude only reads its usage when a run ends well, so the
+// reading a refused run leaves behind can still be under 100%. Without a reset time the hold lasts
+// PLAN_LIMIT_PROBE_MS, and the next due run is the probe.
+const PLAN_LIMIT_PROBE_MS = 30 * 60_000
+
+const limitLatches = new Map<string, number>()
+
+export function armPlanLimitLatch(connectionId: string, now = Date.now()): void {
+    limitLatches.set(connectionId, now)
+}
+
+export function clearPlanLimitLatch(connectionId: string): void {
+    limitLatches.delete(connectionId)
+}
+
+export function isPlanLimitLatched(connectionId: string, now = Date.now()): boolean {
+    const armedAt = limitLatches.get(connectionId)
+    if (armedAt === undefined) return false
+    const resetsAt = Date.parse(spentPlanWindow(connectionId)?.resetsAt ?? '')
+    return now < (resetsAt > armedAt ? resetsAt : armedAt + PLAN_LIMIT_PROBE_MS)
+}

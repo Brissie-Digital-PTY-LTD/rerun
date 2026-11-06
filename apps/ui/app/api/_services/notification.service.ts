@@ -2,8 +2,10 @@ import { realEmail } from '@/lib/auth/placeholder-email'
 import { after } from 'next/server'
 import { FOREMAN_AGENT_ID } from '@rerun/contracts'
 
+import { boxAccessOf, toAccessLevel } from '@/app/api/_auth/access'
+import { toBoxScope } from '@/app/api/_auth/box-scope'
 import type { Database } from '@/app/api/database.types'
-import { BANNER_WARM_INLINE_MS, buildUnsubscribeUrl, emailBoardBanner, pushNotification, sendIncidentResolvedEmail, sendNotificationEmail } from '@/cloud/email'
+import { BANNER_WARM_INLINE_MS, buildUnsubscribeUrl, emailBoardBanner, pushNotification, sendIncidentResolvedEmail, sendNotificationEmail } from '@rerun/cloud/email'
 import { notificationUrl } from '@/lib/app-url'
 import type { NotificationPayload } from '@/lib/engine/types'
 import { RERUN_BUDGET_ERROR_CODE, suppressesErrorEmail } from '@/lib/notifications/budget-notice'
@@ -62,7 +64,7 @@ export async function recordNotification(token: string, payload: NotificationPay
         return { ok: true }
     }
 
-    const audience = await resolveAudience(supabase, engine.workspaceId, agent?.id ?? null, notification)
+    const audience = await resolveAudience(supabase, engine.workspaceId, agent ?? null, notification)
     const recipients = computeRecipients(audience.event, audience.members)
 
     const { data: stored, error } = await supabase.from('notifications').insert<NotificationInsert>({
@@ -199,15 +201,33 @@ async function retitleAutomatedRun(supabase: ServiceRoleClient, agentId: string 
 
 type Audience = { event: RoutedEvent; source: SessionSource | null; members: RoutedMember[]; conversationId: string | null }
 
+type Membership = { user_id: string; role: Database['public']['Enums']['workspace_role']; box_scope: string }
+
+// The members who reach the Box the notification comes from, with the same rule as everywhere else.
+// The Box and its grants are read once for the whole audience. A Box that is gone keeps the admins.
+export async function membersReachingBox(supabase: ServiceRoleClient, workspaceId: number, spaceId: string | null, memberships: Membership[]): Promise<Membership[]> {
+    if (!spaceId) return memberships
+    const [{ data: space }, { data: grants }] = await Promise.all([
+        selectMaybeSingle(supabase, 'spaces', ['workspace_id', 'visibility'] as const, { id: spaceId }),
+        selectMany(supabase, 'space_members', ['user_id', 'access'] as const, { space_id: spaceId }),
+    ])
+    const box = space ?? { workspace_id: workspaceId, visibility: 'restricted' }
+    const grantOf = new Map((grants ?? []).map(grant => [grant.user_id, toAccessLevel(grant.access)]))
+    return memberships.filter(m => boxAccessOf({ kind: 'user', userId: m.user_id, workspaceId, role: m.role, boxScope: toBoxScope(m.box_scope) }, box, grantOf.get(m.user_id) ?? null) !== 'none')
+}
+
 // Who the notification is about: the member who started the run, whoever wrote in its conversation,
-// and the source that tells a cron from a chat. Every id is checked against the workspace members,
-// so an engine can never route a notification to someone outside it.
-async function resolveAudience(supabase: ServiceRoleClient, workspaceId: number, agentId: string | null, notification: StoredNotification): Promise<Audience> {
+// and the source that tells a cron from a chat. Every id is checked against the workspace members
+// who reach the coworker's Box, so an engine can never route a notification to someone outside it,
+// nor to a member the Box is closed to.
+async function resolveAudience(supabase: ServiceRoleClient, workspaceId: number, agent: { id: string; space_id: string } | null, notification: StoredNotification): Promise<Audience> {
+    const agentId = agent?.id ?? null
     const [{ data: session }, { data: memberships }] = await Promise.all([
         agentId && notification.sessionId ? selectMaybeSingle(supabase, 'sessions', ['id', 'source'] as const, { agent_id: agentId, engine_session_id: notification.sessionId }) : Promise.resolve({ data: null }),
-        selectMany(supabase, 'workspace_members', ['user_id'] as const, { workspace_id: workspaceId }),
+        selectMany(supabase, 'workspace_members', ['user_id', 'role', 'box_scope'] as const, { workspace_id: workspaceId }),
     ])
-    const memberIds = new Set((memberships ?? []).map(m => m.user_id))
+    const reaching = await membersReachingBox(supabase, workspaceId, agent?.space_id ?? null, memberships ?? [])
+    const memberIds = new Set(reaching.map(m => m.user_id))
     const [{ data: participants }, { data: users }] = await Promise.all([
         session ? selectMany(supabase, 'session_participants', ['user_id'] as const, { session_id: session.id }, { column: 'last_message_at', ascending: false }) : Promise.resolve({ data: [] }),
         memberIds.size ? selectMany(supabase, 'users', ['id', 'email_notification_prefs'] as const, { id: [...memberIds] }) : Promise.resolve({ data: [] }),

@@ -6,14 +6,14 @@ const mocks = vi.hoisted(() => ({ getServerSession: vi.fn(), sendWorkspaceInvite
 
 vi.mock('@/supabase/session/getServerSession', () => ({ getServerSession: mocks.getServerSession, getSessionWorkspace: mocks.getServerSession }))
 vi.mock('@/supabase/serviceRole', () => ({ createServiceRoleClient: vi.fn() }))
-vi.mock('@/cloud/email', () => ({ get EMAIL_DELIVERY() { return mocks.emailDelivery }, sendWorkspaceInviteEmail: mocks.sendWorkspaceInviteEmail, BANNER_WARM_BACKGROUND_MS: 0, emailBoardBanner: vi.fn(async () => 'https://app.rerun.build/og/board?sig=x') }))
+vi.mock('@rerun/cloud/email', () => ({ get EMAIL_DELIVERY() { return mocks.emailDelivery }, sendWorkspaceInviteEmail: mocks.sendWorkspaceInviteEmail, BANNER_WARM_BACKGROUND_MS: 0, emailBoardBanner: vi.fn(async () => 'https://app.rerun.build/og/board?sig=x') }))
 vi.mock('next/server', () => ({ after: (task: () => Promise<unknown>) => void mocks.afterTasks.push(task()) }))
 
 // The invitation email leaves after the response, so a test reads it once those tasks settled.
 const afterResponse = () => Promise.all(mocks.afterTasks.splice(0))
 
 const { createServiceRoleClient } = await import('@/supabase/serviceRole')
-const { acceptInvitationAction, inviteToWorkspaceAction, joinedWorkspaceForInvitationAction, removeMemberAction, revokeInvitationAction } = await import('./members.actions')
+const { acceptInvitationAction, inviteToWorkspaceAction, joinedWorkspaceForInvitationAction, listWorkspaceMembersAction, removeMemberAction, revokeInvitationAction, setMemberBoxScopeAction, setMemberRoleAction } = await import('./members.actions')
 
 type Row = Record<string, unknown>
 
@@ -56,12 +56,14 @@ function signedIn(maxSeats: number | null = 3, email = 'me@acme.test') {
     })
 }
 
-function member(userId: string, workspaceId = WORKSPACE_ID): Row {
-    return { user_id: userId, workspace_id: workspaceId }
+function member(userId: string, workspaceId = WORKSPACE_ID, role: 'admin' | 'member' = 'admin', boxScope: 'all' | 'assigned' = 'all'): Row {
+    return { user_id: userId, workspace_id: workspaceId, role, box_scope: boxScope }
 }
 
+const plainMember = (userId: string) => member(userId, WORKSPACE_ID, 'member')
+
 function pendingInvite(overrides: Row = {}): Row {
-    return { id: 'invite-1', workspace_id: WORKSPACE_ID, email: 'new@acme.test', token: 'tok', status: 'pending', expires_at: new Date(Date.now() + DAY_MS).toISOString(), ...overrides }
+    return { id: 'invite-1', workspace_id: WORKSPACE_ID, email: 'new@acme.test', token: 'tok', status: 'pending', box_scope: 'all', expires_at: new Date(Date.now() + DAY_MS).toISOString(), ...overrides }
 }
 
 beforeEach(() => {
@@ -88,7 +90,7 @@ describe('inviteToWorkspaceAction', () => {
 
         const [write] = db.writes('workspace_invitations')
         expect(write.method).toBe('insert')
-        expect(write.payload).toMatchObject({ workspace_id: WORKSPACE_ID, email: 'new@acme.test', invited_by: ME, status: 'pending' })
+        expect(write.payload).toMatchObject({ workspace_id: WORKSPACE_ID, email: 'new@acme.test', invited_by: ME, status: 'pending', box_scope: 'all' })
         expect(mocks.sendWorkspaceInviteEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'new@acme.test', boardUrl: 'https://app.rerun.build/og/board?sig=x' }))
     })
 
@@ -112,6 +114,22 @@ describe('inviteToWorkspaceAction', () => {
         expect(mocks.sendWorkspaceInviteEmail.mock.calls[0][0].inviteUrl).toMatch(/\/invite\/tok$/)
     })
 
+    it('writes the scope chosen for the invitation', async () => {
+        const db = database({ workspace_members: [member(ME)] }, { [ME]: 'me@acme.test' })
+
+        await expect(inviteToWorkspaceAction('new@acme.test', 'assigned')).resolves.toEqual({ ok: true })
+
+        expect(db.writes('workspace_invitations')[0]).toMatchObject({ method: 'insert', payload: { email: 'new@acme.test', box_scope: 'assigned' } })
+    })
+
+    it('gives a re-sent pending invitation the new scope', async () => {
+        const db = database({ workspace_members: [member(ME)], workspace_invitations: [pendingInvite()] }, { [ME]: 'me@acme.test' })
+
+        await expect(inviteToWorkspaceAction('new@acme.test', 'assigned')).resolves.toEqual({ ok: true })
+
+        expect(db.writes('workspace_invitations')).toEqual([{ method: 'update', payload: { box_scope: 'assigned' }, filters: [{ table: 'workspace_invitations', method: 'eq', args: ['id', 'invite-1'] }] }])
+    })
+
     it('refuses someone who is already a member', async () => {
         database({ workspace_members: [member(ME), member('user-2')] }, { [ME]: 'me@acme.test', 'user-2': 'two@acme.test' })
 
@@ -124,6 +142,129 @@ describe('inviteToWorkspaceAction', () => {
 
         await expect(inviteToWorkspaceAction('new@acme.test')).resolves.toEqual({ ok: true })
         expect(db.writes('workspace_invitations')).toHaveLength(1)
+    })
+})
+
+describe('a member', () => {
+    it('reads the members and their roles, and learns their own', async () => {
+        database({ workspace_members: [member('user-2'), plainMember(ME)] }, { [ME]: 'me@acme.test', 'user-2': 'two@acme.test' })
+
+        const result = await listWorkspaceMembersAction()
+
+        expect(result).toMatchObject({ ok: true, currentRole: 'member', members: [{ userId: 'user-2', role: 'admin' }, { userId: ME, role: 'member' }] })
+    })
+
+    it('reads the scope of every member and of every pending invitation', async () => {
+        database({ workspace_members: [member(ME), member('user-2', WORKSPACE_ID, 'member', 'assigned')], workspace_invitations: [pendingInvite({ box_scope: 'assigned' }), pendingInvite({ id: 'invite-2', email: 'two@acme.test' })] })
+
+        const result = await listWorkspaceMembersAction()
+
+        expect(result).toMatchObject({
+            ok: true,
+            members: [{ userId: ME, boxScope: 'all' }, { userId: 'user-2', boxScope: 'assigned' }],
+            invites: [{ id: 'invite-1', boxScope: 'assigned' }, { id: 'invite-2', boxScope: 'all' }],
+        })
+    })
+
+    it('cannot invite, revoke, remove nor change a role', async () => {
+        const db = database({ workspace_members: [plainMember(ME), member('user-2')], workspace_invitations: [pendingInvite()], users: [{ id: 'user-2', workspace_id: 42 }] })
+        const refused = { ok: false, error: 'Only an admin can manage members' }
+
+        await expect(inviteToWorkspaceAction('new@acme.test')).resolves.toEqual(refused)
+        await expect(revokeInvitationAction('invite-1')).resolves.toEqual(refused)
+        await expect(removeMemberAction('user-2')).resolves.toEqual(refused)
+        await expect(setMemberRoleAction(ME, 'admin')).resolves.toEqual(refused)
+        await expect(setMemberBoxScopeAction(ME, 'all')).resolves.toEqual(refused)
+        expect(db.writes('workspace_invitations')).toHaveLength(0)
+        expect(db.writes('workspace_members')).toHaveLength(0)
+    })
+})
+
+describe('setMemberRoleAction', () => {
+    it('promotes a member', async () => {
+        const db = database({ workspace_members: [member(ME), plainMember('user-2')] })
+
+        await expect(setMemberRoleAction('user-2', 'admin')).resolves.toEqual({ ok: true })
+
+        const [write] = db.writes('workspace_members')
+        expect(write).toMatchObject({ method: 'update', payload: { role: 'admin' } })
+    })
+
+    it('lets an admin step down while another admin is left', async () => {
+        const db = database({ workspace_members: [member(ME), member('user-2')] })
+
+        await expect(setMemberRoleAction(ME, 'member')).resolves.toEqual({ ok: true })
+        expect(db.writes('workspace_members')[0]).toMatchObject({ method: 'update', payload: { role: 'member' } })
+    })
+
+    it('refuses to demote the last admin', async () => {
+        const db = database({ workspace_members: [member(ME), plainMember('user-2')] })
+
+        await expect(setMemberRoleAction(ME, 'member')).resolves.toEqual({ ok: false, error: 'The workspace needs at least one admin' })
+        expect(db.writes('workspace_members')).toHaveLength(0)
+    })
+
+    it('takes the role back when the other admin stepped down in the same instant', async () => {
+        const rows = { workspace_members: [member(ME), member('user-2')] }
+        const resolve = tableResolver(rows)
+        // The other admin's demotion lands between the check and the write: every update of the
+        // workspace_members table is applied, and the first one carries that concurrent demotion too.
+        const db = fakeSupabase((table, calls) => {
+            const update = calls.find(call => call.method === 'update')
+            if (table === 'workspace_members' && update) {
+                const userId = calls.find(call => call.method === 'eq' && call.args[0] === 'user_id')?.args[1]
+                const target = rows.workspace_members.find(row => row.user_id === userId)
+                if (target) Object.assign(target, update.args[0] as Row)
+                if (db.writes('workspace_members').length === 1) rows.workspace_members[1].role = 'member'
+            }
+            return resolve(table, calls)
+        })
+        vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
+
+        await expect(setMemberRoleAction(ME, 'member')).resolves.toEqual({ ok: false, error: 'The workspace needs at least one admin' })
+        expect(db.writes('workspace_members').map(write => write.payload)).toEqual([{ role: 'member' }, { role: 'admin' }])
+        expect(rows.workspace_members[0].role).toBe('admin')
+    })
+
+    it('refuses someone outside the workspace', async () => {
+        database({ workspace_members: [member(ME), member('user-2', 99, 'member')] })
+
+        await expect(setMemberRoleAction('user-2', 'admin')).resolves.toEqual({ ok: false, error: 'This user is not a member of the workspace.' })
+    })
+})
+
+describe('setMemberBoxScopeAction', () => {
+    it('narrows a member to the Boxes named to them', async () => {
+        const db = database({ workspace_members: [member(ME), plainMember('user-2')] })
+
+        await expect(setMemberBoxScopeAction('user-2', 'assigned')).resolves.toEqual({ ok: true })
+
+        const [write] = db.writes('workspace_members')
+        expect(write).toMatchObject({ method: 'update', payload: { box_scope: 'assigned' } })
+        expect(write.filters.map(call => call.args)).toEqual([
+            ['user_id', 'user-2'],
+            ['workspace_id', WORKSPACE_ID],
+        ])
+    })
+
+    it('leaves an admin alone, with the reason', async () => {
+        const db = database({ workspace_members: [member(ME), member('user-2')] })
+
+        await expect(setMemberBoxScopeAction('user-2', 'assigned')).resolves.toEqual({ ok: false, error: 'Admins have access to every Box' })
+        expect(db.writes('workspace_members')).toHaveLength(0)
+    })
+
+    it('refuses someone outside the workspace', async () => {
+        const db = database({ workspace_members: [member(ME), member('user-2', 99, 'member')] })
+
+        await expect(setMemberBoxScopeAction('user-2', 'assigned')).resolves.toEqual({ ok: false, error: 'This user is not a member of the workspace.' })
+        expect(db.writes('workspace_members')).toHaveLength(0)
+    })
+
+    it('refuses a scope it does not know', async () => {
+        database({ workspace_members: [member(ME), plainMember('user-2')] })
+
+        await expect(setMemberBoxScopeAction('user-2', 'everything' as never)).resolves.toEqual({ ok: false, error: 'Unknown scope' })
     })
 })
 
@@ -144,6 +285,7 @@ describe('revokeInvitationAction', () => {
 })
 
 describe('removeMemberAction', () => {
+
     it('refuses to remove the caller', async () => {
         const db = database({ workspace_members: [member(ME)] })
 
@@ -242,9 +384,18 @@ describe('acceptInvitationAction', () => {
 
         await expect(acceptInvitationAction('tok')).resolves.toEqual({ ok: true, workspaceId: WORKSPACE_ID })
 
-        expect(db.writes('workspace_members')).toEqual([{ method: 'insert', payload: { user_id: ME, workspace_id: WORKSPACE_ID }, filters: [] }])
+        expect(db.writes('workspace_members')).toEqual([{ method: 'insert', payload: { user_id: ME, workspace_id: WORKSPACE_ID, role: 'member', box_scope: 'all' }, filters: [] }])
         expect(db.writes('workspace_invitations')[0].payload).toMatchObject({ status: 'accepted' })
         expect(db.writes('users')[0]).toMatchObject({ payload: { workspace_id: WORKSPACE_ID }, filters: [{ method: 'eq', args: ['id', ME] }] })
+    })
+
+    it('joins as a member with the scope the invitation carries', async () => {
+        signedInAs('new@acme.test')
+        const db = database({ workspace_invitations: [pendingInvite({ box_scope: 'assigned' })] })
+
+        await expect(acceptInvitationAction('tok')).resolves.toEqual({ ok: true, workspaceId: WORKSPACE_ID })
+
+        expect(db.writes('workspace_members')[0].payload).toEqual({ user_id: ME, workspace_id: WORKSPACE_ID, role: 'member', box_scope: 'assigned' })
     })
 
     it('accepts again without a second membership for someone already in the workspace', async () => {
@@ -286,7 +437,7 @@ describe('acceptInvitationAction', () => {
         signedInAs('new@acme.test')
         const db = database({ workspace_invitations: [pendingInvite()], workspaces: [{ id: WORKSPACE_ID, max_seats: 2 }], workspace_members: [member('user-1'), member('user-2')] })
 
-        await expect(acceptInvitationAction('tok')).resolves.toEqual({ ok: false, error: 'This workspace has no seat left. Ask the owner to free one.' })
+        await expect(acceptInvitationAction('tok')).resolves.toEqual({ ok: false, error: 'This workspace has no seat left. Ask an admin to free one.' })
 
         expect(db.writes('workspace_members')).toHaveLength(0)
         expect(db.writes('users')).toHaveLength(0)

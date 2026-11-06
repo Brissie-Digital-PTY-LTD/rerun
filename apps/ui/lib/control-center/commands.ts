@@ -1,5 +1,5 @@
-import { BILLING_ENABLED } from '@/cloud/billing'
-import { SUPPORT_CHAT_ENABLED } from '@/cloud/support'
+import { BILLING_ENABLED } from '@rerun/cloud/billing'
+import { SUPPORT_CHAT_ENABLED } from '@rerun/cloud/support'
 
 export const CONTROL_COMMAND_IDS = [
     'new_agent',
@@ -38,6 +38,7 @@ export type ControlCommand = {
 
 export type ControlGates = {
     isSandbox: boolean
+    workspaceAdmin: boolean
     apiEntitled: boolean
     needsMachineReason: string | null
     assistantReady: boolean
@@ -46,9 +47,11 @@ export type ControlGates = {
 }
 
 const SANDBOX_REASON = 'The expert sandbox has none of its own'
+const ADMIN_REASON = 'Admins only'
 
 export function buildControlCommands(gates: ControlGates): ControlCommand[] {
     const sandboxReason = gates.isSandbox ? SANDBOX_REASON : null
+    const adminReason = sandboxReason ?? (gates.workspaceAdmin ? null : ADMIN_REASON)
     const command = (id: ControlCommandId, group: ControlCommandGroup, label: string, keywords: string[], disabledReason: string | null = null, paid = false): ControlCommand => ({ id, group, label, keywords, disabledReason, paid })
 
     const commands: (ControlCommand | false)[] = [
@@ -60,11 +63,11 @@ export function buildControlCommands(gates: ControlGates): ControlCommand[] {
         command('recenter_board', 'actions', 'Recenter the board', ['camera', 'zoom', 'fit', 'reset view']),
         command('toggle_theme', 'actions', gates.darkTheme ? 'Switch to light theme' : 'Switch to dark theme', ['appearance', 'mode', 'dark', 'light']),
 
-        command('workspace', 'settings', 'Workspace settings', ['name', 'logo', 'rename', 'delete'], sandboxReason),
+        command('workspace', 'settings', 'Workspace settings', ['name', 'logo', 'rename', 'delete'], adminReason),
         command('members', 'settings', 'Members', ['invite', 'team', 'seats', 'people', 'roles'], sandboxReason),
-        BILLING_ENABLED && command('billing', 'settings', 'Billing', ['plan', 'subscription', 'invoices', 'payment', 'upgrade', 'credits'], sandboxReason),
+        BILLING_ENABLED && command('billing', 'settings', 'Billing', ['plan', 'subscription', 'invoices', 'payment', 'upgrade', 'credits'], adminReason),
         command('ai_providers', 'settings', 'AI providers', ['models', 'claude', 'chatgpt', 'openai', 'anthropic', 'api key', 'subscription']),
-        command('api_keys', 'settings', 'API keys & MCP', ['token', 'developer', 'mcp client'], null, !gates.apiEntitled),
+        command('api_keys', 'settings', 'API keys & MCP', ['token', 'developer', 'mcp client'], gates.workspaceAdmin ? null : ADMIN_REASON, !gates.apiEntitled),
         command('company_brain', 'settings', 'Company Brain', ['knowledge', 'wiki', 'pages', 'context']),
         command('shared_files', 'settings', 'Shared files', ['folder', 'documents', 'uploads']),
         command('account', 'settings', 'Account', ['profile', 'email', 'password', 'sign-in', 'avatar']),

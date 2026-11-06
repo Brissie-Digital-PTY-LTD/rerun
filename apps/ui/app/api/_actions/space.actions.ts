@@ -1,10 +1,11 @@
 'use server'
 
 import { assertAdminUser } from '@/lib/auth/admin'
+import { actorFromContext, requireLightSessionActor } from '@/app/api/_auth/access'
 import { requireWorkspaceContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
 import { createBox, deleteBox, renameBox } from '@/app/api/_services/box.service'
 import { findWorkspaceEngine, NoEngineError } from '@/app/api/_services/workspace-engine.service'
-import { restartManagedEngine } from '@/cloud/engines'
+import { restartManagedEngine } from '@rerun/cloud/engines'
 import type { SpaceSide } from '@/lib/board/space-layout'
 
 // Server Actions can't surface thrown error messages in production: Next.js
@@ -16,20 +17,20 @@ export type ActionResult<T = unknown> = ({ ok: true } & T) | { ok: false; error:
 export async function claimSpaceAction(params: { workspaceId: number; name?: string | null; from?: { spaceId: string; side: SpaceSide } }): Promise<ActionResult<{ spaceId: string; colStart: number; rowStart: number }>> {
     try {
         // Trust the session for the workspace, not the client-supplied workspaceId.
-        const { workspace, userId } = await requireWorkspaceContext()
-        return await createBox({ workspaceId: workspace.id, userId, name: params.name, from: params.from })
+        const ctx = await requireWorkspaceContext()
+        return await createBox({ workspaceId: ctx.workspace.id, userId: ctx.userId, actor: actorFromContext(ctx), name: params.name, from: params.from })
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to create the Box' }
     }
 }
 
 export async function renameSpaceAction(spaceId: string, newName: string): Promise<void> {
-    await renameBox(await requireWorkspaceId(), spaceId, newName)
+    await renameBox(await requireLightSessionActor(), spaceId, newName)
 }
 
 export async function deleteSpaceAction(spaceId: string): Promise<ActionResult> {
     try {
-        await deleteBox(await requireWorkspaceId(), spaceId)
+        await deleteBox(await requireLightSessionActor(), spaceId)
         return { ok: true }
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to delete the Box' }

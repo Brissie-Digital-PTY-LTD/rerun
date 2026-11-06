@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AddonKey } from '@/cloud/billing'
+import type { AddonKey } from '@rerun/cloud/billing'
 
 type BillingState = {
     open: boolean

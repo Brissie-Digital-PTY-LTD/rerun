@@ -104,13 +104,13 @@ function sourceSubtitle(source: BoxConnection) {
     return sourceKind(source.provider) === 'plan' || source.provider === 'custom' ? pitch.title : `${pitch.title} API key`
 }
 
-export function DetailHeader({ source, credit, onBack, onRename }: { source: BoxConnection; credit: RerunCredit; onBack: () => void; onRename: (name: string) => void }) {
+export function DetailHeader({ source, credit, onBack, onRename }: { source: BoxConnection; credit: RerunCredit; onBack: () => void; onRename?: (name: string) => void }) {
     return (
         <div className="flex items-center gap-3 border-b px-3 py-2.5">
             <BackButton onBack={onBack} />
             <SourceAvatar provider={source.provider} size="sm" />
             <div className="flex min-w-0 flex-1 flex-col">
-                {source.id === RERUN_CONNECTION_ID ? <span className="truncate text-sm font-medium">{source.name}</span> : <EditableName name={source.name} onRename={onRename} />}
+                {source.id === RERUN_CONNECTION_ID || !onRename ? <span className="truncate text-sm font-medium">{source.name}</span> : <EditableName name={source.name} onRename={onRename} />}
                 <span className="truncate text-[11px] text-muted-foreground">{sourceSubtitle(source)}</span>
             </div>
             <SourceStatus source={source} credit={credit} />

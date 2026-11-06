@@ -1,5 +1,6 @@
 {
     "name": "@rerun/ui",
+    "license": "AGPL-3.0-only",
     "version": "0.1.0",
     "private": true,
     "type": "module",
@@ -45,6 +46,7 @@
         "./monitoring": "./src/monitoring/index.ts",
         "./new-agent": "./src/new-agent/index.ts",
         "./new-agent/apps": "./src/new-agent/apps.ts",
+        "./new-agent/declared-agent-name": "./src/new-agent/declared-agent-name.ts",
         "./new-agent/fallback-agent-name": "./src/new-agent/fallback-agent-name.ts",
         "./new-agent/reading": "./src/new-agent/reading.ts",
         "./new-agent/schedule": "./src/new-agent/schedule.ts",
@@ -86,6 +88,5 @@
         "remark-gfm": "^4.0.0",
         "tiptap-markdown": "^0.9.0",
         "lucide-react": "^1.64.0"
-    },
-    "license": "AGPL-3.0-only"
+    }
 }

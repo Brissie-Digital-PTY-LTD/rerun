@@ -48,20 +48,16 @@ Interface web moderne pour **rerun-engine** : un moteur d'agents IA autonomes, a
 └─────────────────────────────────────────────┘
 ```
 
-## Labs sous jeton
+## Labs et UI kit
 
-`/render/kit` (la galerie de toutes les briques d'UI de l'app) et `/render/lab/*` (les labs de
-composants) sont hors auth, `render/` étant exclu du matcher de `proxy.ts`. Le UI kit est public,
-comme les rendus OG voisins (`/render/brand/[card]`, `/render/templates/[slug]`). Seuls les labs
-répondent 404 sur un hôte déployé sans le jeton `BRAND_GATE_TOKEN`.
-
-On ouvre une fois avec `?key=<jeton>` : le cookie posé vaut pour `.rerun.build`, donc aussi pour les
-labs de la landing (`/preview/*`). Détail dans `apps/landing/AGENTS.md`. Un serveur de dev est
-toujours ouvert.
+Les labs de composants (`/render/lab/*`) et la galerie du UI kit (`/render/kit`) vivent dans l'app
+admin de Rerun Cloud (`cloud/apps/admin`, privée), qui tourne sur les sources de cette app :
+`pnpm --dir cloud/apps/admin dev` (port `ADMIN_PORT`, 3052 par défaut). Les labs y répondent 404 sur
+un hôte déployé sans le jeton `BRAND_GATE_TOKEN` (`?key=<jeton>` une fois, puis le cookie).
 
 ## Staging sous mot de passe
 
-Quand `STAGING_PASSWORD` est défini (seulement sur le service de staging de Railway), `proxy.ts`
+Quand `STAGING_PASSWORD` est défini (seulement sur l'app de staging de Dokploy), `proxy.ts`
 répond `401` en Basic Auth sur toute page tant que le mot de passe n'est pas fourni, le nom
 d'utilisateur est libre. `/api/*` et `/ingest/*` restent ouverts, comme tout ce qui est hors du
 matcher : un webhook ou une box n'a pas de popup, et ces routes s'authentifient elles-mêmes. Sans la

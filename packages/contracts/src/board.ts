@@ -2,6 +2,10 @@ import { z } from 'zod'
 
 import { agentDetailSchema } from './agent.js'
 
+// A member of the workspace. Admins run it (billing, members, keys, AI providers).
+export const workspaceRoleSchema = z.enum(['admin', 'member'])
+export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>
+
 export const workspaceSummarySchema = z.object({
     id: z.number(),
     name: z.string().nullable(),
@@ -9,8 +13,24 @@ export const workspaceSummarySchema = z.object({
     plan: z.string(),
     // A subscription in force, a trial included: without one the workspace has no machine to run coworkers.
     subscribed: z.boolean(),
+    // The caller's role in it. Absent from a server older than roles, where every member ran the
+    // workspace.
+    role: workspaceRoleSchema.optional(),
+    // Whether a member uses every Box open to the workspace or only the ones named to them. Absent
+    // from a server older than access by Box.
+    boxScope: z.enum(['all', 'assigned']).optional(),
 })
 export type WorkspaceSummary = z.infer<typeof workspaceSummarySchema>
+
+// Who sees a Box: every member of the workspace, or only the people named on it.
+export const boxVisibilitySchema = z.enum(['workspace', 'restricted'])
+export type BoxVisibility = z.infer<typeof boxVisibilitySchema>
+
+// The caller's level on a Box and on every coworker in it: `use` talks to them, `manage` changes
+// what they are. A Box the caller cannot reach is never sent. Absent from an older server, where
+// every member managed every Box.
+export const boxAccessSchema = z.enum(['use', 'manage'])
+export type BoxAccessLevel = z.infer<typeof boxAccessSchema>
 
 export const boxSchema = z.object({
     id: z.string(),
@@ -18,6 +38,8 @@ export const boxSchema = z.object({
     createdAt: z.string().nullable(),
     // Runs on an instance Rerun provisioned, as opposed to an engine the workspace hosts itself.
     managed: z.boolean(),
+    visibility: boxVisibilitySchema.optional(),
+    access: boxAccessSchema.optional(),
 })
 export type Box = z.infer<typeof boxSchema>
 
@@ -35,6 +57,8 @@ export const boardAgentSchema = z.object({
     spaceId: z.string(),
     disabledAt: z.string().nullable(),
     disabledReason: z.string().nullable(),
+    // The caller's level on the coworker's Box.
+    access: boxAccessSchema.optional(),
 })
 export type BoardAgent = z.infer<typeof boardAgentSchema>
 

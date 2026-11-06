@@ -6,7 +6,7 @@ import { createElement } from 'react'
 
 import { SourceFacepile, SourceLogo } from '@/components/data/sources/SourceLogo'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { paidDataIcon } from '@/cloud/paid-data'
+import { paidDataIcon } from '@/lib/paid-data/spend'
 import { ShieldCheckIcon } from '@/lib/icons'
 
 function SourceLineRow({ line }: { line: PaidSourceLine }) {

@@ -22,7 +22,8 @@ const mocks = vi.hoisted(() => ({
     },
 }))
 
-vi.mock('../mcp.js', () => ({
+vi.mock('../mcp.js', async importOriginal => ({
+    ...(await importOriginal<typeof import('../mcp.js')>()),
     probeMcp: async (agentId: string, server: { name: string }, env: Record<string, string>) => {
         mocks.probed.push({ agentId, name: server.name, env })
         return mocks.probes.get(server.name) ?? { ok: true, transport: 'http', toolNames: [] }
@@ -150,7 +151,7 @@ describe('mcp_register', () => {
     })
 
     it('probes with the agent env, saves the server and lists its tools', async () => {
-        mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['linear_search', 'linear_create'] })
+        mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['search', 'create'] })
         const out = await register({ name: 'linear', url: 'https://l.example/mcp', headers: { Authorization: 'Bearer ${LINEAR_KEY}' } })
         expect(out).toBe('Connected and registered MCP server "linear" (http). 2 tools now available: linear_search, linear_create. They are active from your next message onward, no restart needed.')
         expect(mocks.probed).toEqual([{ agentId: id, name: 'linear', env: agentEnv }])
@@ -215,7 +216,7 @@ describe('mcp_login_complete', () => {
         await seedServers([{ name: 'linear', url: 'https://l.example/mcp' }])
         mocks.auth.loadPending.mockResolvedValue(pending)
         mocks.auth.pollDeviceToken.mockResolvedValue(token)
-        mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['linear_search'] })
+        mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['search'] })
 
         const out = await call('mcp_login_complete', { name: 'linear' })
 
@@ -256,10 +257,17 @@ describe('mcp_status', () => {
 
     it('probes every server and reports each one on its own line', async () => {
         await seedServers([{ name: 'linear', url: 'https://l.example/mcp' }, { name: 'local', command: 'npx' }])
-        mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['linear_a', 'linear_b'] })
+        mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['a', 'b'] })
         mocks.probes.set('local', { ok: false, transport: 'stdio', toolNames: [], error: 'spawn npx ENOENT' })
         expect((await call('mcp_status', {})).split('\n')).toEqual(['connected linear (http): 2 tools — linear_a, linear_b', 'failed local (stdio): spawn npx ENOENT'])
         expect(mocks.probed.every(p => p.env === agentEnv)).toBe(true)
+    })
+
+    it('names the tools the way the CLI of the run shows them', async () => {
+        await seedServers([{ name: 'dataforseo', command: 'npx' }])
+        mocks.probes.set('dataforseo', { ok: true, transport: 'stdio', toolNames: ['api_request'] })
+        expect(await call('mcp_status', {}, { ...ctxWith(), provider: 'claude' })).toBe('connected dataforseo (stdio): 1 tools — mcp__dataforseo__api_request')
+        expect(await call('mcp_status', {}, { ...ctxWith(), provider: 'rerun' })).toBe('connected dataforseo (stdio): 1 tools — dataforseo_api_request')
     })
 
     it('reports an app the user has not connected yet without probing it', async () => {
@@ -268,7 +276,7 @@ describe('mcp_status', () => {
         await writeFile(resolve(registryDir, 'services.json'), JSON.stringify({ services: { gmail: { status: 'needs_auth', mcpServers: ['gmail'] }, linear: { status: 'active', mcpServers: ['linear'] } } }), 'utf8')
         try {
             await seedServers([{ name: 'gmail', url: 'https://hub.example/api/mcp/composio/gmail' }, { name: 'linear', url: 'https://l.example/mcp' }])
-            mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['linear_a'] })
+            mocks.probes.set('linear', { ok: true, transport: 'http', toolNames: ['a'] })
             expect((await call('mcp_status', {})).split('\n')).toEqual([
                 'not connected yet gmail: app "gmail" is waiting for the user to connect it (suggest_service), every call to its tools fails until then',
                 'connected linear (http): 1 tools — linear_a',

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 import { type AppSelection, closestSuggestion, NO_APP_SELECTION, selectedApps, toggleApp } from './apps'
+import { declaredAgentName } from './declared-agent-name'
 import type { FieldFooterProps } from './FieldFooter'
 import { fallbackAgentName } from './fallback-agent-name'
 import { AGENT_NAME_MAX, type JobReading } from './reading'
@@ -52,7 +53,8 @@ export function useNewAgentDraft({ suggestions, shown, read, onCreate, seed }: {
 
     const offered = suggestionsOnOffer(suggestions, offset, shown)
     const pickedSuggestion = suggestions.find(suggestion => suggestion.id === draft.picked) ?? null
-    const name = draft.pinned?.name ?? reading.name
+    const declaredName = declaredAgentName(draft.text)
+    const name = draft.pinned?.name ?? declaredName ?? reading.name
     const described = draft.text.trim() !== ''
     const apps = selectedApps(pickedSuggestion?.apps ?? [], reading.apps, draft.apps)
     const closest = described && !draft.picked ? (closestSuggestion(apps, offered)?.id ?? null) : null
@@ -78,7 +80,7 @@ export function useNewAgentDraft({ suggestions, shown, read, onCreate, seed }: {
         setCreating(true)
         const latest = pending ? await settled(settle(), reading) : reading
         onCreate({
-            name: draft.pinned?.name ?? latest.name ?? fallbackAgentName(draft.text),
+            name: draft.pinned?.name ?? declaredName ?? latest.name ?? fallbackAgentName(draft.text),
             serviceSlugs: selectedApps(pickedSuggestion?.apps ?? [], latest.apps, draft.apps),
             kickoff: buildKickoff(draft.text, draft.schedule, timeZone),
             suggestionId: draft.picked,

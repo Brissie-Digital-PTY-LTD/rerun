@@ -1,4 +1,5 @@
-import { assertAgentInWorkspace, AuthorizationError } from '@/app/api/_auth/ownership'
+import { assertAgentInWorkspace } from '@/app/api/_auth/access'
+import { AuthorizationError } from '@/app/api/_auth/ownership'
 import { getCustomMcpStatuses } from '@/app/api/_services/custom-mcp.service'
 
 export const dynamic = 'force-dynamic'

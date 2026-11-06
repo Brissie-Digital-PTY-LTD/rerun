@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { actorFromContext, workspaceActor, type Actor } from '@/app/api/_auth/access'
 import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { analyzeCompanyProfile } from '@/lib/company/profile'
 import { asString, requireString } from '@/lib/mcp/args'
@@ -31,7 +32,9 @@ const TEMPLATE_LIMIT = 8
 
 // What the tools acting on the workspace rather than on the person read. The engine foreman calls
 // them with no session behind it, as the account owner.
-export type WorkspaceActor = Pick<WorkspaceContext, 'supabase' | 'userId'> & { workspace: Pick<WorkspaceContext['workspace'], 'id'> }
+// `actor` is whose access an install runs with: the member behind a foreman turn, or, left out, the
+// workspace itself.
+export type WorkspaceActor = Pick<WorkspaceContext, 'supabase' | 'userId'> & { workspace: Pick<WorkspaceContext['workspace'], 'id'>; actor?: Actor }
 
 async function saveProfile(ctx: WorkspaceContext, args: Record<string, unknown>): Promise<unknown> {
     const profile = await saveForemanProfile(ctx, args)
@@ -113,7 +116,7 @@ export async function installFromLibrary(ctx: WorkspaceActor, args: Record<strin
 
     // Reported whole: a template that lands three agents out of four is a sentence the foreman has
     // to say, not a failure to swallow.
-    return installTemplate(ctx.supabase, slug, { workspaceId: ctx.workspace.id, spaceId: boxId })
+    return installTemplate(ctx.supabase, slug, { workspaceId: ctx.workspace.id, spaceId: boxId, actor: ctx.actor ?? workspaceActor(ctx.workspace.id) })
 }
 
 // The mirror of install_template, for a link that carries one agent. installAgentShare re-checks
@@ -125,7 +128,7 @@ export async function installFromShare(ctx: WorkspaceActor, args: Record<string,
     const { data: space } = await selectMaybeSingle(ctx.supabase, 'spaces', ['id'] as const, { id: boxId, workspace_id: ctx.workspace.id })
     if (!space) throw new Error(`No Box with id ${boxId} in this workspace.`)
 
-    return installAgentShare(createServiceRoleClient(), token, { workspaceId: ctx.workspace.id, spaceId: boxId })
+    return installAgentShare(createServiceRoleClient(), token, { workspaceId: ctx.workspace.id, spaceId: boxId, actor: ctx.actor ?? workspaceActor(ctx.workspace.id) })
 }
 
 export async function dispatchWorkspaceOnboardingTool(ctx: WorkspaceActor, name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -150,6 +153,6 @@ export async function dispatchOnboardingTool(ctx: WorkspaceContext, name: string
         case 'save_profile':
             return saveProfile(ctx, args)
         default:
-            return dispatchWorkspaceOnboardingTool(ctx, name, args)
+            return dispatchWorkspaceOnboardingTool({ ...ctx, actor: actorFromContext(ctx) }, name, args)
     }
 }

@@ -74,13 +74,14 @@ function usePillHover() {
 
 // La pastille posée au centre du losange, dont chaque lettre bascule au survol de son hôte : le
 // fantôme d'onboarding, ou une vraie Box qui porte un `cta`.
-function CenterPill({ center, label, hot: hostHot }: { center: Point; label: string; hot?: boolean }) {
+function CenterPill({ center, label, hot: hostHot, disabled = false }: { center: Point; label: string; hot?: boolean; disabled?: boolean }) {
   const { over, bind } = usePillHover();
   const hot = hostHot || over;
   return (
     <div
       className="iso-placeholder-label absolute"
       data-hot={hot ? "" : undefined}
+      data-disabled={disabled ? "" : undefined}
       {...bind}
       style={{
         left: center.x,
@@ -117,7 +118,7 @@ const CTA_ROLL_SPREAD_MS = 3600;
 // La pastille d'une vraie Box qui a de quoi tenter : au repos elle fait défiler ses exemples, au
 // survol elle s'arrête sur l'action. `still` fige le défilement et retire les animations, que la
 // pause du board laisserait sinon bloquées sur une ligne invisible.
-function CtaTicker({ center, label, examples, hot: hostHot, still }: { center: Point; label: string; examples: string[]; hot: boolean; still: boolean }) {
+function CtaTicker({ center, label, examples, hot: hostHot, still, disabled = false }: { center: Point; label: string; examples: string[]; hot: boolean; still: boolean; disabled?: boolean }) {
   const { over, bind } = usePillHover();
   const hot = hostHot || over;
   const [index, setIndex] = useState(0);
@@ -150,6 +151,7 @@ function CtaTicker({ center, label, examples, hot: hostHot, still }: { center: P
       className="iso-placeholder-label absolute"
       data-hot={hot ? "" : undefined}
       data-still={still ? "" : undefined}
+      data-disabled={disabled ? "" : undefined}
       {...bind}
       style={{
         left: center.x,
@@ -166,7 +168,7 @@ function CtaTicker({ center, label, examples, hot: hostHot, still }: { center: P
           )}
           <span key={line.current} ref={lineRef} className={`iso-cta-line iso-cta-line-in ${hot ? "iso-pill-text-strong" : "iso-pill-text"}`}>
             {line.current}
-            {hot && (
+            {hot && !disabled && (
               <svg className="iso-cta-arrow" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M2 6h8M6.5 2.5 10 6l-3.5 3.5" />
               </svg>
@@ -455,7 +457,7 @@ export const ContainerBlock = memo(function ContainerBlock({ container, worldOff
       ) : null}
       {/* Toujours monté : un démontage React ne s'anime pas, la sortie de sélection doit pouvoir
           rejouer la transition à l'envers. */}
-      <g className="iso-space-handles" data-selected={selected ? "" : undefined}>
+      <g className="iso-space-handles" data-selected={selected && !container.readOnly ? "" : undefined}>
         <path
           className="iso-space-dash"
           d={path}
@@ -506,9 +508,9 @@ export const ContainerBlock = memo(function ContainerBlock({ container, worldOff
       </g>
     </svg>
     {container.cta && container.ctaExamples?.length ? (
-      <CtaTicker center={{ x: bounds.width / 2, y: bounds.height / 2 }} label={container.cta} examples={container.ctaExamples} hot={hovered || selected} still={still} />
+      <CtaTicker center={{ x: bounds.width / 2, y: bounds.height / 2 }} label={container.cta} examples={container.ctaExamples} hot={hovered || selected} still={still} disabled={container.ctaDisabled} />
     ) : container.cta ? (
-      <CenterPill center={{ x: bounds.width / 2, y: bounds.height / 2 }} label={container.cta} hot={hovered || selected} />
+      <CenterPill center={{ x: bounds.width / 2, y: bounds.height / 2 }} label={container.cta} hot={hovered || selected} disabled={container.ctaDisabled} />
     ) : null}
     </div>
   );

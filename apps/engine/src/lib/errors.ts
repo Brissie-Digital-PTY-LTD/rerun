@@ -1,8 +1,10 @@
 export class HttpError extends Error {
     status: number
-    constructor(status: number, message: string) {
+    code?: string
+    constructor(status: number, message: string, code?: string) {
         super(message)
         this.status = status
+        this.code = code
         this.name = 'HttpError'
     }
 }
@@ -17,4 +19,10 @@ export const agentDisabled = () => new HttpError(403, 'This coworker is switched
 
 export const setupPending = () => new HttpError(409, 'This coworker is still being set up. Its tasks can run once the setup is finished.')
 
-export const budgetExhausted = () => new HttpError(402, 'Rerun credits used up; automated runs on Rerun models are paused until they reset or you add credits.')
+// The code names the hold a scheduled run ran into, so the scheduler can tell a routine skip from
+// a failure without reading the HTTP status.
+export const coworkerBusy = () => new HttpError(409, 'Another run of this coworker is live and it drives a screen; the scheduled run waits for it to end.', 'coworker_busy')
+
+export const subscriptionLimited = () => new HttpError(429, "This coworker's subscription has hit its usage limit; scheduled runs are paused until it resets.", 'subscription_limited')
+
+export const budgetExhausted = () => new HttpError(402, 'Rerun credits used up; automated runs on Rerun models are paused until they reset or you add credits.', 'budget_latched')

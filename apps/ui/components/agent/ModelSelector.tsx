@@ -11,13 +11,16 @@ import { PowerBars } from '@/components/ui/power-bars'
 import { TooltipDisabledReason, TooltipLabeled } from '@/components/ui/tooltip'
 import { useAgentModel } from '@/hooks/useAgentModel'
 import { useAvailableModels, type ConnectionGroup } from '@/hooks/useAvailableModels'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
 import { refusedModelReason } from '@/lib/engine/model-groups'
 import { useRerunCredit } from '@/hooks/useRerunCredit'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import { PREMIUM_MODEL_BILLING_TRIGGER, RERUN_CREDIT_PAUSED_REASON } from '@/lib/engine/ai-sources'
 import { modelLabel } from '@/lib/engine/models'
 import { ProviderIcon } from '@/lib/engine/provider-icons'
 import { ChevronDownIcon, Settings2Icon, StarIcon } from '@/lib/icons'
 import { useBillingStore } from '@/stores/billing.store'
+import { useBoardStore } from '@/stores/board.store'
 import { useModelPickerStore } from '@/stores/model-picker.store'
 import { useWorkspaceSettingsStore } from '@/stores/workspace-settings.store'
 import { track } from '@rerun/analytics/client'
@@ -53,6 +56,11 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
     const { availableGroups, connectionOf, pinnedModel, pinnedConnectionId, resolvedModel, resolvedConnectionId, followsBoxDefault, supportsBoxDefault, boxDefaultPick, setDefault, followBoxDefault, refreshConnections, loading } =
         useAvailableModels(agentId)
     const { selection, select } = useAgentModel(agentId)
+    // Picking a model for this conversation stays open: only what the coworker runs by default is
+    // managed through its Box. The foreman has no Box, so its default is left as it was.
+    const canManageCoworker = useCanManageAgent(agentId)
+    const isBoardCoworker = useBoardStore(state => state.agents.some(agent => agent.id === agentId))
+    const canSetDefault = canManageCoworker || !isBoardCoworker
     const rerunCredit = useRerunCredit()
     const openAiProviders = useWorkspaceSettingsStore(state => state.openAiProviders)
     const addAiProvider = useWorkspaceSettingsStore(state => state.addAiProvider)
@@ -114,9 +122,9 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
     // carry the model the user just walked away from.
     const useBoxDefault = useCallback(() => {
         select({})
-        followBoxDefault()
+        if (canSetDefault) followBoxDefault()
         setOpen(false)
-    }, [select, followBoxDefault])
+    }, [select, followBoxDefault, canSetDefault])
 
     useEffect(() => {
         // Don't report "not ready" while still loading — that would block the composer and flash a
@@ -198,13 +206,15 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
                         <CommandEmpty>No models available</CommandEmpty>
                         {supportsBoxDefault && boxDefaultPick && (
                             <CommandGroup>
-                                <CommandItem value="workspace default model" data-checked={showingBoxDefault} onSelect={useBoxDefault}>
-                                    <span className="min-w-0 flex-1 truncate">Workspace default</span>
-                                    <span className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground">{modelLabel(boxDefaultPick.model)}</span>
-                                    {/* The star says what the agent runs by default, not what this conversation picked, so
-                                        it stays filled while an override is in force. */}
-                                    {followsBoxDefault && <StarIcon className="size-3.5 text-primary [&_polygon]:fill-current" />}
-                                </CommandItem>
+                                <TooltipDisabledReason reason={canSetDefault || followsBoxDefault ? undefined : BOX_MANAGE_REASON} side="right" className="flex w-full">
+                                    <CommandItem className="flex-1" value="workspace default model" data-checked={showingBoxDefault} disabled={!canSetDefault && !followsBoxDefault} onSelect={useBoxDefault}>
+                                        <span className="min-w-0 flex-1 truncate">Workspace default</span>
+                                        <span className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground">{modelLabel(boxDefaultPick.model)}</span>
+                                        {/* The star says what the agent runs by default, not what this conversation picked, so
+                                            it stays filled while an override is in force. */}
+                                        {followsBoxDefault && <StarIcon className="size-3.5 text-primary [&_polygon]:fill-current" />}
+                                    </CommandItem>
+                                </TooltipDisabledReason>
                             </CommandGroup>
                         )}
                         {availableGroups.map(group => (
@@ -243,6 +253,20 @@ export function ModelSelector({ agentId, onReadyChange, onOwnConnectionChange, o
                                                 <StarIcon className="size-3.5 text-primary [&_polygon]:fill-current" />
                                             </span>
                                         </TooltipLabeled>
+                                    ) : !canSetDefault ? (
+                                        <TooltipDisabledReason reason={BOX_MANAGE_REASON}>
+                                            <span
+                                                className="inline-flex"
+                                                onClick={e => {
+                                                    e.preventDefault()
+                                                    e.stopPropagation()
+                                                }}
+                                            >
+                                                <button type="button" tabIndex={-1} disabled aria-label={`Make ${m.label} this coworker's default`} className="shrink-0 text-muted-foreground opacity-40">
+                                                    <StarIcon className="size-3.5" />
+                                                </button>
+                                            </span>
+                                        </TooltipDisabledReason>
                                     ) : (
                                         <TooltipLabeled label="Set as coworker default">
                                             <button

@@ -1,5 +1,6 @@
-import { assertAgentInWorkspace } from '@/app/api/_auth/ownership'
+import { assertAgentInWorkspace } from '@/app/api/_auth/access'
 import { OAUTH_COOKIE_PATH, OAUTH_COOKIE_PREFIX, type OAuthContext, buildAuthorizeUrl, callbackUrl, createPkce, discoverAuthServer, encodeContext, resolveClient } from '@/lib/mcp-oauth'
+import { describeSignInError } from '@/lib/net/network-error'
 import { NextResponse } from 'next/server'
 
 // Build the PKCE authorize URL and stash the one-request context (verifier + endpoints +
@@ -9,7 +10,7 @@ import { NextResponse } from 'next/server'
 export async function POST(req: Request) {
     try {
         const { agentId, serverName, mcpUrl } = (await req.json()) as { agentId: string; serverName: string; mcpUrl: string }
-        await assertAgentInWorkspace(agentId)
+        await assertAgentInWorkspace(agentId, 'manage')
 
         const metadata = await discoverAuthServer(mcpUrl)
         const clientInfo = await resolveClient(metadata, mcpUrl, req)
@@ -39,6 +40,6 @@ export async function POST(req: Request) {
         })
         return res
     } catch (err) {
-        return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to start OAuth' }, { status: 400 })
+        return NextResponse.json({ error: describeSignInError(err, 'Failed to start OAuth') }, { status: 400 })
     }
 }

@@ -1,6 +1,6 @@
 'use server'
 
-import { assertAgentInWorkspace, assertSpaceInWorkspace } from '@/app/api/_auth/ownership'
+import { assertAgentAccess, assertSpaceAccess } from '@/app/api/_auth/access'
 import { createAgentWithSetup } from '@/app/api/_services/agent-setup.service'
 import { getCatalogServicesBySlugs, getServiceAlternatives, getServiceDetails, installService, listCatalogServices, markServiceAuthorized, resetServiceConnection, searchServices, uninstallService } from '@/app/api/_services/services.service'
 import type { InstallResult, ResetConnectionResult, ServiceAlternative, ServiceChecklistItem, ServiceDetails, ServiceSearchResult } from '@/lib/services/types'
@@ -17,8 +17,8 @@ export async function installServiceAction(
     opts?: { newInstance?: boolean },
 ): Promise<{ ok: true; result: InstallResult } | { ok: false; error: string }> {
     try {
-        await assertAgentInWorkspace(agentId)
-        const result = await installService(agentId, key, values, authMethodId, undefined, opts)
+        const { actor } = await assertAgentAccess(agentId, 'manage')
+        const result = await installService(agentId, key, values, authMethodId, actor, opts)
         return { ok: true, result }
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to install service' }
@@ -28,8 +28,8 @@ export async function installServiceAction(
 // Browse the library (optionally filtered). `installed` is resolved per agent.
 export async function searchServicesAction(agentId: string, query?: string, category?: string): Promise<ServiceSearchResult[]> {
     try {
-        await assertAgentInWorkspace(agentId)
-        const { results } = await searchServices(agentId, query, category)
+        const { actor } = await assertAgentAccess(agentId, 'use')
+        const { results } = await searchServices(agentId, query, category, actor)
         return results
     } catch {
         return []
@@ -67,8 +67,8 @@ export async function getServiceAlternativesAction(slugs: string[]): Promise<Rec
 
 export async function getServiceDetailsAction(agentId: string, key: string): Promise<ServiceDetails | null> {
     try {
-        await assertAgentInWorkspace(agentId)
-        return await getServiceDetails(agentId, key)
+        const { actor } = await assertAgentAccess(agentId, 'use')
+        return await getServiceDetails(agentId, key, actor)
     } catch {
         return null
     }
@@ -77,8 +77,8 @@ export async function getServiceDetailsAction(agentId: string, key: string): Pro
 // Flip an OAuth service to active after the user finishes the sign-in popup.
 export async function markServiceAuthorizedAction(agentId: string, key: string): Promise<{ success: boolean }> {
     try {
-        await assertAgentInWorkspace(agentId)
-        await markServiceAuthorized(agentId, key)
+        const { actor } = await assertAgentAccess(agentId, 'manage')
+        await markServiceAuthorized(agentId, key, actor)
         return { success: true }
     } catch {
         return { success: false }
@@ -89,8 +89,8 @@ export async function markServiceAuthorizedAction(agentId: string, key: string):
 // Non-destructive: nothing the install compiled is removed, only the stored token.
 export async function resetServiceConnectionAction(agentId: string, key: string): Promise<{ ok: true; result: ResetConnectionResult } | { ok: false; error: string }> {
     try {
-        await assertAgentInWorkspace(agentId)
-        return { ok: true, result: await resetServiceConnection(agentId, key) }
+        const { actor } = await assertAgentAccess(agentId, 'manage')
+        return { ok: true, result: await resetServiceConnection(agentId, key, actor) }
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to reset app' }
     }
@@ -98,8 +98,8 @@ export async function resetServiceConnectionAction(agentId: string, key: string)
 
 export async function uninstallServiceAction(agentId: string, key: string): Promise<{ success: boolean; error?: string }> {
     try {
-        await assertAgentInWorkspace(agentId)
-        await uninstallService(agentId, key)
+        const { actor } = await assertAgentAccess(agentId, 'manage')
+        await uninstallService(agentId, key, actor)
         return { success: true }
     } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : 'Failed to uninstall service' }
@@ -112,8 +112,8 @@ export async function uninstallServiceAction(agentId: string, key: string): Prom
 // need secrets come back in the checklist for the user to finish configuring.
 export async function createAgentWithSetupAction(params: { name: string; description?: string; serviceSlugs?: string[]; workspaceId: number; spaceId: string; col?: number; row?: number }): Promise<{ ok: true; agentId: string; active: boolean; checklist: ServiceChecklistItem[] } | { ok: false; error: string }> {
     try {
-        const space = await assertSpaceInWorkspace(params.spaceId)
-        const { agentId, active, checklist } = await createAgentWithSetup({ ...params, workspaceId: space.workspace_id })
+        const { actor } = await assertSpaceAccess(params.spaceId, 'manage')
+        const { agentId, active, checklist } = await createAgentWithSetup({ ...params, workspaceId: actor.workspaceId, actor })
         return { ok: true, agentId, active, checklist }
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to create coworker' }

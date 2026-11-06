@@ -4,13 +4,14 @@ import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { isPaid, priceLabel, type ForemanClient } from '@rerun/contracts'
 import { resolveEngineWaitlist } from '@/app/api/_services/waitlist.service'
 import { readAgentShare } from '@/lib/agents/share-read'
-import { isSubscriptionEntitled, parsePriceArm, trialArm } from '@/cloud/billing'
-import { RERUN_CLOUD } from '@/cloud/edition'
+import { isSubscriptionEntitled, parsePriceArm, trialArm } from '@rerun/cloud/billing'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
 import { readFirstName } from '@/lib/naming/first-name'
 import { loadServiceCatalog } from '@/lib/templates/catalog'
 import { LIBRARY_COLUMNS, toLibraryTemplates, type LibraryRow } from '@/lib/templates/library'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
 import { selectMany, selectMaybeSingle } from '@/supabase/supabase-helpers'
+import { actorFromContext, isAdminActor, spaceAccessMap } from '@/app/api/_auth/access'
 import { AGENT_COLUMNS, SPACE_COLUMNS } from './board-map'
 import { foremanHubApiKey } from './hub-api-key'
 import type { KickoffIntent } from './kickoff-marker'
@@ -54,7 +55,18 @@ async function describeIntent(ctx: WorkspaceContext, intent: KickoffIntent): Pro
 }
 
 export async function loadForemanState(ctx: WorkspaceContext, acceptLanguage: string | null, intent: KickoffIntent | null = null, client: ForemanClient = 'web'): Promise<ForemanState> {
-    const [onboarding, { data: spaces }, { data: agents }] = await Promise.all([selectMaybeSingle(ctx.supabase, 'workspace_onboarding', ['answers'] as const, { workspace_id: ctx.workspace.id }), selectMany(ctx.supabase, 'spaces', SPACE_COLUMNS, { workspace_id: ctx.workspace.id }, { column: 'created_at' }), selectMany(ctx.supabase, 'agents', AGENT_COLUMNS, { workspace_id: ctx.workspace.id }, { column: 'created_at' })])
+    const actor = actorFromContext(ctx)
+    const [onboarding, { data: spaces }, { data: agents }, reach] = await Promise.all([
+        selectMaybeSingle(ctx.supabase, 'workspace_onboarding', ['answers'] as const, { workspace_id: ctx.workspace.id }),
+        selectMany(ctx.supabase, 'spaces', SPACE_COLUMNS, { workspace_id: ctx.workspace.id }, { column: 'created_at' }),
+        selectMany(ctx.supabase, 'agents', AGENT_COLUMNS, { workspace_id: ctx.workspace.id }, { column: 'created_at' }),
+        isAdminActor(actor) ? Promise.resolve(null) : spaceAccessMap(actor),
+    ])
+    // A member's foreman sees the board through their Boxes. The phase still reads the whole
+    // workspace: a member with nothing open to them is not a workspace to onboard.
+    const visibleSpaces = reach ? (spaces ?? []).flatMap(space => (reach.get(space.id) ?? 'none') === 'none' ? [] : [{ ...space, access: reach.get(space.id) as 'use' | 'manage' }]) : (spaces ?? [])
+    const visibleSpaceIds = new Set(visibleSpaces.map(space => space.id))
+    const visibleAgents = reach ? (agents ?? []).filter(agent => visibleSpaceIds.has(agent.space_id)) : (agents ?? [])
 
     const answers = readAnswers(onboarding.data?.answers)
     const foreman = answers.foreman ?? {}
@@ -97,7 +109,9 @@ export async function loadForemanState(ctx: WorkspaceContext, acceptLanguage: st
         workspaceName: ctx.workspace.name ?? 'this workspace',
         workspacePlan: ctx.workspace.plan ?? 'none',
         userEmail: ctx.userEmail,
-        spaces: spaces ?? [],
-        agents: agents ?? [],
+        spaces: visibleSpaces,
+        agents: visibleAgents,
+        hiddenBoxes: (spaces?.length ?? 0) - visibleSpaces.length,
+        isMember: !!reach,
     }
 }

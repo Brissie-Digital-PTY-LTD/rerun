@@ -64,7 +64,7 @@ describe('sweepCodexHomesIfDue', () => {
         vi.useFakeTimers({ toFake: ['Date'] })
         const logs = resolve(codexHomeDir(CODEX_ID), 'logs_2.sqlite')
 
-        registerRunAbort('run-1')
+        registerRunAbort('run-1', 'agent-1')
         await sweepCodexHomesIfDue()
         expect(existsSync(logs)).toBe(true)
 

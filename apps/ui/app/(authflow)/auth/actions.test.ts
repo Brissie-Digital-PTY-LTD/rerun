@@ -7,7 +7,7 @@ vi.mock('next/headers', () => ({
     cookies: async () => ({ has: (name: string) => mocks.cookies.has(name), get: (name: string) => (mocks.cookies.has(name) ? { name, value: mocks.cookies.get(name) } : undefined) }),
 }))
 vi.mock('@/lib/auth/turnstile', () => ({ verifyTurnstile: mocks.verifyTurnstile }))
-vi.mock('@/cloud/billing', () => ({ drawPriceArm: () => '29' }))
+vi.mock('@rerun/cloud/billing', () => ({ drawPriceArm: () => '29' }))
 vi.mock('@/app/api/_services/email-sign-up.service', () => ({ ensureEmailAccount: mocks.ensureEmailAccount, claimEmailCodeAsk: mocks.claimEmailCodeAsk, lookupEmailForSignUp: mocks.lookupEmailForSignUp }))
 vi.mock('@/app/api/_services/sign-in-code.service', () => ({ resendSignInCodeIfLive: vi.fn() }))
 vi.mock('@/app/api/_services/user-provisioning.service', () => ({ provisionUser: mocks.provisionUser }))

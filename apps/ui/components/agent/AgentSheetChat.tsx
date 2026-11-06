@@ -22,9 +22,10 @@ type AgentSheetChatProps = {
     onSetupSkipped?: () => void
     onOpenInstall?: (sessionId: string) => void
     onRunFinished?: () => void
+    onNewConversation?: () => void
 }
 
-export function AgentSheetChat({ uid, active, agentId, sessionId, onSessionCreated, initialRunId, arrival, setup, onSetupSkipped, onOpenInstall, onRunFinished }: AgentSheetChatProps) {
+export function AgentSheetChat({ uid, active, agentId, sessionId, onSessionCreated, initialRunId, arrival, setup, onSetupSkipped, onOpenInstall, onRunFinished, onNewConversation }: AgentSheetChatProps) {
     const boardAgents = useBoardStore(s => s.agents)
     const spaces = useBoardStore(s => s.spaces)
     // Every agent of the workspace answers to `call_agent`, whichever Box it sits in. Its own Box
@@ -91,6 +92,7 @@ export function AgentSheetChat({ uid, active, agentId, sessionId, onSessionCreat
             onSetupSkipped={onSetupSkipped}
             onOpenInstall={onOpenInstall}
             onRunFinished={onRunFinished}
+            onNewConversation={onNewConversation}
             onSessionInserted={onSessionInsert}
             onSessionStatusChange={setSessionStatus}
         />

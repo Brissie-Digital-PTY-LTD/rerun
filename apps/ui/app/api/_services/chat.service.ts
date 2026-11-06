@@ -1,4 +1,5 @@
-import { AuthorizationError, assertSessionInWorkspace, requireWorkspaceContext, requireWorkspaceId } from '@/app/api/_auth/ownership'
+import { COWORKER_NOT_FOUND, assertSessionInWorkspace, enforce, requireLightSessionActor, spaceAccessFor, visibleSpaceIds, type AccessLevel, type Actor } from '@/app/api/_auth/access'
+import { AuthorizationError, requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import type { Database } from '@/app/api/database.types'
 import type { SessionStatus } from '@/lib/board/types'
 import { getRunSteps, listRuns } from '@/lib/engine/client'
@@ -18,29 +19,32 @@ export type AgentChatTarget = {
     contentLocked: boolean
 }
 
-// Ownership gate. This is the single chokepoint for ~25 agent server actions, /api/chat and
-// the MCP account server, all of which then talk to the engine/DB via the service-role client
-// (which bypasses RLS), so we re-establish object-level authz in code by comparing the row's
-// workspace to the caller's. `workspaceId` is passed in when the caller proved its identity
-// with an API key rather than a browser session; omitted, it comes from the session.
-export async function resolveAgentTarget(agentId: string, workspaceId?: number): Promise<AgentChatTarget> {
+// Ownership and access gate. This is the single chokepoint for the agent server actions, /api/chat,
+// the v1 routes and the MCP account server, all of which then talk to the engine/DB via the
+// service-role client (which bypasses RLS), so we re-establish object-level authz in code: the agent
+// has to sit in the caller's workspace, and in a Box the caller reaches at the level asked (`use` to
+// talk to it and read it, `manage` to change what it is). `actor` is passed in when the caller is not
+// the browser session: a v1 route's context, an API key or a foreman turn (the workspace itself).
+export async function resolveAgentTarget(agentId: string, actor?: Actor, access: AccessLevel = 'use'): Promise<AgentChatTarget> {
     // The agent row doesn't depend on the caller, and the caller's machine only on its workspace, so
     // all three are read at once. The machine read before the ownership check is the caller's own.
-    const callerWorkspaceId = workspaceId !== undefined ? Promise.resolve(workspaceId) : requireWorkspaceId()
-    const [resolvedWorkspaceId, row, engine] = await Promise.all([callerWorkspaceId, fetchAgentRow(agentId), callerWorkspaceId.then(findWorkspaceEngine)])
-    return buildTarget(row, resolvedWorkspaceId, engine)
+    const callerActor = actor ? Promise.resolve(actor) : requireLightSessionActor()
+    const [resolvedActor, row, engine] = await Promise.all([callerActor, fetchAgentRow(agentId), callerActor.then(a => findWorkspaceEngine(a.workspaceId))])
+    if (!row || row.workspace_id !== resolvedActor.workspaceId) throw new AuthorizationError(COWORKER_NOT_FOUND)
+    enforce(await spaceAccessFor(resolvedActor, { id: row.space_id, workspace_id: row.workspace_id, visibility: row.space?.visibility ?? null }), access, COWORKER_NOT_FOUND)
+    return buildTarget(row, engine)
 }
 
-export async function getAgentChatTarget(agentId: string): Promise<AgentChatTarget> {
-    return resolveAgentTarget(agentId)
+export async function getAgentChatTarget(agentId: string, access: AccessLevel = 'use'): Promise<AgentChatTarget> {
+    return resolveAgentTarget(agentId, undefined, access)
 }
 
 // The foreman has no agent row: it lives on the workspace's engine under a fixed id, and any signed-in
 // member of the workspace may reach it. Only what reads or stops a run, picks its model or carries
 // the files of a chat message resolves through here. Talking to it stays with its own route, which
 // is where its brief is written.
-export async function resolveRunTarget(agentId: string): Promise<AgentChatTarget> {
-    if (agentId !== FOREMAN_AGENT_ID) return getAgentChatTarget(agentId)
+export async function resolveRunTarget(agentId: string, access: AccessLevel = 'use'): Promise<AgentChatTarget> {
+    if (agentId !== FOREMAN_AGENT_ID) return getAgentChatTarget(agentId, access)
     const ctx = await requireWorkspaceContext()
     if (ctx.authUser.is_anonymous) throw new AuthorizationError('Coworker not found')
     const engine = await findWorkspaceEngine(ctx.workspace.id)
@@ -52,8 +56,11 @@ async function fetchAgentRow(agentId: string) {
     const { data } = await selectMaybeSingleWithJoins(
         createServiceRoleClient(),
         'agents',
-        ['workspace_id', 'engine_agent_id', 'template_id', 'disabled_at', 'disabled_reason'] as const,
-        { workspaces: { table: 'workspaces', foreignKey: 'workspaces', columns: ['subscription_status', 'is_sandbox'] } as const },
+        ['workspace_id', 'space_id', 'engine_agent_id', 'template_id', 'disabled_at', 'disabled_reason'] as const,
+        {
+            workspaces: { table: 'workspaces', foreignKey: 'workspaces', columns: ['subscription_status', 'is_sandbox'] },
+            space: { table: 'spaces', foreignKey: 'spaces', columns: ['visibility'] },
+        } as const,
         { id: agentId },
     )
     return data
@@ -66,8 +73,7 @@ function disabledMessage(reason: string | null): string {
     return 'This coworker is disabled: the template subscription it came from has ended.'
 }
 
-function buildTarget(row: Awaited<ReturnType<typeof fetchAgentRow>>, workspaceId: number, engine: WorkspaceEngine | null): AgentChatTarget {
-    if (!row || row.workspace_id !== workspaceId) throw new AuthorizationError('Coworker not found')
+function buildTarget(row: NonNullable<Awaited<ReturnType<typeof fetchAgentRow>>>, engine: WorkspaceEngine | null): AgentChatTarget {
     // Every interactive path lands here, so this one line is what stops a disabled agent from
     // being talked to. The engine side only pauses schedules and flips a config flag, and a box
     // that was asleep when that ran would otherwise still answer.
@@ -97,9 +103,9 @@ export async function resolveAgentTargetForTrigger(agentId: string): Promise<Age
 }
 
 // Resolve an existing Supabase session row to its engine session id.
-export async function getExistingSession(sessionId: string): Promise<{ sessionId: string; engineSessionId: string | null }> {
+export async function getExistingSession(sessionId: string): Promise<{ sessionId: string; agentId: string; engineSessionId: string | null }> {
     const session = await assertSessionInWorkspace(sessionId)
-    return { sessionId: session.id, engineSessionId: session.engine_session_id || null }
+    return { sessionId: session.id, agentId: session.agent_id, engineSessionId: session.engine_session_id || null }
 }
 
 // Persist a Supabase session row pointing at the engine-created session.
@@ -192,8 +198,8 @@ export type SessionEngineContext = { agentId: string; conn: EngineConnection; en
 
 // Full engine context for a Supabase session (used to replay history).
 export async function getSessionEngineContext(sessionId: string): Promise<SessionEngineContext | null> {
-    const workspaceId = requireWorkspaceId()
-    const [session, engine] = await Promise.all([assertSessionInWorkspace(sessionId, workspaceId), workspaceId.then(findWorkspaceEngine)])
+    const actor = requireLightSessionActor()
+    const [session, engine] = await Promise.all([assertSessionInWorkspace(sessionId, actor), actor.then(a => findWorkspaceEngine(a.workspaceId))])
     if (!session.engine_agent_id) return null
     if (!engine) throw new NoEngineError()
 
@@ -266,15 +272,16 @@ export async function findSessionActiveRun(sessionId: string): Promise<string | 
 // Which of these sessions the engine confirms has no run in flight: one listing of the running runs
 // per agent rather than one per session. A session never mirrored to the engine, or on a workspace
 // that has no machine anymore, counts as idle; one whose agent could not be asked is left out, so it
-// stays as it was. Sessions of another workspace are ignored.
-export async function findIdleSessions(sessionIds: string[], workspaceId?: number): Promise<string[]> {
-    const callerWorkspaceId = workspaceId !== undefined ? Promise.resolve(workspaceId) : requireWorkspaceId()
-    const [resolvedWorkspaceId, { data: rows }, engine] = await Promise.all([
-        callerWorkspaceId,
-        selectManyWithJoins(createServiceRoleClient(), 'sessions', ['id', 'engine_session_id'] as const, { agent: { table: 'agents', foreignKey: 'agents!sessions_agent_id_fkey', columns: ['workspace_id', 'engine_agent_id'] } } as const, { id: sessionIds }),
-        callerWorkspaceId.then(findWorkspaceEngine),
+// stays as it was. Sessions of another workspace, or of a Box the caller cannot see, are ignored.
+export async function findIdleSessions(sessionIds: string[], actor?: Actor): Promise<string[]> {
+    const callerActor = actor ? Promise.resolve(actor) : requireLightSessionActor()
+    const [resolvedActor, { data: rows }, engine] = await Promise.all([
+        callerActor,
+        selectManyWithJoins(createServiceRoleClient(), 'sessions', ['id', 'engine_session_id'] as const, { agent: { table: 'agents', foreignKey: 'agents!sessions_agent_id_fkey', columns: ['workspace_id', 'space_id', 'engine_agent_id'] } } as const, { id: sessionIds }),
+        callerActor.then(a => findWorkspaceEngine(a.workspaceId)),
     ])
-    const owned = (rows ?? []).filter(row => row.agent?.workspace_id === resolvedWorkspaceId)
+    const visible = await visibleSpaceIds(resolvedActor)
+    const owned = (rows ?? []).filter(row => row.agent?.workspace_id === resolvedActor.workspaceId && (visible === 'all' || visible.has(row.agent.space_id)))
     if (!engine) return owned.map(row => row.id)
 
     const idle: string[] = []

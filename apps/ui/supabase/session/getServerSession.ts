@@ -1,4 +1,5 @@
 import { createClient, getRequestAccessToken, getRequestWorkspaceId } from '@/supabase/server'
+import type { Enums } from '@/app/api/database.types'
 import { cache } from 'react'
 import { selectMaybeSingle, selectSingle } from '../supabase-helpers'
 
@@ -16,16 +17,18 @@ export const getSessionWorkspace = cache(async () => {
     // so every caller fails closed.
     let workspaceRefused = false
     let user = storedUser
+    let membership: { role: Enums<'workspace_role'>; box_scope: string } | null = null
     if (storedUser) {
         const workspaceId = requestedWorkspaceId ?? storedUser.workspace_id
-        const { data: membership } = Number.isNaN(workspaceId)
+        const { data: row } = Number.isNaN(workspaceId)
             ? { data: null }
-            : await selectMaybeSingle(supabase, 'workspace_members', ['workspace_id'] as const, { user_id: storedUser.id, workspace_id: workspaceId })
-        workspaceRefused = !membership
-        user = membership ? { ...storedUser, workspace_id: workspaceId } : null
+            : await selectMaybeSingle(supabase, 'workspace_members', ['workspace_id', 'role', 'box_scope'] as const, { user_id: storedUser.id, workspace_id: workspaceId })
+        membership = row ? { role: row.role, box_scope: row.box_scope } : null
+        workspaceRefused = !row
+        user = row ? { ...storedUser, workspace_id: workspaceId } : null
     }
 
-    return { supabase, user, workspaceRefused }
+    return { supabase, user, workspaceRefused, membership }
 })
 
 export const getServerSession = cache(async () => {

@@ -1,20 +1,21 @@
 'use server'
 
 import { accountLabel } from '@/lib/auth/placeholder-email'
-import { requireWorkspaceContext, type WorkspaceContext } from '@/app/api/_auth/ownership'
+import { requireAdminContext, requireWorkspaceContext, type WorkspaceContext } from '@/app/api/_auth/ownership'
 import type { Database } from '@/app/api/database.types'
 import { getAppOrigin } from '@/lib/app-origin'
-import { isWorkspaceApiEntitled } from '@/cloud/billing'
+import { isWorkspaceApiEntitled } from '@rerun/cloud/billing'
 import { apiKeyPrefix, generateApiKey, hashApiKey } from '@/lib/mcp/api-keys'
 import { mcpAccountUrl } from '@/lib/mcp/connect'
 import { selectAll, selectCount, selectMaybeSingle } from '@/supabase/supabase-helpers'
 
 import type { ActionResult } from './space.actions'
 
-// Every member of a workspace may issue a key: a key reaches exactly what the member already
-// reaches through the UI, so gating it on the owner would only push people to share one key.
-// What is gated is the subscription, trial included. A sandbox, which has no subscription at
+// A key acts as the whole workspace, so only an admin issues or revokes one; every member sees the
+// list. The subscription is gated too, trial included. A sandbox, which has no subscription at
 // all, is entitled by nature: see `isWorkspaceApiEntitled`.
+
+const API_KEYS_ADMIN_ONLY = 'Only an admin can manage API keys'
 
 const MAX_ACTIVE_KEYS = 20
 const MAX_NAME_LENGTH = 60
@@ -71,7 +72,7 @@ export async function listApiKeysAction(): Promise<ActionResult<{ keys: ApiKeyVi
 // The full key exists here and in the response, never again: the database only keeps its hash.
 export async function createApiKeyAction(rawName: string): Promise<ActionResult<{ key: string }>> {
     try {
-        const ctx = await requireWorkspaceContext()
+        const ctx = await requireAdminContext(API_KEYS_ADMIN_ONLY)
         if (!isWorkspaceApiEntitled(ctx.workspace)) {
             return { ok: false, error: 'The Rerun API needs an active subscription. Start your subscription to create a key.' }
         }
@@ -92,6 +93,7 @@ export async function createApiKeyAction(rawName: string): Promise<ActionResult<
             key_prefix: apiKeyPrefix(key),
             key_hash: hashApiKey(key),
             created_by: accountLabel(ctx.authUser.email),
+            created_by_user_id: ctx.userId,
         })
         if (error) return { ok: false, error: error.message }
 
@@ -103,7 +105,7 @@ export async function createApiKeyAction(rawName: string): Promise<ActionResult<
 
 export async function revokeApiKeyAction(id: string): Promise<ActionResult> {
     try {
-        const ctx = await requireWorkspaceContext()
+        const ctx = await requireAdminContext(API_KEYS_ADMIN_ONLY)
         await assertKeyInWorkspace(ctx, id)
 
         const { error } = await ctx.supabase.from('api_keys').update<Database['public']['Tables']['api_keys']['Update']>({ revoked_at: new Date().toISOString() }).eq('id', id)

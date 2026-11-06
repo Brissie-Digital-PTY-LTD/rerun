@@ -227,6 +227,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
         onContainerSelect,
         onConfirmPlacement,
         onTileMove,
+        onTileMoveRefused,
         onTileContextMenu,
         onResizeContainerLocal,
         onResizeContainerCommit,
@@ -256,7 +257,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
     // Où le placement a le droit d'atterrir : le container imposé par l'hôte quand il y en a un,
     // sinon n'importe lequel. Un id imposé introuvable ne laisse aucune cible, donc aucun drop
     // valide — plutôt qu'un placement libre silencieux.
-    const placementTargets = useMemo(() => (placementContainerId ? containers.filter(c => c.id === placementContainerId) : containers), [placementContainerId, containers])
+    const placementTargets = useMemo(() => containers.filter(c => !c.readOnly && (!placementContainerId || c.id === placementContainerId)), [placementContainerId, containers])
 
     // Footprint + style du ghost de placement.
     const placingTileObj = placingTileId ? tiles.find(t => t.id === placingTileId) : undefined
@@ -304,7 +305,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
 
     // Appui sur une tile déplaçable, pas encore tranché entre clic et drag. La sélection attend le
     // relâchement : la sélectionner à l'appui ouvrirait la fiche de l'agent qu'on veut juste déplacer.
-    const pendingDragRef = useRef<{ tileId: string; startPos: { col: number; row: number }; span: number; containerId: string | null; origin: { x: number; y: number }; select: boolean } | null>(null)
+    const pendingDragRef = useRef<{ tileId: string; startPos: { col: number; row: number }; span: number; containerId: string | null; origin: { x: number; y: number }; select: boolean; refused?: boolean } | null>(null)
 
     // Container en main. `grab` est la cellule prise sous le pointeur, pour que le container ne saute
     // pas sous la main.
@@ -528,7 +529,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
     const containerGripAt = (clientX: number, clientY: number, cell: Cell | null) => {
         if (!onContainerMove || locked || mode === 'draw' || !cell) return null
         const c = containers.find(c => movable(c) && containerContainsCell(c, cell))
-        if (!c) return null
+        if (!c || c.readOnly) return null
         return getTileFromClient(clientX, clientY, tiles) ? null : c.id
     }
     const containerGripAtRef = useRef(containerGripAt)
@@ -800,7 +801,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
         // Poignées de resize du container sélectionné
         if (selectedContainerId && onResizeContainerLocal) {
             const c = containers.find(c => c.id === selectedContainerId)
-            const handle = c ? handleAtCell(c, cell) : null
+            const handle = c && !c.readOnly ? handleAtCell(c, cell) : null
             if (c && handle) {
                 // Sans capture, un agrandissement qui passe sous le panneau latéral perd ses
                 // pointermove et son pointerup : le container n'est jamais committé.
@@ -823,7 +824,10 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
         if (clickedTile) {
             const canSelect = clickedTile.selectable ?? !!onTileSelect
             const canDrag = (clickedTile.draggable ?? !!onTileMove) && !!onTileMove
-            if (canDrag) {
+            // A tile held in place still waits for the threshold: a click selects it, only a pull
+            // is refused.
+            const refusable = !canDrag && clickedTile.draggable === false && !!onTileMove && !!onTileMoveRefused
+            if (canDrag || refusable) {
                 // La capture garantit qu'un relâchement hors du board finit quand même dans handlePointerUp.
                 e.currentTarget.setPointerCapture(e.pointerId)
                 pendingDragRef.current = {
@@ -833,6 +837,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
                     containerId: clickedTile.containerId ?? null,
                     origin: { x: e.clientX, y: e.clientY },
                     select: canSelect,
+                    refused: refusable,
                 }
                 return
             }
@@ -866,6 +871,10 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
             if (Math.hypot(e.clientX - pending.origin.x, e.clientY - pending.origin.y) < DRAG_THRESHOLD_PX) return
             pendingDragRef.current = null
             const { tileId, startPos, span, containerId } = pending
+            if (pending.refused) {
+                onTileMoveRefused?.(tileId)
+                return
+            }
             const anchor = getTileAnchorFromClient(e.clientX, e.clientY, span)
             setDragState({ tileId, startPos, span, containerId })
             setDragGhostCell(anchor ? clampAnchorToContainer(containerId, span, anchor) : startPos)
@@ -910,7 +919,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
 
         const resizable = interactive && !isPanning && !dragState && !drawStart && !placementActive && selectedContainerId && onResizeContainerLocal
         const selectedContainer = resizable ? containers.find(c => c.id === selectedContainerId) : undefined
-        setHoverHandle(selectedContainer && cell ? handleAtCell(selectedContainer, cell) : null)
+        setHoverHandle(selectedContainer && !selectedContainer.readOnly && cell ? handleAtCell(selectedContainer, cell) : null)
 
         if ((onContainerAdd || onContainerMove) && !overAddHandleRef.current) {
             const idle = interactive && !isPanning && !dragState && !drawStart && !placementActive && mode !== 'draw'
@@ -1015,9 +1024,8 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
                 const target = tile?.containerId ? containers.find(ct => containerContainsTile(ct, dragGhostCell, dragState.span)) : undefined
                 const landed = tile?.containerId ? !!target : true
                 const occupied = tiles.some(t => t.id !== dragState.tileId && isPlaced(t.position) && tilesOverlap(dragGhostCell, t.position, dragState.span, spanOf(t)))
-                if (!occupied && landed) {
-                    onTileMove(dragState.tileId, dragGhostCell, target?.id)
-                }
+                if (!occupied && landed && target?.readOnly) onTileMoveRefused?.(dragState.tileId)
+                else if (!occupied && landed) onTileMove(dragState.tileId, dragGhostCell, target?.id)
             }
             setDragState(null)
             setDragGhostCell(null)
@@ -1267,7 +1275,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
                             container={carried ? { ...container, ...boxDrop.rect, color: boxDrop.valid ? container.color : INVALID_DROP_COLOR } : container}
                             worldOffset={worldOffset}
                             selected={container.id === selectedContainerId}
-                            highlighted={(placementActive && hoverCell != null && containerContainsTile(container, hoverCell, placeSpan)) || container.id === dragTargetContainerId || carried}
+                            highlighted={(placementActive && hoverCell != null && containerContainsTile(container, hoverCell, placeSpan)) || (container.id === dragTargetContainerId && !container.readOnly) || carried}
                             activeHandle={container.id === selectedContainerId ? engagedHandle : null}
                             resizing={resizeState?.containerId === container.id}
                             hovered={container.id === hoverContainerId}
@@ -1334,6 +1342,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
                         const W = dragState.span * TILE_W
                         const H = dragState.span * TILE_H
                         const occupied = tiles.some(t => t.id !== dragState.tileId && isPlaced(t.position) && tilesOverlap(dragGhostCell, t.position, dragState.span, spanOf(t)))
+                        const refused = occupied || !!containers.find(ct => containerContainsTile(ct, dragGhostCell, dragState.span))?.readOnly
                         return (
                             <svg
                                 className="absolute pointer-events-none"
@@ -1346,7 +1355,7 @@ export const IsoGrid = memo(function IsoGrid(props: IsoGridProps) {
                                     transition: 'left 150ms cubic-bezier(0.2, 0, 0, 1), top 150ms cubic-bezier(0.2, 0, 0, 1)',
                                 }}
                             >
-                                <polygon points={`${W / 2},0 ${W},${H / 2} ${W / 2},${H} 0,${H / 2}`} fill="none" style={{ stroke: occupied ? '#ef4444' : 'rgb(var(--iso-glint) / 0.3)' }} strokeWidth="1" strokeDasharray="4 3" />
+                                <polygon points={`${W / 2},0 ${W},${H / 2} ${W / 2},${H} 0,${H / 2}`} fill="none" style={{ stroke: refused ? '#ef4444' : 'rgb(var(--iso-glint) / 0.3)' }} strokeWidth="1" strokeDasharray="4 3" />
                             </svg>
                         )
                     })()}

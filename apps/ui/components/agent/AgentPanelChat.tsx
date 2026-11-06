@@ -213,6 +213,7 @@ export function AgentPanelChat({ agentId, agentName, selected, openSessionReques
                             onSetupSkipped={setup.skip}
                             onOpenInstall={openInstall}
                             onRunFinished={handleRunFinished}
+                            onNewConversation={createNew}
                         />
                     </div>
                 )

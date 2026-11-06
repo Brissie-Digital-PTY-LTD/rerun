@@ -10,7 +10,7 @@ import { AlertBlock } from '@/components/chat/AlertBlock'
 import { McpSignInBlock } from '@/components/chat/McpSignInBlock'
 import { SecretRequestBlock } from '@/components/chat/SecretRequestBlock'
 import { ChatScreen } from '@/components/chat/ChatScreen'
-import { BudgetExhaustedNotice } from '@/cloud/billing.client'
+import { BudgetExhaustedNotice } from '@rerun/cloud/billing.client'
 import { ProviderErrorNotice } from '@/components/chat/ProviderErrorNotice'
 import { ComposerSubscriptionCta } from '@/components/chat/ComposerSubscriptionCta'
 import { InstallGate } from '@/components/chat/InstallGate'
@@ -54,7 +54,7 @@ import { buildInstallMessage } from '@/lib/chat/install-marker'
 import { contextStatsOf } from '@/lib/chat/context-stats'
 import { summarizePendingHitl } from '@/lib/chat/hitl-cue'
 import { hitlCallBefore } from '@/lib/chat/hitl-receipts'
-import { turnRanOutOfPaidCredit } from '@/cloud/paid-data'
+import { turnRanOutOfPaidCredit } from '@/lib/chat/paid-data-credit'
 import { authorTurnsOf } from '@/lib/chat/message-author'
 import { splitTurnsAtBreaks, timeBreaksOf } from '@/lib/chat/message-times'
 import { shouldFlush, shouldKeepQueued } from '@/lib/chat/queued-message'
@@ -66,7 +66,7 @@ import { browserPermission } from '@/lib/notifications/browser'
 import { modelContextWindow } from '@/lib/engine/models'
 import { rerunCreditOf } from '@/lib/engine/ai-sources'
 import { toGroup } from '@/lib/engine/model-groups'
-import { isPremiumModelEntitled } from '@/cloud/billing'
+import { isPremiumModelEntitled } from '@rerun/cloud/billing'
 import { createClient } from '@/supabase/client'
 import { selectMaybeSingle } from '@/supabase/supabase-helpers'
 import { useChat } from '@ai-sdk/react'
@@ -115,9 +115,11 @@ type AgentChatProps = {
     onSessionInserted?: (session: AgentChatSessionInsert) => void
     onSessionStatusChange?: (sessionId: string, status: 'working' | 'idle' | 'error') => void
     onMessageSent?: () => void
+    // Opens a blank conversation with this coworker, the way out of one it cannot reach.
+    onNewConversation?: () => void
 }
 
-export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessionCreated, initialRunId, arrival = 0, mentionAgents = [], mentionSkills = [], sessionWorking = false, sessionIdle = false, alertPending = false, body, header, suppressEmptyState = false, setup, onSetupSkipped, onOpenInstall, onRunFinished, onSessionInserted, onSessionStatusChange, onMessageSent }: AgentChatProps) {
+export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessionCreated, initialRunId, arrival = 0, mentionAgents = [], mentionSkills = [], sessionWorking = false, sessionIdle = false, alertPending = false, body, header, suppressEmptyState = false, setup, onSetupSkipped, onOpenInstall, onRunFinished, onSessionInserted, onSessionStatusChange, onMessageSent, onNewConversation }: AgentChatProps) {
     const { workspace, user } = useSession()
     const userId = user?.id
     const onSessionCreatedRef = useRef(onSessionCreated)
@@ -946,7 +948,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                             <motion.div key={pendingHitl.toolCallId} ref={pendingHitlRef} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}>
                                 {pendingHitl.kind === 'question' && <QuestionForm inline ref={questionFormRef} agentId={agentId} questions={pendingQuestions(pendingHitl.input)} onSend={text => sendMessage({ text })} onCancel={() => dismissHitl(pendingHitl.toolCallId)} textareaRef={inputRef} textareaProps={mentionTextareaProps} />}
                                 {pendingHitl.kind === 'approval' && <ActionApprovalBlock inline approvals={pendingApprovals(pendingHitl.input)} onSubmit={decisions => sendMessage({ text: serializeApprovalDecisions(decisions) })} />}
-                                {pendingHitl.kind === 'secret' && agentId && <SecretRequestBlock inline agentId={agentId} secrets={pendingSecrets(pendingHitl.input)} reason={typeof pendingHitl.input.reason === 'string' ? pendingHitl.input.reason : undefined} onDone={summary => sendMessage({ text: summary })} onSkip={() => sendMessage({ text: HITL_CANCELLED.secret })} onDismiss={() => dismissHitl(pendingHitl.toolCallId)} />}
+                                {pendingHitl.kind === 'secret' && agentId && <SecretRequestBlock inline agentId={agentId} sessionId={sessionId ?? null} secrets={pendingSecrets(pendingHitl.input)} reason={typeof pendingHitl.input.reason === 'string' ? pendingHitl.input.reason : undefined} onDone={summary => sendMessage({ text: summary })} onSkip={() => sendMessage({ text: HITL_CANCELLED.secret })} onDismiss={() => dismissHitl(pendingHitl.toolCallId)} />}
                                 {pendingHitl.kind === 'mcp' && agentId && <McpSignInBlock inline agentId={agentId} {...pendingMcpSignIn(pendingHitl.input)} onDone={summary => sendMessage({ text: summary })} onSkip={() => sendMessage({ text: HITL_CANCELLED.mcp })} />}
                                 {pendingHitl.kind === 'service' && agentId && <ServiceSuggestionBlock inline agentId={agentId} services={(Array.isArray(pendingHitl.input.services) ? pendingHitl.input.services : []) as { slug: string; reason?: string }[]} onDone={summary => sendMessage({ text: summary })} />}
                             </motion.div>
@@ -976,7 +978,7 @@ export function AgentChat({ uid, active, agentId, agentName, sessionId, onSessio
                         )}
                         {displayedError !== null && errorKind !== null && (
                             <Message from="assistant">
-                                <MessageContent>{errorKind === 'budget' ? <BudgetExhaustedNotice onConnectProvider={connectProvider} ownConnection={runOnOwnConnection} trialing={workspace?.subscription_status === 'trialing'} paused={!!workspace?.rerun_credit_paused_at} noCredit={rerunCredit.budgetMicros === 0} /> : <ProviderErrorNotice kind={errorKind} message={displayedError} onSwitchModel={switchModel} onReconnect={reconnectProvider} onStopRun={handleStop} onContinue={continueInterruptedRun} onRetry={canRetry ? retryLastTurn : undefined} />}</MessageContent>
+                                <MessageContent>{errorKind === 'budget' ? <BudgetExhaustedNotice onConnectProvider={connectProvider} ownConnection={runOnOwnConnection} trialing={workspace?.subscription_status === 'trialing'} paused={!!workspace?.rerun_credit_paused_at} noCredit={rerunCredit.budgetMicros === 0} /> : <ProviderErrorNotice kind={errorKind} message={displayedError} onSwitchModel={switchModel} onReconnect={reconnectProvider} onStopRun={handleStop} onContinue={continueInterruptedRun} onRetry={canRetry ? retryLastTurn : undefined} onNewConversation={onNewConversation} />}</MessageContent>
                             </Message>
                         )}
                     </ConversationContent>

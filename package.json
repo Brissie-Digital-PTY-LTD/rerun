@@ -1,5 +1,6 @@
 {
     "name": "rerun-monorepo",
+    "license": "AGPL-3.0-only",
     "description": "Rerun: AI coworkers that run your work",
     "private": true,
     "type": "module",
@@ -8,11 +9,13 @@
         "node": ">=20"
     },
     "scripts": {
+        "postinstall": "[ ! -f scripts/install-cloud.mjs ] || node scripts/install-cloud.mjs",
         "build:contracts": "pnpm --filter @rerun/contracts build",
         "build": "pnpm -r build",
         "dev:engine": "pnpm --filter rerun-engine dev",
         "dev:ui": "pnpm --filter rerun dev",
         "dev:ui:full": "concurrently -k -n next,engine -c cyan,green \"pnpm --filter rerun dev\" \"pnpm --filter rerun-engine dev\"",
+        "dev:emails": "pnpm --filter @rerun/emails dev",
         "dev:docs": "cd apps/docs && npx --yes mint dev --port 3333",
         "check:docs": "cd apps/docs && npx --yes mint validate && npx --yes mint broken-links",
         "typecheck": "pnpm -r --if-present ts-check",
@@ -23,7 +26,9 @@
         "db:fresh:local": "supabase start && supabase db reset"
     },
     "devDependencies": {
+        "@react-email/preview-server": "5.2.10",
         "concurrently": "^10.0.4",
+        "react-email": "6.11.6",
         "supabase": "^2.113.0",
         "typescript": "^5.8.3"
     },
@@ -62,6 +67,5 @@
             "vite": "^8.3.5",
             "@anthropic-ai/claude-agent-sdk": "0.3.317"
         }
-    },
-    "license": "AGPL-3.0-only"
+    }
 }

@@ -1,14 +1,19 @@
+import { callableEngineAgentIds } from '@/app/api/_auth/access'
 import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
-import { isPhoneStepPending } from '@/cloud/phone.server'
+import { getWorkspaceConnection } from '@/app/api/_services/workspace-engine.service'
+import { startChat } from '@/lib/chat/start-chat'
+import { isPhoneStepPending } from '@rerun/cloud/phone.server'
 import { loadForemanConversation } from '@/lib/foreman/conversation'
 import { loadForemanState } from '@/lib/foreman/state'
 import { resolveForemanSurface } from '@/lib/foreman/surface.server'
-import { PHONE_REQUIRED_MESSAGE } from '@/cloud/phone'
+import { PHONE_REQUIRED_MESSAGE } from '@rerun/cloud/phone'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET, POST } from './route'
 
 vi.mock('@/app/api/_auth/ownership', () => ({ requireWorkspaceContext: vi.fn() }))
-vi.mock('@/cloud/phone.server', () => ({ isPhoneStepPending: vi.fn() }))
+vi.mock('@/app/api/_auth/access', () => ({ actorFromContext: vi.fn(() => ({ kind: 'user', userId: 'user-1', workspaceId: 7, role: 'member', boxScope: 'assigned' })), callableEngineAgentIds: vi.fn() }))
+vi.mock('@/lib/foreman/hub-token', () => ({ mintForemanHubToken: vi.fn(() => null) }))
+vi.mock('@rerun/cloud/phone.server', () => ({ isPhoneStepPending: vi.fn() }))
 vi.mock('@/app/api/_services/me.service', () => ({ messageAuthorOf: vi.fn() }))
 vi.mock('@/app/api/_services/workspace-engine.service', () => ({ getWorkspaceConnection: vi.fn(), NoEngineError: class NoEngineError extends Error {} }))
 vi.mock('@/lib/chat/start-chat', () => ({ QUEUED_RETRY_DELAYS_MS: [], startChat: vi.fn() }))
@@ -63,5 +68,17 @@ describe('/api/chat/foreman/engine', () => {
 
         expect(response.status).toBe(200)
         expect(isPhoneStepPending).not.toHaveBeenCalled()
+    })
+
+    it('hands the engine the coworkers the member reaches, so call_agent names no other', async () => {
+        vi.mocked(isPhoneStepPending).mockResolvedValue(false)
+        vi.mocked(resolveForemanSurface).mockResolvedValue('engine' as never)
+        vi.mocked(getWorkspaceConnection).mockResolvedValue({ baseUrl: 'https://engine.test', apiKey: null } as never)
+        vi.mocked(callableEngineAgentIds).mockResolvedValue(['engine-open'])
+        vi.mocked(startChat).mockResolvedValue(new Response('', { status: 500 }))
+
+        await POST(post())
+
+        expect(vi.mocked(startChat).mock.calls[0][2]).toMatchObject({ callableAgentIds: ['engine-open'] })
     })
 })

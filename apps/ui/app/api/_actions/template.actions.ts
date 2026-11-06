@@ -3,7 +3,7 @@
 import { isPublicStatus, type TemplateStatus } from '@rerun/contracts'
 import { z } from 'zod'
 import { assertAdminUser, getAdminEmail } from '@/lib/auth/admin'
-import { assertSpaceInWorkspace } from '@/app/api/_auth/ownership'
+import { assertSpaceAccess } from '@/app/api/_auth/access'
 import { getServerSession } from '@/supabase/session/getServerSession'
 import { loadServiceCatalog, type CatalogEntry } from '@/lib/templates/catalog'
 import { hasTemplateEntitlement, templateAccessByWorkspace } from '@/lib/templates/entitlement'
@@ -98,14 +98,15 @@ const installInputSchema = z.object({
 
 export type InstallTemplateResult = ({ ok: true } & TemplateInstallOutcome) | { ok: false; error: string }
 
-// The target space comes from the client but its workspace never does: assertSpaceInWorkspace
-// resolves it from the session, so an id from somewhere else resolves to "space not found". That
-// ownership check is the write authorization; the template's status then decides who may copy it,
+// The target space comes from the client but its workspace never does: assertSpaceAccess resolves
+// it from the session, so an id from somewhere else resolves to "Box not found". That check, at
+// `manage` on the Box, is the write authorization; the template's status then decides who may copy it,
 // since a shared link makes this reachable by anyone, not just the admin library.
 export async function installTemplateAction(input: { slug: string; spaceId: string; positions?: GridPosition[]; again?: boolean }): Promise<InstallTemplateResult> {
     try {
         const { slug, spaceId, positions, again } = installInputSchema.parse(input)
-        const { workspace_id } = await assertSpaceInWorkspace(spaceId)
+        const { actor } = await assertSpaceAccess(spaceId, 'manage')
+        const workspace_id = actor.workspaceId
         const supabase = createServiceRoleClient()
 
         const { data: template } = await selectMaybeSingle(supabase, 'templates', ['id', 'status', 'creator_id', 'pricing_model'] as const, { slug })
@@ -130,7 +131,7 @@ export async function installTemplateAction(input: { slug: string; spaceId: stri
             if (!(await hasTemplateEntitlement(supabase, workspace_id, template, user?.id))) throw new Error('This template requires a purchase.')
         }
 
-        const outcome = await installTemplate(supabase, slug, { workspaceId: workspace_id, spaceId, positions, again })
+        const outcome = await installTemplate(supabase, slug, { workspaceId: workspace_id, spaceId, actor, positions, again })
         return { ok: true, ...outcome }
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Failed to import this template' }

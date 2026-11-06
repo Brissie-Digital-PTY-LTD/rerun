@@ -3,7 +3,9 @@
 import { agentShareIncludeSchema, type AgentSharePreview } from '@rerun/contracts'
 import { z } from 'zod'
 import { getAdminEmail } from '@/lib/auth/admin'
-import { assertAgentInWorkspace, assertSpaceInWorkspace, requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { actorFromContext, assertAgentInWorkspace, assertSpaceAccess, keepVisible } from '@/app/api/_auth/access'
+import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { assertCanManageShare, shareManageableAgentIds } from '@/lib/agents/share-access'
 import { createAgentShare, planAgentShare, type AgentSharePlan } from '@/lib/agents/share-create'
 import { installAgentShare, type AgentShareInstallOutcome } from '@/lib/agents/share-install'
 import { listWorkspaceShares, readAgentShare, revokeAgentShare, type WorkspaceShare } from '@/lib/agents/share-read'
@@ -24,7 +26,7 @@ function failed(err: unknown, fallback: string): { ok: false; error: string } {
 export async function planAgentShareAction(agentId: string): Promise<ActionResult<{ plan: AgentSharePlan }>> {
     try {
         const id = z.string().uuid().parse(agentId)
-        const { workspace_id } = await assertAgentInWorkspace(id)
+        const { workspace_id } = await assertAgentInWorkspace(id, 'manage')
         return { ok: true, plan: await planAgentShare(createServiceRoleClient(), id, workspace_id) }
     } catch (err) {
         return failed(err, 'Could not inspect this coworker')
@@ -36,8 +38,8 @@ const createInputSchema = z.object({ agentId: z.string().uuid(), include: agentS
 export async function createAgentShareAction(input: unknown): Promise<ActionResult<{ url: string; warnings: string[]; reused: boolean }>> {
     try {
         const { agentId, include } = createInputSchema.parse(input)
-        await assertAgentInWorkspace(agentId)
         const ctx = await requireWorkspaceContext()
+        await assertAgentInWorkspace(agentId, 'manage', actorFromContext(ctx))
         const { url, warnings, reused } = await createAgentShare(ctx.supabase, { agentRowId: agentId, workspaceId: ctx.workspace.id, userId: ctx.userId, include })
         return { ok: true, url, warnings, reused }
     } catch (err) {
@@ -48,7 +50,8 @@ export async function createAgentShareAction(input: unknown): Promise<ActionResu
 export async function listAgentSharesAction(): Promise<ActionResult<{ shares: WorkspaceShare[] }>> {
     try {
         const ctx = await requireWorkspaceContext()
-        return { ok: true, shares: await listWorkspaceShares(ctx.supabase, ctx.workspace.id) }
+        const [shares, manageable] = await Promise.all([listWorkspaceShares(ctx.supabase, ctx.workspace.id), shareManageableAgentIds(actorFromContext(ctx))])
+        return { ok: true, shares: keepVisible(shares, manageable, share => share.sourceAgentId) }
     } catch (err) {
         return failed(err, 'Could not read your share links')
     }
@@ -58,6 +61,7 @@ export async function revokeAgentShareAction(shareId: string): Promise<ActionRes
     try {
         const id = z.string().uuid().parse(shareId)
         const ctx = await requireWorkspaceContext()
+        await assertCanManageShare(ctx.supabase, id, actorFromContext(ctx))
         await revokeAgentShare(ctx.supabase, id, ctx.workspace.id)
         return { ok: true }
     } catch (err) {
@@ -82,8 +86,8 @@ const installInputSchema = z.object({
 
 export type InstallSharedAgentResult = ({ ok: true } & AgentShareInstallOutcome) | { ok: false; error: string }
 
-// The target space comes from the client but its workspace never does: assertSpaceInWorkspace
-// resolves it from the session, so an id from somewhere else resolves to "space not found".
+// The target space comes from the client but its workspace never does: assertSpaceAccess resolves
+// it from the session, so an id from somewhere else resolves to "Box not found".
 //
 // The plan gate is re-checked here for the same reason it is on a template install: this action
 // lands paid compute from a link anyone can hold, so UI-only gating would mean calling the action
@@ -91,7 +95,8 @@ export type InstallSharedAgentResult = ({ ok: true } & AgentShareInstallOutcome)
 export async function installSharedAgentAction(input: unknown): Promise<InstallSharedAgentResult> {
     try {
         const { token, spaceId, position } = installInputSchema.parse(input)
-        const { workspace_id } = await assertSpaceInWorkspace(spaceId)
+        const { actor } = await assertSpaceAccess(spaceId, 'manage')
+        const workspace_id = actor.workspaceId
         const supabase = createServiceRoleClient()
 
         if ((await getAdminEmail()) === null) {
@@ -100,7 +105,7 @@ export async function installSharedAgentAction(input: unknown): Promise<InstallS
             if (status !== 'active' && status !== 'trialing') throw new Error('This workspace has no active plan.')
         }
 
-        return { ok: true, ...(await installAgentShare(supabase, token, { workspaceId: workspace_id, spaceId, position })) }
+        return { ok: true, ...(await installAgentShare(supabase, token, { workspaceId: workspace_id, spaceId, actor, position })) }
     } catch (err) {
         return failed(err, 'Could not add this coworker to your board')
     }

@@ -1,3 +1,4 @@
+import { spaceAccessMap, type Actor } from '@/app/api/_auth/access'
 import { getSession, listRuns, listSessions } from '@/lib/engine/client'
 import type { AgentLink, AgentStatus } from '@/lib/board/types'
 import type { EngineConnection } from '@/lib/engine/types'
@@ -71,6 +72,9 @@ export type AgentHealthResult = {
     statuses: Record<string, AgentStatus | 'unconfigured'>
     // Appels agent→agent en cours (call_agent). source/target = ids Supabase.
     links: AgentLink[]
+    // The Boxes the caller reaches right now: the board drops one it still draws that is not listed,
+    // its access having been taken away since it loaded.
+    spaceIds: string[]
 }
 
 // For a busy agent, resolve who triggered its current run: the running run pins
@@ -88,21 +92,27 @@ async function resolveCaller(conn: EngineConnection, engineAgentId: string): Pro
     }
 }
 
-export async function checkAllAgentsHealth(workspaceId: number): Promise<AgentHealthResult> {
+// Only the coworkers in the Boxes the caller reaches: a caller of a hidden one would otherwise show
+// up as the source of a link.
+export async function checkAllAgentsHealth(actor: Actor): Promise<AgentHealthResult> {
+    const { workspaceId } = actor
     const supabase = createServiceRoleClient()
 
-    const [{ data: agents }, { data: workspace }] = await Promise.all([
-        selectMany(supabase, 'agents', ['id', 'engine_agent_id'] as const, { workspace_id: workspaceId }),
+    const [{ data: workspaceAgents }, { data: workspace }, accessBySpace] = await Promise.all([
+        selectMany(supabase, 'agents', ['id', 'engine_agent_id', 'space_id'] as const, { workspace_id: workspaceId }),
         selectMaybeSingle(supabase, 'workspaces', ['boxes_disabled_at', 'boxes_archived_at'] as const, { id: workspaceId }),
+        spaceAccessMap(actor),
     ])
+    const spaceIds = [...accessBySpace].filter(([, access]) => access !== 'none').map(([id]) => id)
+    const agents = (workspaceAgents ?? []).filter(agent => (accessBySpace.get(agent.space_id) ?? 'none') !== 'none')
 
-    if (!agents || agents.length === 0) return { statuses: {}, links: [] }
+    if (agents.length === 0) return { statuses: {}, links: [], spaceIds }
 
     // The teardown powered this machine off or archived it away, so no address answers. Every call
     // below would spend its full timeout to learn what these columns already say, once every ten
     // seconds, for as long as the workspace stays lapsed.
     if (workspace?.boxes_disabled_at || workspace?.boxes_archived_at) {
-        return { statuses: Object.fromEntries(agents.map(agent => [agent.id, 'offline' as const])), links: [] }
+        return { statuses: Object.fromEntries(agents.map(agent => [agent.id, 'offline' as const])), links: [], spaceIds }
     }
 
     // engine agent id → Supabase id, pour retrouver l'agent appelant.
@@ -133,5 +143,5 @@ export async function checkAllAgentsHealth(workspaceId: number): Promise<AgentHe
         })
     )
 
-    return { statuses, links: edges.filter((e): e is AgentLink => e !== null) }
+    return { statuses, links: edges.filter((e): e is AgentLink => e !== null), spaceIds }
 }

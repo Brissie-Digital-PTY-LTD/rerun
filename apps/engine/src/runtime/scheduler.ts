@@ -8,29 +8,37 @@ import { isDue } from '../schedules/cron.js'
 import { sweepMemoriesIfDue } from '../memory/maintenance.js'
 import { maintainBrainIfDue } from '../brain/maintenance.js'
 import { sweepCodexHomesIfDue } from '../connections/codex-sweep.js'
+import { isPlanLimitLatched } from '../connections/plan-limits.js'
+import { offersComputer } from '../tools/builtin/computer.js'
 import { startHeadlessRun } from './headless-run.js'
 import { sendNotification } from './notify.js'
 import { isBudgetLatched } from './budget-latch.js'
+import { agentHasLiveRun } from './run-control.js'
 import { nowIso } from '../lib/ids.js'
-import { agentDisabled, budgetExhausted, HttpError } from '../lib/errors.js'
+import { agentDisabled, budgetExhausted, coworkerBusy, HttpError, subscriptionLimited } from '../lib/errors.js'
 import { logger } from '../lib/logger.js'
 
 const TICK_MS = 30_000
 
 const inFlight = new Map<string, { runId: string; sessionId: string }>()
 
-export async function fireSchedule(agentId: string, schedule: Schedule, opts?: { markFired?: boolean; ignoreBudgetLatch?: boolean }): Promise<{ runId: string; sessionId: string }> {
+export async function fireSchedule(agentId: string, schedule: Schedule, opts?: { markFired?: boolean; manual?: boolean }): Promise<{ runId: string; sessionId: string }> {
     const key = `${agentId}/${schedule.slug}`
     const existing = inFlight.get(key)
     if (existing) return existing
 
     const agent = await getAgent(agentId)
     if (!agent.config.enabled) throw agentDisabled()
+    // A coworker has one screen, taken by the first of its runs to act on it, which may come well
+    // after that run started. A schedule firing beside a live run (a chat, a call from another
+    // coworker) would race it for the screen, so it stays due and fires on the tick after that run.
+    if (!opts?.manual && agentHasLiveRun(agentId) && offersComputer(agent.config)) throw coworkerBusy()
     // Resolved before markFired so a budget skip leaves the schedule due: it resumes on the first
     // tick after the latch clears, with no session, no run and no notification in the meantime.
     // Only the managed provider burns the workspace budget, so an agent on its own key still fires.
     const override = await automationModel(agent, schedule, 'schedule')
-    if (!opts?.ignoreBudgetLatch && override.provider === 'rerun' && isBudgetLatched()) throw budgetExhausted()
+    if (!opts?.manual && override.provider === 'rerun' && isBudgetLatched()) throw budgetExhausted()
+    if (!opts?.manual && override.connectionId && isPlanLimitLatched(override.connectionId)) throw subscriptionLimited()
     // Stamped before the launch, not after: a schedule whose run preparation keeps throwing would
     // otherwise stay due forever and re-fire on every 30s tick. The trade-off is at-most-once — a
     // crash mid-run costs that occurrence instead of replaying work that may already be done.
@@ -63,12 +71,19 @@ export async function fireSchedule(agentId: string, schedule: Schedule, opts?: {
     return started
 }
 
+const SKIP_REASONS: Record<string, string> = {
+    budget_latched: 'rerun budget latched',
+    coworker_busy: 'another run of the coworker is live',
+    subscription_limited: 'subscription limit latched',
+}
+
 async function fire(agentId: string, schedule: Schedule): Promise<void> {
     try {
         await fireSchedule(agentId, schedule)
     } catch (err) {
-        if (err instanceof HttpError && err.status === 402) {
-            logger.debug({ agent: agentId, schedule: schedule.slug }, 'scheduled run skipped: rerun budget latched')
+        const skipReason = err instanceof HttpError && err.code ? SKIP_REASONS[err.code] : undefined
+        if (skipReason) {
+            logger.debug({ agent: agentId, schedule: schedule.slug }, `scheduled run skipped: ${skipReason}`)
             return
         }
         logger.error({ agent: agentId, schedule: schedule.slug, err: String(err) }, 'scheduled run failed')
@@ -101,9 +116,14 @@ async function tick(): Promise<void> {
             logger.error({ agent: agentId, err: String(err) }, 'scheduler failed to load schedules')
             continue
         }
-        for (const schedule of schedules) {
-            if (isDue(schedule, now)) void fire(agentId, schedule)
-        }
+        // One coworker's schedules fire one after the other: the busy check in `fireSchedule` only
+        // sees a run once `startHeadlessRun` has registered it, so two due together would both pass
+        // it and race for the screen. Coworkers still fire beside each other.
+        void (async () => {
+            for (const schedule of schedules) {
+                if (isDue(schedule, now)) await fire(agentId, schedule)
+            }
+        })()
     }
 }
 

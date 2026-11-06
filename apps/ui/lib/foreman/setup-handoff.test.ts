@@ -6,14 +6,17 @@ const engineChat = vi.fn()
 const engineGetAgent = vi.fn()
 
 const selectMany = vi.fn<(...args: unknown[]) => Promise<{ data: { id: string; name?: string; disabled_at: string | null }[] }>>(async () => ({ data: [] }))
+const callableEngineAgentIds = vi.fn<(...args: unknown[]) => Promise<string[] | undefined>>(async () => undefined)
 
+vi.mock('@/app/api/_auth/access', () => ({ workspaceActor: (workspaceId: number) => ({ kind: 'workspace', workspaceId }), callableEngineAgentIds }))
 vi.mock('@/app/api/_services/chat.service', () => ({ ensureSessionRow, resolveAgentTarget }))
 vi.mock('@/lib/engine/client', () => ({ chat: engineChat, getAgent: engineGetAgent }))
 vi.mock('@/supabase/supabase-helpers', () => ({ selectMany }))
 
 const { startAgentSetup } = await import('./setup-handoff')
 
-const CTX = { workspace: { id: 7 } } as never
+const BASE = { workspace: { id: 7 } }
+const CTX = BASE as never
 
 function accepted(sessionId: string | null, runId: string | null = 'engine-run-1') {
     const headers = new Headers()
@@ -33,6 +36,30 @@ describe('startAgentSetup', () => {
         ensureSessionRow.mockResolvedValue('session-row')
         engineGetAgent.mockResolvedValue(bespokeAgent())
         selectMany.mockResolvedValue({ data: [] })
+        callableEngineAgentIds.mockResolvedValue(undefined)
+    })
+
+    // The foreman of a member hands over with that member's access: a coworker in a Box closed to
+    // them is refused, and the run it starts calls only the coworkers they reach.
+    it('starts the setup as the member behind the turn, and narrows what the run can call', async () => {
+        const member = { kind: 'user', userId: 'user-2', workspaceId: 7, role: 'member', boxScope: 'assigned' }
+        callableEngineAgentIds.mockResolvedValue(['engine-1'])
+        engineChat.mockResolvedValue(accepted('engine-session-1'))
+
+        await startAgentSetup({ ...BASE, actor: member } as never, { agents: [{ agentId: 'agent-1', message: 'Triage the inbox' }] })
+
+        expect(resolveAgentTarget).toHaveBeenCalledWith('agent-1', member)
+        expect(callableEngineAgentIds).toHaveBeenCalledWith(member)
+        expect(engineChat.mock.calls[0][2]).toMatchObject({ callableAgentIds: ['engine-1'] })
+    })
+
+    it('refuses a coworker the member cannot reach, beside the ones that started', async () => {
+        resolveAgentTarget.mockRejectedValueOnce(new Error('Coworker not found'))
+
+        const result = (await startAgentSetup({ ...BASE, actor: { kind: 'user', userId: 'user-2', workspaceId: 7, role: 'member', boxScope: 'assigned' } } as never, { agents: [{ agentId: 'agent-9', message: 'Go' }] })) as { agents: { started: boolean; error?: string }[] }
+
+        expect(result.agents[0]).toMatchObject({ started: false, error: 'Coworker not found' })
+        expect(engineChat).not.toHaveBeenCalled()
     })
 
     // The whole point of the hand-over: /chat announces no session, so without this write the run
@@ -144,7 +171,7 @@ describe('startAgentSetup', () => {
 
         // The engine is only ever asked about the one that can actually work.
         expect(resolveAgentTarget).toHaveBeenCalledTimes(1)
-        expect(resolveAgentTarget).toHaveBeenCalledWith('agent-1', 7)
+        expect(resolveAgentTarget).toHaveBeenCalledWith('agent-1', { kind: 'workspace', workspaceId: 7 })
 
         expect(result.next).toContain('1 agent(s) are working')
         expect(result.next).toContain('1 are built but have no free slot')

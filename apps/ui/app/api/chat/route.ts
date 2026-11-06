@@ -1,3 +1,4 @@
+import { actorFromContext, callableEngineAgentIds } from '@/app/api/_auth/access'
 import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { createSessionRow, ensureSessionRow, getAgentChatTarget, getExistingSession, updateSessionStatus } from '@/app/api/_services/chat.service'
 import { messageAuthorOf } from '@/app/api/_services/me.service'
@@ -11,7 +12,7 @@ import { installSessionTitle, parseInstallMessage } from '@/lib/chat/install-mar
 import { preferredLanguage } from '@/lib/foreman/language'
 import { stripVoiceMarker } from '@/lib/voice/marker'
 import { createServiceRoleClient } from '@/supabase/serviceRole'
-import type { MessageAuthor, SessionSource } from '@rerun/contracts'
+import { ENGINE_SESSION_NOT_FOUND, SESSION_NOT_FOUND, type MessageAuthor, type SessionSource } from '@rerun/contracts'
 
 type ChatRequestBody = {
     agentId?: unknown
@@ -23,12 +24,22 @@ type ChatRequestBody = {
     queued?: boolean
 }
 
+// A code rather than the engine's sentence: the chat turns it into a notice that opens a new
+// conversation, instead of a red box quoting the engine.
+const sessionNotFound = () => Response.json({ error: SESSION_NOT_FOUND }, { status: 404 })
+
 export async function POST(request: Request) {
     // Reject unauthenticated callers up front. getAgentChatTarget below also
     // enforces that the agent belongs to this workspace (defense in depth).
     let author: MessageAuthor
+    let callablePromise: Promise<string[] | undefined>
     try {
-        author = messageAuthorOf(await requireWorkspaceContext())
+        const ctx = await requireWorkspaceContext()
+        author = messageAuthorOf(ctx)
+        // Read alongside the body and awaited inside the engine call's try: a failure fails the send
+        // rather than letting it through with every coworker callable.
+        callablePromise = callableEngineAgentIds(actorFromContext(ctx))
+        callablePromise.catch(() => {})
     } catch {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -63,12 +74,19 @@ export async function POST(request: Request) {
     // Resolve the engine session id for an existing conversation.
     let engineSessionId: string | undefined
     if (sessionId) {
+        let existing: Awaited<ReturnType<typeof getExistingSession>>
         try {
-            const existing = await getExistingSession(sessionId)
-            engineSessionId = existing.engineSessionId ?? undefined
+            existing = await getExistingSession(sessionId)
         } catch {
             return Response.json({ error: 'Failed to resolve session' }, { status: 500 })
         }
+        // A tab of one coworker holding another one's conversation: the engine would answer with a
+        // raw 404, since the session lives in the other coworker's database.
+        if (existing.agentId !== agentId) {
+            console.warn(`[CHAT SESSION MISMATCH] agent=${agentId} session=${sessionId} owner=${existing.agentId}`)
+            return sessionNotFound()
+        }
+        engineSessionId = existing.engineSessionId ?? undefined
     }
 
     // A voice message carries its audio as a marker appended to the transcript; the session title
@@ -80,7 +98,7 @@ export async function POST(request: Request) {
     let engineRes: Response
     try {
         console.log(`[CHAT START] agent=${agentId} session=${sessionId ?? '(new)'} inputLength=${text.length}${queued ? ' queued' : ''}`)
-        engineRes = await startChat(target.conn, target.engineAgentId, { sessionId: engineSessionId, message: text, connectionId, model, source, author, install: !!install && !sessionId, userLanguage: install && !sessionId ? (preferredLanguage(request.headers.get('accept-language')) ?? undefined) : undefined }, queued ? QUEUED_RETRY_DELAYS_MS : null)
+        engineRes = await startChat(target.conn, target.engineAgentId, { sessionId: engineSessionId, message: text, connectionId, model, source, author, callableAgentIds: await callablePromise, install: !!install && !sessionId, userLanguage: install && !sessionId ? (preferredLanguage(request.headers.get('accept-language')) ?? undefined) : undefined }, queued ? QUEUED_RETRY_DELAYS_MS : null)
     } catch (err) {
         return Response.json({ error: `Engine error: ${err instanceof Error ? err.message : 'Failed to start chat'}` }, { status: 502 })
     }
@@ -122,6 +140,10 @@ export async function POST(request: Request) {
 
     if (!engineRes.ok || !engineRes.body) {
         const errBody = await engineRes.text().catch(() => '')
+        if (engineRes.status === 404 && errBody.includes(ENGINE_SESSION_NOT_FOUND)) {
+            console.warn(`[CHAT SESSION GONE] agent=${agentId} session=${sessionId ?? '(new)'} engineSession=${engineSessionId ?? '?'}`)
+            return sessionNotFound()
+        }
         return Response.json({ error: `Engine error: ${engineRes.status} ${errBody}` }, { status: 502 })
     }
 

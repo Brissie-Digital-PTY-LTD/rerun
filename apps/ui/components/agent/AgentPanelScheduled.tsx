@@ -17,6 +17,9 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { MarkdownTextarea } from '@/components/ui/markdown-textarea'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
+import { useCanManageAgent } from '@/hooks/useBoxAccess'
+import { BOX_MANAGE_REASON } from '@/lib/board/box-access'
 import type { EngineRun, EngineSchedule } from '@/lib/engine/types'
 import { humanCron, scheduleSummary } from '@/lib/schedules/cron'
 import { outcomeKey, type TaskOutcome } from '@/lib/schedules/outcomes'
@@ -45,6 +48,7 @@ export function AgentPanelScheduled({ agentId, agentName, onOpenSession, focusSl
     const [outcomes, setOutcomes] = useState<Record<string, TaskOutcome>>({})
     const [loading, setLoading] = useState(true)
     const [view, setView] = useState<View>({ mode: 'list' })
+    const canManage = useCanManageAgent(agentId)
 
     // A routine opened from elsewhere lands on its editor, on the render that carries the request.
     const requestedFocus = focusSlug ?? null
@@ -110,9 +114,11 @@ export function AgentPanelScheduled({ agentId, agentName, onOpenSession, focusSl
     }
 
     const newButton = (
-        <Button size="sm" variant="outline" onClick={() => setView({ mode: 'create' })}>
-            <PlusIcon className="size-3.5 mr-1" /> New
-        </Button>
+        <TooltipDisabledReason reason={canManage ? undefined : BOX_MANAGE_REASON}>
+            <Button size="sm" variant="outline" disabled={!canManage} onClick={() => setView({ mode: 'create' })}>
+                <PlusIcon className="size-3.5 mr-1" /> New
+            </Button>
+        </TooltipDisabledReason>
     )
 
     return (
@@ -171,7 +177,7 @@ function localInputToIso(local: string): string {
 
 type ScheduleSelection = { mode: 'cron' | 'runAt'; cron?: string; runAtLocal?: string; timezone?: string }
 
-function SchedulePicker({ mode, cron, runAtLocal, onChange }: { mode: 'cron' | 'runAt'; cron: string; runAtLocal: string; timezone: string; onChange: (next: ScheduleSelection) => void }) {
+function SchedulePicker({ mode, cron, runAtLocal, disabled, onChange }: { mode: 'cron' | 'runAt'; cron: string; runAtLocal: string; timezone: string; disabled?: boolean; onChange: (next: ScheduleSelection) => void }) {
     const [open, setOpen] = useState(false)
     const [input, setInput] = useState('')
     const [busy, setBusy] = useState(false)
@@ -204,7 +210,7 @@ function SchedulePicker({ mode, cron, runAtLocal, onChange }: { mode: 'cron' | '
                 </div>
                 <Popover open={open} onOpenChange={setOpen}>
                     <PopoverTrigger asChild>
-                        <Button size="icon-sm" variant="outline">
+                        <Button size="icon-sm" variant="outline" disabled={disabled}>
                             <PencilIcon className="size-3.5" />
                         </Button>
                     </PopoverTrigger>
@@ -242,6 +248,8 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
     const { pick, setPick, availableGroups, providerFor, agentModel } = useRunModel(agentId)
     // Only the prompt is sealed: pausing a task or moving its hour stays available.
     const promptLocked = useTemplateContentLock(agentId) && isEdit
+    const canManage = useCanManageAgent(agentId)
+    const manageReason = canManage ? undefined : BOX_MANAGE_REASON
     const [loading, setLoading] = useState(isEdit)
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
@@ -349,7 +357,7 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
 
     return (
         <PanelEditorShell>
-            <PanelEditorHeader title={isEdit ? 'Edit task' : 'New task'} onBack={onBack}>
+            <PanelEditorHeader title={isEdit ? (canManage ? 'Edit task' : 'Task') : 'New task'} onBack={onBack}>
                 {isEdit && onShowHistory && (
                     <Button size="sm" variant="ghost" onClick={onShowHistory}>
                         <HistoryIcon className="size-3.5 mr-1" /> History
@@ -358,14 +366,15 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
             </PanelEditorHeader>
             <PanelEditorBody>
                 {error && <p className="text-xs text-destructive">{error}</p>}
-                <Input label="Name" helperText={isEdit && !canRename ? "Name can't be changed (it sets the slug)." : undefined} hideRequired value={name} onChange={e => setName(e.target.value)} disabled={isEdit && !canRename} maxLength={120} placeholder="Daily digest" className="h-8 text-sm" />
-                <Input label="Description" hideRequired value={description} onChange={e => setDescription(e.target.value)} placeholder="Morning summary" className="h-8 text-sm" />
+                <Input label="Name" helperText={isEdit && !canRename ? "Name can't be changed (it sets the slug)." : undefined} hideRequired value={name} onChange={e => setName(e.target.value)} disabled={!canManage || (isEdit && !canRename)} maxLength={120} placeholder="Daily digest" className="h-8 text-sm" />
+                <Input label="Description" hideRequired value={description} onChange={e => setDescription(e.target.value)} disabled={!canManage} placeholder="Morning summary" className="h-8 text-sm" />
 
                 <SchedulePicker
                     mode={scheduleMode}
                     cron={cron}
                     runAtLocal={runAtLocal}
                     timezone={timezone}
+                    disabled={!canManage}
                     onChange={next => {
                         setScheduleMode(next.mode)
                         if (next.mode === 'cron' && next.cron !== undefined) setCron(next.cron)
@@ -375,21 +384,21 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
                 />
 
                 <Field label="Timezone">
-                    <TimezoneCombobox value={timezone} onChange={setTimezone} placeholder="Europe/Paris" />
+                    <TimezoneCombobox value={timezone} onChange={setTimezone} placeholder="Europe/Paris" disabled={!canManage} />
                 </Field>
 
-                <RunModelField id="schedule-model" value={pick} onChange={setPick} availableGroups={availableGroups} agentModel={agentModel} helperText="The model this task runs under when it fires. Requires the provider's API key." />
+                <RunModelField id="schedule-model" value={pick} onChange={setPick} availableGroups={availableGroups} agentModel={agentModel} disabled={!canManage} helperText="The model this task runs under when it fires. Requires the provider's API key." />
 
                 {isEdit && (
                     <Field orientation="row" label="Enabled">
-                        <Switch checked={enabled} onCheckedChange={setEnabled} />
+                        <Switch checked={enabled} disabled={!canManage} onCheckedChange={setEnabled} />
                     </Field>
                 )}
 
                 {slug && <TaskNotifyField agentId={agentId} source="schedule" slug={slug} />}
 
                 <TemplateContentLock locked={promptLocked} subject="task prompts">
-                    <MarkdownTextarea label="Task prompt" dialogTitle="Edit the task prompt" helperText="The prompt the coworker runs when the task fires (a fresh session each time)." value={body} onChange={setBody} disabled={promptLocked} className="text-xs min-h-32 font-mono" placeholder="Summarize yesterday's notes and email me a digest." />
+                    <MarkdownTextarea label="Task prompt" dialogTitle="Edit the task prompt" helperText="The prompt the coworker runs when the task fires (a fresh session each time)." value={body} onChange={setBody} disabled={promptLocked || !canManage} className="text-xs min-h-32 font-mono" placeholder="Summarize yesterday's notes and email me a digest." />
                 </TemplateContentLock>
 
                 {isEdit && waitingForSetup && (
@@ -406,21 +415,28 @@ function ScheduleEditor({ agentId, agentName, slug, onDone, onBack, onShowHistor
                 )}
             </PanelEditorBody>
             <PanelEditorFooter>
-                {isEdit && <PanelDeleteButton
-                        label="Delete task"
-                        busy={deleting}
-                        onClick={handleDelete}
-                        confirmTitle={`Delete ${name || 'this task'}?`}
-                        confirmDescription="The task stops firing and its schedule is removed. Runs it already produced are kept."
-                    />}
+                {isEdit && (
+                    <TooltipDisabledReason reason={manageReason}>
+                        <PanelDeleteButton
+                            label="Delete task"
+                            busy={deleting}
+                            disabled={!canManage}
+                            onClick={handleDelete}
+                            confirmTitle={`Delete ${name || 'this task'}?`}
+                            confirmDescription="The task stops firing and its schedule is removed. Runs it already produced are kept."
+                        />
+                    </TooltipDisabledReason>
+                )}
                 {isEdit && (
                     <Button size="sm" variant="outline" className="flex-1" loading={testing} onClick={handleTest} disabled={saving || waitingForSetup}>
                         Test Run
                     </Button>
                 )}
-                <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={testing || !canSave}>
-                    {isEdit ? 'Save changes' : 'Create task'}
-                </Button>
+                <TooltipDisabledReason reason={manageReason} className="flex-1">
+                    <Button size="sm" className="flex-1" loading={saving} onClick={handleSave} disabled={testing || !canSave || !canManage}>
+                        {isEdit ? 'Save changes' : 'Create task'}
+                    </Button>
+                </TooltipDisabledReason>
             </PanelEditorFooter>
         </PanelEditorShell>
     )

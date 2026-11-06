@@ -2,8 +2,8 @@ import 'server-only'
 import type { WorkspaceContext } from '@/app/api/_auth/ownership'
 import { assertModelEntitled } from '@/app/api/_services/engine-plan.service'
 import { ensureWorkspaceEngine, findWorkspaceEngine, getWorkspaceConnection } from '@/app/api/_services/workspace-engine.service'
-import { isPremiumModelEntitled } from '@/cloud/billing'
-import { RERUN_CLOUD } from '@/cloud/edition'
+import { isPremiumModelEntitled } from '@rerun/cloud/billing'
+import { RERUN_CLOUD } from '@rerun/cloud/edition'
 import {
     KEY_PROVIDERS,
     keyProviders,

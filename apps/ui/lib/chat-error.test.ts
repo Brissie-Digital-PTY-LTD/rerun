@@ -291,3 +291,16 @@ describe('installInFlightOf', () => {
         expect(installInFlightOf('Failed to fetch')).toBeNull()
     })
 })
+
+describe('a conversation the coworker cannot reach', () => {
+    it('is classified from the hub code and from the engine sentence', () => {
+        expect(classifyChatError(unwrapChatError('{"error":"session_not_found"}'))).toBe('session_gone')
+        expect(classifyChatError('Engine error: 404 {"error":"session not found for this agent"}')).toBe('session_gone')
+    })
+
+    it('says what happened instead of quoting the engine', () => {
+        const message = unwrapChatError('{"error":"session_not_found"}')
+        expect(chatErrorTitle('session_gone', message)).toBe('Conversation unavailable')
+        expect(friendlyError(message)).toMatch(/Start a new conversation/)
+    })
+})

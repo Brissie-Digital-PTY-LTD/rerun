@@ -8,7 +8,7 @@ import { agentConfigSchema, mcpServerSchema, verbositySchema, BRIDGE_SERVER_NAME
 import { reloadAgent } from '../../agents/registry.js'
 import { withAgentLock } from '../../agents/lock.js'
 import { writeAgentConfig, mergeMcpServers, ReservedMcpServerNameError, InvalidMcpServerNameError } from '../../agents/config-write.js'
-import { probeMcp } from '../mcp.js'
+import { mcpToolNameFor, probeMcp } from '../mcp.js'
 import { agentMcpSpawn } from '../mcp-pool.js'
 import { describeConnectorState } from '../mcp-index.js'
 import { connectorServerStates } from '../../services/registry.js'
@@ -37,6 +37,7 @@ function serverCarriesCredential(server: McpServer): boolean {
 
 export function selfTools(ctx: RunContext): ToolSet {
     const id = ctx.agent.id
+    const modelToolNames = (serverName: string, toolNames: string[]) => toolNames.map(toolName => mcpToolNameFor(ctx.provider, serverName, toolName)).join(', ')
     const si = ctx.agent.config.selfImprovement
     const tools: ToolSet = {}
     if (si.allowSoulEdit) {
@@ -119,7 +120,7 @@ export function selfTools(ctx: RunContext): ToolSet {
                 if (needsLogin) {
                     return `Registered MCP server "${server.name}" (${probe.transport}), but it requires sign-in. Call request_mcp_sign_in with name "${server.name}" now, in the same message, and end your turn: the user gets a Connect card and you continue from their reply. Do not describe the sign-in steps yourself. Only if they skip it or say they cannot sign in, call mcp_login with name "${server.name}".`
                 }
-                return `Connected and registered MCP server "${server.name}" (${probe.transport}). ${probe.toolNames.length} tools now available: ${probe.toolNames.join(', ')}. They are active from your next message onward, no restart needed.`
+                return `Connected and registered MCP server "${server.name}" (${probe.transport}). ${probe.toolNames.length} tools now available: ${modelToolNames(server.name, probe.toolNames)}. They are active from your next message onward, no restart needed.`
             },
         }),
         mcp_login: tool({
@@ -157,7 +158,7 @@ export function selfTools(ctx: RunContext): ToolSet {
                     if (!server) return `Signed in to "${name}", but it is no longer registered.`
                     const probe = await probeMcp(id, server, ctx.agent.env, { spawn: agentMcpSpawn(ctx.agent) })
                     return probe.ok
-                        ? `Signed in to "${name}". ${probe.toolNames.length} tools now available: ${probe.toolNames.join(', ')}. Active from your next message onward.`
+                        ? `Signed in to "${name}". ${probe.toolNames.length} tools now available: ${modelToolNames(name, probe.toolNames)}. Active from your next message onward.`
                         : `Signed in to "${name}", but the connection still failed: ${probe.error}`
                 } catch (e) {
                     return `Sign-in not finished for "${name}": ${(e as Error).message}`
@@ -179,7 +180,7 @@ export function selfTools(ctx: RunContext): ToolSet {
                         }
                         const probe = await probeMcp(id, server, ctx.agent.env, { spawn: agentMcpSpawn(ctx.agent) })
                         return probe.ok
-                            ? `connected ${server.name} (${probe.transport}): ${probe.toolNames.length} tools — ${probe.toolNames.join(', ')}`
+                            ? `connected ${server.name} (${probe.transport}): ${probe.toolNames.length} tools — ${modelToolNames(server.name, probe.toolNames)}`
                             : `failed ${server.name} (${probe.transport}): ${probe.error}`
                     }),
                 )

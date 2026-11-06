@@ -8,7 +8,7 @@ import { TemplateContentSection } from '@/components/templates/authoring/Templat
 import { TemplateFaqSection } from '@/components/templates/authoring/TemplateFaqSection'
 import { TemplateMediaSection } from '@/components/templates/authoring/TemplateMediaSection'
 import { TemplateMetaSection } from '@/components/templates/authoring/TemplateMetaSection'
-import { TemplatePricingSection } from '@/cloud/marketplace.client'
+import { TemplatePricingSection } from '@rerun/cloud/marketplace.client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { templateFormResolver, type TemplateFormValues } from '@/lib/templates/edit-schema'
 import { templateAuthorSchema, templateEditBlockReason, type ExpertTemplateDetail, type TemplateAuthorInput } from '@/lib/templates/expert'

@@ -33,7 +33,7 @@ describe('one live run per session', () => {
     // abort controller. If the two ever drift apart, a finished run keeps its session locked forever.
     it('frees the session when the run unregisters its abort controller', () => {
         expect(claimSession('sess-b', 'run-3')).toBeNull()
-        registerRunAbort('run-3')
+        registerRunAbort('run-3', 'agent-1')
         unregisterRunAbort('run-3')
         expect(claimSession('sess-b', 'run-4')).toBeNull()
         releaseSession('run-4')

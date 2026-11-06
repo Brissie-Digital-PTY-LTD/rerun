@@ -74,7 +74,8 @@ const desktopInstalled = (): boolean => ['openbox', 'x11vnc', 'xdotool', 'tint2'
 
 const desktopInstallable = (): boolean => process.platform === 'linux' && hasCommand('apt-get')
 
-// Kept in step with the list in scripts/install.sh, which only ever runs when a box is born.
+// Kept in step with the list in the installer of the boxes (cloud/infra/engine/install.sh), which only
+// ever runs when a box is born.
 export function installDesktop(): void {
     if (!desktopInstallable()) return
     if (desktopInstalled()) {

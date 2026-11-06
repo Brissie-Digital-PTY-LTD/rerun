@@ -11,7 +11,7 @@ const { migrate } = await import('../../db/migrate.js')
 const { insertAgentIndex, listAgentIndex } = await import('../../db/repos/agents.js')
 const { createSession, getSession } = await import('../../db/repos/sessions.js')
 
-type TracedEvent = { event: string; agentId?: string; sessionId?: string | null; title?: string | null; source?: string | null; originAgentId?: string | null }
+type TracedEvent = { event: string; agentId?: string; sessionId?: string | null; title?: string | null; source?: string | null; originAgentId?: string | null; trigger?: unknown }
 const traced: TracedEvent[] = []
 
 vi.doMock('../../runtime/notify.js', () => ({
@@ -22,8 +22,8 @@ vi.doMock('../../runtime/notify.js', () => ({
 }))
 
 vi.doMock('../../runtime/headless-run.js', () => ({
-    startHeadlessRun: async (_callee: unknown, sessionId: string) => {
-        traced.push({ event: 'run.started', sessionId })
+    startHeadlessRun: async (_callee: unknown, sessionId: string, _prompt: string, _override: unknown, trigger: unknown) => {
+        traced.push({ event: 'run.started', sessionId, trigger })
         return { runId: 'run-1', result: { finishReason: Promise.resolve('stop'), fullStream: (async function* () {})() } }
     },
 }))
@@ -32,7 +32,7 @@ vi.doMock('../../agents/registry.js', () => ({
     getAgent: async (id: string) => ({ id, config: { name: 'Bob', enabled: true, tools: { callAgent: true }, selfImprovement: { enabled: true } } }),
 }))
 
-const { resolveTargetAgent, callAgentTools } = await import('./call-agent.js')
+const { resolveTargetAgent, callAgentTools, callTargetsOf } = await import('./call-agent.js')
 const { getSystemDb } = await import('../../db/systemDb.js')
 
 const agents = () => listAgentIndex()
@@ -67,6 +67,46 @@ describe('resolveTargetAgent', () => {
     it('rejects when there are no other agents', () => {
         const result = resolveTargetAgent('Bob', [])
         expect('error' in result && result.error).toContain('no other coworkers')
+    })
+})
+
+describe('callTargetsOf', () => {
+    it('offers every coworker but the caller and the delegates when the hub names nobody', async () => {
+        expect(callTargetsOf(await agents(), 'agent-a').map(a => a.id)).toEqual(['agent-b', 'agent-c'])
+    })
+
+    it('keeps only the coworkers the person behind the run reaches', async () => {
+        expect(callTargetsOf(await agents(), 'agent-a', ['agent-c', 'agent-d']).map(a => a.id)).toEqual(['agent-c'])
+    })
+
+    it('offers nobody to someone who reaches no other coworker', async () => {
+        expect(callTargetsOf(await agents(), 'agent-a', [])).toEqual([])
+    })
+})
+
+describe('call_agent for someone kept out of a Box', () => {
+    const restricted = async () => ({ agent: { id: 'agent-a', config: { name: 'Alice' } }, sessionId: 'session-1', callTargets: callTargetsOf(await agents(), 'agent-a', ['agent-c']), callableAgentIds: ['agent-c'] }) as unknown as RunContext
+
+    it('never names a coworker they cannot reach', async () => {
+        const description = (callAgentTools(await restricted()).call_agent as { description?: string }).description ?? ''
+        expect(description).toContain('Bob (id: agent-c)')
+        expect(description).not.toContain('agent-b')
+    })
+
+    it('refuses to call it, by id or by name, without naming it back', async () => {
+        const tools = callAgentTools(await restricted())
+        for (const ref of ['agent-b', 'Agent B']) {
+            const answer = (await (tools.call_agent as any).execute({ agent: ref, message: 'what is in your files?', wait: true }, {} as any)) as string
+            expect(answer).toContain('not found')
+            expect(answer).not.toContain('(id: agent-b)')
+        }
+    })
+
+    it('hands the same reach down to the coworker it calls', async () => {
+        traced.length = 0
+        const tools = callAgentTools(await restricted())
+        await (tools.call_agent as any).execute({ agent: 'agent-c', message: 'hi', wait: false }, {} as any)
+        expect(traced.find(e => e.event === 'run.started')?.trigger).toEqual({ source: 'chat', callableAgentIds: ['agent-c'] })
     })
 })
 

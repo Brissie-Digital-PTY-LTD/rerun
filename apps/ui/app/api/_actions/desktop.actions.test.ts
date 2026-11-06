@@ -1,10 +1,12 @@
-import { assertAgentInWorkspace, requireWorkspaceContext } from '@/app/api/_auth/ownership'
+import { assertAgentInWorkspace } from '@/app/api/_auth/access'
+import { requireWorkspaceContext } from '@/app/api/_auth/ownership'
 import { desktopSocketUrl, resolveWorkspaceDesktop } from '@/app/api/_services/desktop.service'
 import * as engine from '@/lib/engine/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { finishTakeoverAction, openDesktopAction, startTakeoverAction } from './desktop.actions'
 
-vi.mock('@/app/api/_auth/ownership', () => ({ assertAgentInWorkspace: vi.fn(), requireWorkspaceContext: vi.fn() }))
+vi.mock('@/app/api/_auth/access', async importOriginal => ({ ...(await importOriginal<typeof import('@/app/api/_auth/access')>()), assertAgentInWorkspace: vi.fn() }))
+vi.mock('@/app/api/_auth/ownership', () => ({ requireWorkspaceContext: vi.fn() }))
 vi.mock('@/app/api/_services/desktop.service', () => ({
     DesktopUnavailableError: class extends Error {},
     desktopSocketUrl: vi.fn(),
@@ -22,6 +24,16 @@ describe('openDesktopAction', () => {
         vi.mocked(assertAgentInWorkspace).mockResolvedValue({ workspace_id: 7, space_id: null, engine_agent_id: 'engine-agent' } as never)
         vi.mocked(resolveWorkspaceDesktop).mockResolvedValue({ conn, socketBase: 'wss://host.test/box/10/desktop/ws' })
         vi.mocked(desktopSocketUrl).mockReturnValue('wss://host.test/box/10/desktop/ws?ticket=t')
+    })
+
+    // The web shows the message; the v1 route reads the code back into the 404 or 403 a thrown refusal gives.
+    it('folds a refusal into the result with the code the route turns back into a status', async () => {
+        const { AuthorizationError } = await import('@/app/api/_auth/errors')
+        const { AccessDeniedError } = await import('@/app/api/_auth/access')
+        vi.mocked(assertAgentInWorkspace).mockRejectedValueOnce(new AuthorizationError('Coworker not found'))
+        expect(await openDesktopAction('agent-1', 'watch')).toEqual({ ok: false, error: 'Coworker not found', code: 'not_found' })
+        vi.mocked(assertAgentInWorkspace).mockRejectedValueOnce(new AccessDeniedError())
+        expect(await startTakeoverAction('agent-1')).toMatchObject({ ok: false, code: 'forbidden' })
     })
 
     it('starts the screen on the viewer time zone and says whether it draws its own dock', async () => {

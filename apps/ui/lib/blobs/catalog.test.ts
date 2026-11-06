@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/cloud/illustrations', () => ({ ILLUSTRATION_ENTRIES: [] }))
+vi.mock('@rerun/cloud/illustrations', () => ({ ILLUSTRATION_ENTRIES: [] }))
 
 const { BLOB_ILLUSTRATIONS, getBlobByFile, randomBlob } = await import('./catalog')
 

@@ -66,8 +66,8 @@ CI runs the same, plus the migrations on an empty database and both Docker image
 `CLAUDE.md` holds the conventions of the codebase (and is what coding agents read): Supabase access
 through the typed helpers, responsive from the first version, migrations of the engine data-dir.
 
-`apps/ui/cloud/` is the seam where Rerun Cloud plugs in billing, paid apps, emails and its machine
-pool. In this repository it holds the self-hosted behaviour. Pull requests that change what it
+`@rerun/cloud/*` is the seam where Rerun Cloud plugs in billing, paid apps, emails and its machine
+pool. In this repository it resolves to `apps/ui/cloud-oss/`, the self-hosted behaviour. Pull requests that change what it
 exports are unlikely to be merged.
 
 ## Pull requests
@@ -80,5 +80,5 @@ Rerun is developed in a private repository that Rerun Cloud deploys from, and th
 published from it at each release. A merged pull request is applied there with its author kept,
 and comes back here with the next release, with credit in the release notes.
 
-We will not take: anything that touches `apps/ui/cloud/`, a dependency with a license incompatible
+We will not take: anything that changes what `apps/ui/cloud-oss/` exports, a dependency with a license incompatible
 with the AGPL, or a feature that only makes sense for one deployment.

@@ -13,12 +13,13 @@ import { Field } from '@/components/ui/field'
 import { FileDropzone } from '@/components/ui/file-dropzone'
 import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { TooltipDisabledReason } from '@/components/ui/tooltip'
 import { BLOB_ILLUSTRATIONS, getBlobByFile } from '@/lib/blobs/catalog'
 import { CheckIcon, GlobeIcon, Loader2Icon, UploadIcon } from '@/lib/icons'
 import { WORKSPACE_NAME_MAX } from '@/lib/naming/workspace-name'
 import { cn } from '@/lib/utils'
 import { LOGO_ACCEPT, logoLinkImageUrl, NO_LOGO_FOUND, readLogoLink, type LogoLink } from '@/lib/workspace/logo-input'
-import { useSession } from '@/supabase/session/SessionProvider'
+import { useIsWorkspaceAdmin, useSession } from '@/supabase/session/SessionProvider'
 import { ScrollFade } from '@rerun/ui/primitives'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -36,8 +37,11 @@ type LogoDraft = { kind: 'current' } | { kind: 'blob'; file: string } | { kind: 
 
 const VISIBLE_ILLUSTRATIONS = 10
 
+export const WORKSPACE_SETTINGS_ADMIN_ONLY = 'Only an admin can change the workspace settings'
+
 export function WorkspaceSettingsDialog({ open, onOpenChange, fallbackIconUrl }: { open: boolean; onOpenChange: (open: boolean) => void; fallbackIconUrl?: string }) {
     const { workspace, refreshWorkspace } = useSession()
+    const isAdmin = useIsWorkspaceAdmin()
     const publishedAccess = usePublishedAccessEnabled()
     const policy = usePublishPolicyDraft(open && publishedAccess && !!workspace && !workspace.is_sandbox)
     if (!workspace) return null
@@ -59,13 +63,13 @@ export function WorkspaceSettingsDialog({ open, onOpenChange, fallbackIconUrl }:
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-                {open && <WorkspaceSettingsForm workspace={workspace} fallbackIconUrl={fallbackIconUrl} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} />}
+                {open && <WorkspaceSettingsForm workspace={workspace} fallbackIconUrl={fallbackIconUrl} onSave={save} onCancel={() => onOpenChange(false)} extra={policyField} disabledReason={isAdmin ? undefined : WORKSPACE_SETTINGS_ADMIN_ONLY} />}
             </DialogContent>
         </Dialog>
     )
 }
 
-export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCancel, extra }: { workspace: { name: string | null; icon_url: string | null }; fallbackIconUrl?: string; onSave: (formData: FormData) => Promise<ActionResult>; onCancel: () => void; extra?: ReactNode }) {
+export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCancel, extra, disabledReason }: { workspace: { name: string | null; icon_url: string | null }; fallbackIconUrl?: string; onSave: (formData: FormData) => Promise<ActionResult>; onCancel: () => void; extra?: ReactNode; disabledReason?: string }) {
     const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { name: workspace.name ?? '' } })
     const {
         formState: { isSubmitting },
@@ -108,6 +112,7 @@ export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCa
     }
 
     const onSubmit = form.handleSubmit(async values => {
+        if (disabledReason) return
         const formData = new FormData()
         formData.set('name', values.name)
         if (logo.kind === 'blob') formData.set('iconFile', logo.file)
@@ -182,10 +187,12 @@ export function WorkspaceSettingsForm({ workspace, fallbackIconUrl, onSave, onCa
                     <Button type="button" variant="outline" onClick={onCancel}>
                         Cancel
                     </Button>
-                    <Button type="submit" disabled={isSubmitting || !name.trim()}>
-                        {isSubmitting && <Loader2Icon className="animate-spin" />}
-                        {isSubmitting ? 'Saving' : 'Save'}
-                    </Button>
+                    <TooltipDisabledReason reason={disabledReason}>
+                        <Button type="submit" disabled={isSubmitting || !name.trim() || !!disabledReason}>
+                            {isSubmitting && <Loader2Icon className="animate-spin" />}
+                            {isSubmitting ? 'Saving' : 'Save'}
+                        </Button>
+                    </TooltipDisabledReason>
                 </DialogFooter>
             </form>
         </Form>

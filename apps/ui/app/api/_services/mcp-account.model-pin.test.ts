@@ -1,3 +1,4 @@
+import { workspaceActor } from '@/app/api/_auth/access'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createSchedule, getAgent, listConnections, patchAgent, setBoxDefault, updateSchedule, updateTrigger } from '@/lib/engine/client'
@@ -41,7 +42,7 @@ describe('dispatchAccountTool, what a coworker runs on', () => {
     })
 
     it('lists the connections with the one that holds the default', async () => {
-        await expect(dispatchAccountTool(WORKSPACE_ID, 'list_ai_connections', {})).resolves.toEqual({
+        await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'list_ai_connections', {})).resolves.toEqual({
             default: { connectionId: 'claude-rerun', model: 'claude-opus-5-5', connectionName: 'Rerun (person@example.com)' },
             connections: [
                 { id: 'codex-clem', name: 'Codex Clem', provider: 'codex', models: ['gpt-6-sol'], connected: true, isDefault: false },
@@ -54,7 +55,7 @@ describe('dispatchAccountTool, what a coworker runs on', () => {
     it('moves a coworker pinned to Codex onto the Claude account it names, and reports what it runs on', async () => {
         vi.mocked(patchAgent).mockResolvedValue(detail('claude-rerun', 'claude-opus-5-5'))
 
-        await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', connectionId: 'claude-rerun', model: 'claude-opus-5-5' })).resolves.toMatchObject({
+        await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', connectionId: 'claude-rerun', model: 'claude-opus-5-5' })).resolves.toMatchObject({
             runsOn: { connectionId: 'claude-rerun', connectionName: 'Rerun (person@example.com)', provider: 'claude', model: 'claude-opus-5-5', followsWorkspaceDefault: false },
         })
 
@@ -62,7 +63,7 @@ describe('dispatchAccountTool, what a coworker runs on', () => {
     })
 
     it('writes nothing when the provider alone could mean two accounts', async () => {
-        await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', name: 'Renamed', provider: 'claude', model: 'claude-opus-5-5' })).rejects.toThrow(/several claude connections/)
+        await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', name: 'Renamed', provider: 'claude', model: 'claude-opus-5-5' })).rejects.toThrow(/several claude connections/)
 
         expect(patchAgent).not.toHaveBeenCalled()
     })
@@ -70,7 +71,7 @@ describe('dispatchAccountTool, what a coworker runs on', () => {
     it('puts a coworker back on the workspace default by clearing its whole pin', async () => {
         vi.mocked(patchAgent).mockResolvedValue(detail('claude-rerun', null))
 
-        await expect(dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', model: null })).resolves.toMatchObject({ runsOn: { followsWorkspaceDefault: true } })
+        await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', model: null })).resolves.toMatchObject({ runsOn: { followsWorkspaceDefault: true } })
 
         expect(patchAgent).toHaveBeenCalledWith(CONN, 'engine-agent', { connectionId: null, provider: null, model: null })
     })
@@ -79,7 +80,7 @@ describe('dispatchAccountTool, what a coworker runs on', () => {
         vi.mocked(getAgent).mockResolvedValue(detail('claude-rerun', 'claude-opus-5-5'))
         vi.mocked(patchAgent).mockResolvedValue(detail('claude-rerun', 'claude-opus-5-5'))
 
-        await dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', model: 'claude-opus-5-5' })
+        await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', model: 'claude-opus-5-5' })
 
         expect(patchAgent).toHaveBeenCalledWith(CONN, 'engine-agent', expect.objectContaining({ connectionId: 'claude-rerun' }))
     })
@@ -87,14 +88,14 @@ describe('dispatchAccountTool, what a coworker runs on', () => {
     it('leaves the pin out of a patch that names none of it', async () => {
         vi.mocked(patchAgent).mockResolvedValue(detail('claude-rerun', null))
 
-        await dispatchAccountTool(WORKSPACE_ID, 'update_agent', { agentId: 'agent-own', verbosity: 'concise' })
+        await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'update_agent', { agentId: 'agent-own', verbosity: 'concise' })
 
         expect(listConnections).not.toHaveBeenCalled()
         expect(patchAgent).toHaveBeenCalledWith(CONN, 'engine-agent', { verbosity: 'concise' })
     })
 
     it('sets the workspace default on a pair the workspace really holds', async () => {
-        await expect(dispatchAccountTool(WORKSPACE_ID, 'set_default_model', { connectionId: 'claude-clem', model: 'claude-opus-5-5' })).resolves.toEqual({
+        await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'set_default_model', { connectionId: 'claude-clem', model: 'claude-opus-5-5' })).resolves.toEqual({
             default: { connectionId: 'claude-clem', connectionName: 'Claude Clem', provider: 'claude', model: 'claude-opus-5-5' },
         })
 
@@ -102,31 +103,31 @@ describe('dispatchAccountTool, what a coworker runs on', () => {
     })
 
     it('refuses a default the connection cannot serve', async () => {
-        await expect(dispatchAccountTool(WORKSPACE_ID, 'set_default_model', { connectionId: 'codex-clem', model: 'claude-opus-5-5' })).rejects.toThrow(/does not serve/)
+        await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'set_default_model', { connectionId: 'codex-clem', model: 'claude-opus-5-5' })).rejects.toThrow(/does not serve/)
 
         expect(setBoxDefault).not.toHaveBeenCalled()
     })
 
     it('checks the plan before pinning a model, whatever the tool', async () => {
         vi.mocked(assertModelEntitled).mockRejectedValueOnce(new Error('Opus 5.5 is available with a paid plan.'))
-        await expect(dispatchAccountTool(WORKSPACE_ID, 'set_default_model', { connectionId: 'claude-clem', model: 'claude-opus-5-5' })).rejects.toThrow(/paid plan/)
+        await expect(dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'set_default_model', { connectionId: 'claude-clem', model: 'claude-opus-5-5' })).rejects.toThrow(/paid plan/)
 
         expect(assertModelEntitled).toHaveBeenCalledWith('claude-opus-5-5', WORKSPACE_ID)
         expect(setBoxDefault).not.toHaveBeenCalled()
     })
 
     it('gives a scheduled task a model of its own, and takes it back on null', async () => {
-        await dispatchAccountTool(WORKSPACE_ID, 'upsert_schedule', { agentId: 'agent-own', name: 'Daily', body: 'Go', cron: '0 9 * * *', connectionId: 'claude-rerun', model: 'claude-opus-5-5' })
+        await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_schedule', { agentId: 'agent-own', name: 'Daily', body: 'Go', cron: '0 9 * * *', connectionId: 'claude-rerun', model: 'claude-opus-5-5' })
         expect(createSchedule).toHaveBeenCalledWith(CONN, 'engine-agent', expect.objectContaining({ connectionId: 'claude-rerun', provider: 'claude', model: 'claude-opus-5-5' }))
 
-        await dispatchAccountTool(WORKSPACE_ID, 'upsert_schedule', { agentId: 'agent-own', slug: 'daily', model: null })
+        await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_schedule', { agentId: 'agent-own', slug: 'daily', model: null })
         expect(updateSchedule).toHaveBeenCalledWith(CONN, 'engine-agent', 'daily', expect.objectContaining({ connectionId: null, provider: null, model: null }))
     })
 
     it('gives a trigger a model of its own', async () => {
         vi.mocked(updateTrigger).mockResolvedValue({ slug: 'hook', token: 't' } as never)
 
-        await dispatchAccountTool(WORKSPACE_ID, 'upsert_trigger', { agentId: 'agent-own', slug: 'hook', connectionId: 'codex-clem', model: 'gpt-6-sol' })
+        await dispatchAccountTool(workspaceActor(WORKSPACE_ID), 'upsert_trigger', { agentId: 'agent-own', slug: 'hook', connectionId: 'codex-clem', model: 'gpt-6-sol' })
 
         expect(updateTrigger).toHaveBeenCalledWith(CONN, 'engine-agent', 'hook', expect.objectContaining({ connectionId: 'codex-clem', provider: 'codex', model: 'gpt-6-sol' }))
     })

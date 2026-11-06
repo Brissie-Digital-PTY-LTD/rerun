@@ -17,7 +17,7 @@ import { scheduleRoutes } from './routes/schedules.js'
 import { triggerRoutes } from './routes/triggers.js'
 import { runRoutes, usageRoutes } from './routes/runs.js'
 import { statsRoutes } from './routes/stats.js'
-import { mountCloudRoutes } from '../cloud/index.js'
+import { rewindRoutes } from './routes/rewind.js'
 import { toolRoutes } from './routes/tools.js'
 import { updateRoutes } from './routes/update.js'
 import { doctorRoutes } from './routes/doctor.js'
@@ -72,7 +72,7 @@ export function createServer(): Hono {
     api.route('/agents/:id/runs', runRoutes)
     api.route('/agents/:id/usage', usageRoutes)
     api.route('/agents/:id/stats', statsRoutes)
-    mountCloudRoutes(api)
+    api.route('/agents/:id/rewind', rewindRoutes)
     api.route(
         '/agents/:id/files',
         createFilesRouter(c => {

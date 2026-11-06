@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hashApiKey } from '@/lib/mcp/api-keys'
 import { fakeSupabase, writeMethodOf, type FakeSupabase, type SupabaseCall } from '@/test/supabase-fake'
-vi.mock('@/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
+vi.mock('@rerun/cloud/billing', async importOriginal => ({ ...(await importOriginal<object>()), ...(await import('@/test/cloud-fakes')).CLOUD_ENTITLEMENTS }))
 
 const mocks = vi.hoisted(() => ({ getServerSession: vi.fn() }))
 
@@ -15,8 +15,8 @@ const { createApiKeyAction, revokeApiKeyAction } = await import('./api-keys.acti
 
 const WORKSPACE_ID = 7
 
-function database(resolve: (table: string, calls: readonly SupabaseCall[]) => { data?: unknown; count?: number } | undefined = () => undefined): FakeSupabase {
-    const db = fakeSupabase((table, calls) => (table === 'workspace_members' ? { data: { user_id: 'user-1' } } : resolve(table, calls)))
+function database(resolve: (table: string, calls: readonly SupabaseCall[]) => { data?: unknown; count?: number } | undefined = () => undefined, role: 'admin' | 'member' = 'admin'): FakeSupabase {
+    const db = fakeSupabase((table, calls) => (table === 'workspace_members' ? { data: { user_id: 'user-1', role } } : resolve(table, calls)))
     vi.mocked(createServiceRoleClient).mockReturnValue(db.client)
     return db
 }
@@ -36,6 +36,13 @@ beforeEach(() => {
 })
 
 describe('createApiKeyAction', () => {
+    it('refuses a member who is not an admin', async () => {
+        const db = database(() => ({ count: 0 }), 'member')
+
+        await expect(createApiKeyAction('CI')).resolves.toEqual({ ok: false, error: 'Only an admin can manage API keys' })
+        expect(db.writes('api_keys')).toHaveLength(0)
+    })
+
     it('refuses a workspace whose subscription is over', async () => {
         signedIn({ subscription_status: 'canceled', is_sandbox: false })
         const db = database()
@@ -86,7 +93,7 @@ describe('createApiKeyAction', () => {
         if (!result.ok) throw new Error(result.error)
 
         const [write] = db.writes('api_keys')
-        expect(write.payload).toEqual({ workspace_id: WORKSPACE_ID, name: 'CI', key_prefix: result.key.slice(0, 12), key_hash: hashApiKey(result.key), created_by: 'me@acme.test' })
+        expect(write.payload).toEqual({ workspace_id: WORKSPACE_ID, name: 'CI', key_prefix: result.key.slice(0, 12), key_hash: hashApiKey(result.key), created_by: 'me@acme.test', created_by_user_id: 'user-1' })
         expect(JSON.stringify(write.payload)).not.toContain(result.key)
     })
 
@@ -99,6 +106,13 @@ describe('createApiKeyAction', () => {
 })
 
 describe('revokeApiKeyAction', () => {
+    it('refuses a member who is not an admin', async () => {
+        const db = database(() => ({ data: { workspace_id: WORKSPACE_ID } }), 'member')
+
+        await expect(revokeApiKeyAction('key-1')).resolves.toEqual({ ok: false, error: 'Only an admin can manage API keys' })
+        expect(db.writes('api_keys')).toHaveLength(0)
+    })
+
     it('answers Key not found for a key of another workspace and writes nothing', async () => {
         const db = database(table => (table === 'api_keys' ? { data: { workspace_id: 99 } } : undefined))
 

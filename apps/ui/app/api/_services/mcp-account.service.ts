@@ -1,4 +1,5 @@
 import { connectorSkillReadOnlyError, isSetupAnswered, providerSchema, triggerMethodSchema, verbositySchema } from '@rerun/contracts'
+import { AccessDeniedError, assertAgentInWorkspace, callableEngineAgentIds, isAdminActor, keepVisible, manageableSpaceIds, spaceAccessMap, visibleAgentIds, visibleSpaceIds, type Actor } from '@/app/api/_auth/access'
 import type { Database } from '@/app/api/database.types'
 import {
     chat as engineChat,
@@ -246,11 +247,13 @@ async function waitForRun(conn: EngineConnection, engineAgentId: string, runId: 
     return run
 }
 
-async function resolveSpaceId(workspaceId: number, requested?: string): Promise<string> {
+// Only the Boxes the caller manages are candidates: a coworker is created where it can be set up.
+async function resolveSpaceId(actor: Actor, requested?: string): Promise<string> {
     const supabase = createServiceRoleClient()
-    const { data: spaces } = await selectMany(supabase, 'spaces', ['id', 'name'] as const, { workspace_id: workspaceId })
+    const [{ data: all }, manageable] = await Promise.all([selectMany(supabase, 'spaces', ['id', 'name'] as const, { workspace_id: actor.workspaceId }), manageableSpaceIds(actor)])
+    const spaces = keepVisible(all ?? [], manageable, space => space.id)
 
-    if (!spaces || spaces.length === 0) throw new Error('This account has no Box yet — create one in the Rerun app first.')
+    if (spaces.length === 0) throw new Error(all?.length ? 'You manage no Box in this workspace. Create one first, or ask an admin to make you a manager of one.' : 'This account has no Box yet — create one in the Rerun app first.')
     if (requested) {
         if (!spaces.some(space => space.id === requested)) throw new Error('Box not found')
         return requested
@@ -273,14 +276,6 @@ function connectorView({ key, slug, name, label, status }: InstalledService) {
     return { key, slug, name, label, status }
 }
 
-// Lighter gate than resolveAgentTarget for the paths that don't talk to the engine: an agent
-// whose engine side is broken must still be deletable.
-async function assertAgentOwned(agentId: string, workspaceId: number): Promise<void> {
-    const supabase = createServiceRoleClient()
-    const { data } = await selectMaybeSingle(supabase, 'agents', ['workspace_id'] as const, { id: agentId })
-    if (!data || data.workspace_id !== workspaceId) throw new Error('Coworker not found')
-}
-
 async function listWorkspaceAgents(workspaceId: number, spaceId?: string) {
     const supabase = createServiceRoleClient()
     const { data } = await selectMany(
@@ -293,38 +288,42 @@ async function listWorkspaceAgents(workspaceId: number, spaceId?: string) {
     return data ?? []
 }
 
-// `actorUserId` is the member behind the call when there is one (an API key's creator), never the
-// foreman, which speaks for the workspace.
-export async function dispatchAccountTool(workspaceId: number, name: string, args: Record<string, unknown>, { actorUserId = null }: { actorUserId?: string | null } = {}): Promise<unknown> {
+// `actor` is whose access the call runs with: the workspace for an API key, the member a foreman
+// turn speaks for. `actorUserId` is the member recorded as the author of what the call starts (an
+// API key's creator, the foreman's member).
+export async function dispatchAccountTool(actor: Actor, name: string, args: Record<string, unknown>, { actorUserId = null }: { actorUserId?: string | null } = {}): Promise<unknown> {
+    const workspaceId = actor.workspaceId
     // Every tool that takes a `model` pins it, on a coworker, a scheduled task, a trigger or the
     // workspace default, so the plan is checked once for all of them.
     if (typeof args.model === 'string') await assertModelEntitled(args.model, workspaceId)
     switch (name) {
         case 'list_spaces': {
             const supabase = createServiceRoleClient()
-            const { data: spaces } = await selectMany(supabase, 'spaces', ['id', 'name', 'created_at'] as const, { workspace_id: workspaceId })
-            const agents = await listWorkspaceAgents(workspaceId)
+            const [{ data: spaces }, agents, visible] = await Promise.all([selectMany(supabase, 'spaces', ['id', 'name', 'created_at'] as const, { workspace_id: workspaceId }), listWorkspaceAgents(workspaceId), spaceAccessMap(actor)])
             return {
-                spaces: (spaces ?? []).map(space => ({
+                spaces: (spaces ?? []).filter(space => (visible.get(space.id) ?? 'none') !== 'none').map(space => ({
                     id: space.id,
                     name: space.name ?? 'Box',
                     agentCount: agents.filter(agent => agent.space_id === space.id).length,
                     createdAt: space.created_at,
+                    access: visible.get(space.id),
                 })),
             }
         }
 
         case 'list_agents': {
-            const agents = await listWorkspaceAgents(workspaceId, asString(args.spaceId))
-            return { agents }
+            const [agents, visible] = await Promise.all([listWorkspaceAgents(workspaceId, asString(args.spaceId)), visibleSpaceIds(actor)])
+            return { agents: keepVisible(agents, visible, agent => agent.space_id) }
         }
 
-        case 'get_team_status':
-            return readTeamStatus(workspaceId, { spaceId: asString(args.spaceId), agentId: asString(args.agentId) })
+        case 'get_team_status': {
+            const [status, visible] = await Promise.all([readTeamStatus(workspaceId, { spaceId: asString(args.spaceId), agentId: asString(args.agentId) }), visibleAgentIds(actor)])
+            return { ...status, agents: keepVisible(status.agents, visible, agent => agent.id) }
+        }
 
         case 'get_agent': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, actor)
             // A part that cannot be read still answers empty, so one failing route does not hide the
             // rest of the agent, but it is named in `unavailable`: an empty list has to mean empty.
             const unavailable: string[] = []
@@ -340,7 +339,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
                 engineListSkills(conn, engineAgentId).catch(unreadable('skills')),
                 engineListSchedules(conn, engineAgentId).catch(unreadable('schedules')),
                 engineListTriggers(conn, engineAgentId).catch(unreadable('triggers')),
-                listInstalledServices(agentId, workspaceId)
+                listInstalledServices(agentId, actor)
                     .then(result => result.services)
                     .catch(unreadable('connectors')),
             ])
@@ -374,7 +373,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'create_agent': {
-            const spaceId = await resolveSpaceId(workspaceId, asString(args.spaceId))
+            const spaceId = await resolveSpaceId(actor, asString(args.spaceId))
             const slugs = Array.isArray(args.connectors) ? args.connectors.filter((slug): slug is string => typeof slug === 'string') : []
             await Promise.all(slugs.map(assertCatalogService))
 
@@ -387,15 +386,16 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
                 installMd: setup?.install,
                 workspaceId,
                 spaceId,
+                actor,
                 config: { ...readConfigPatch(args, pin), ...(setup ? { setup: setup.setup } : {}) },
             })
 
-            if (slugs.length > 0) await installServiceSlugs(agent.id, slugs, workspaceId)
+            if (slugs.length > 0) await installServiceSlugs(agent.id, slugs, actor)
 
             // The registry is the only honest answer: the checklist installServiceSlugs
             // returns holds the needs_config bucket alone, and would quietly drop a connector
             // that installed fine but still waits on a sign-in.
-            const connectors = slugs.length > 0 ? (await listInstalledServices(agent.id, workspaceId)).services : []
+            const connectors = slugs.length > 0 ? (await listInstalledServices(agent.id, actor)).services : []
 
             return {
                 agentId: agent.id,
@@ -413,7 +413,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
 
         case 'update_agent': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, actor, 'manage')
             const soul = typeof args.soul === 'string' ? args.soul : undefined
             if (contentLocked && soul !== undefined) throw new Error(LOCKED_WRITE_ERROR)
 
@@ -437,7 +437,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
             // Resolved only when asked for: resolveSpaceId falls back to the single Box of an
             // account that has one, so calling it blind would move the agent on every update.
             const requestedSpaceId = asString(args.spaceId)
-            const moved = requestedSpaceId ? await moveAgentToBox(agentId, await resolveSpaceId(workspaceId, requestedSpaceId)) : null
+            const moved = requestedSpaceId ? await moveAgentToBox(agentId, await resolveSpaceId(actor, requestedSpaceId), actor) : null
             if (moved && !moved.ok) throw new Error(moved.error)
 
             let patched: EngineAgentDetail | null = null
@@ -477,6 +477,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'set_default_model': {
+            if (!isAdminActor(actor)) throw new AccessDeniedError('Only an admin can change the default model of the workspace.')
             const conn = await getWorkspaceConnection(workspaceId)
             const { connections } = await engineListConnections(conn)
             const pin = readModelPin({ connectionId: requireString(args.connectionId, 'connectionId'), model: requireString(args.model, 'model') }, connections)
@@ -489,13 +490,15 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         case 'delete_agent': {
             const agentId = requireString(args.agentId, 'agentId')
             requireConfirmation(args, 'the coworker, its skills, its scheduled tasks, its memory and its files')
-            await assertAgentOwned(agentId, workspaceId)
+            // Not resolveAgentTarget: it goes through the engine, and a coworker whose engine side is
+            // broken must still be deletable.
+            await assertAgentInWorkspace(agentId, 'manage', actor)
             await deleteAgent(agentId)
             return { agentId, deleted: true }
         }
 
         case 'list_skills': {
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             const skills = await engineListSkills(conn, engineAgentId)
             const owners = connectorSkillOwners(await readRegistry(conn, engineAgentId))
             return {
@@ -513,7 +516,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'get_skill': {
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             const skill = await engineGetSkill(conn, engineAgentId, requireString(args.slug, 'slug'))
             const files = await describeSkillFiles(conn, engineAgentId, skill.slug, skill.files)
             const connector = connectorSkillOwners(await readRegistry(conn, engineAgentId)).get(skill.slug)
@@ -524,7 +527,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'read_skill_file': {
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             if (contentLocked) throw new Error(LOCKED_NOTICE)
             const slug = requireString(args.slug, 'slug')
             const offset = asNumber(args.offset)
@@ -535,7 +538,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'upsert_skill': {
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor, 'manage')
             if (contentLocked) throw new Error(LOCKED_WRITE_ERROR)
             const files = asSkillFiles(args.files)
             // Both checks run before the write: a removal refused afterwards would fail the call
@@ -570,7 +573,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
 
         case 'delete_skill': {
             requireConfirmation(args, 'the skill and its reference files')
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor, 'manage')
             const slug = requireString(args.slug, 'slug')
             const owner = connectorSkillOwners(await readRegistry(conn, engineAgentId)).get(slug)
             if (owner) throw new Error(connectorSkillReadOnlyError(slug, owner))
@@ -579,14 +582,14 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'list_schedules': {
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             const schedules = await engineListSchedules(conn, engineAgentId)
             return { schedules: schedules.map(schedule => (contentLocked ? { ...schedule, body: LOCKED_NOTICE } : schedule)) }
         }
 
         case 'upsert_schedule': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, actor, 'manage')
             if (contentLocked && args.body !== undefined) throw new Error(LOCKED_WRITE_ERROR)
             const slug = asString(args.slug)
             const checked = await checkedModelPin(conn, engineAgentId, args)
@@ -624,13 +627,13 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'run_schedule_now': {
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             return await engineRunScheduleNow(conn, engineAgentId, requireString(args.slug, 'slug'))
         }
 
         case 'delete_schedule': {
             requireConfirmation(args, 'the scheduled task')
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor, 'manage')
             const slug = requireString(args.slug, 'slug')
             await engineDeleteSchedule(conn, engineAgentId, slug)
             return { slug, deleted: true }
@@ -638,14 +641,14 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
 
         case 'list_triggers': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, actor)
             const triggers = await engineListTriggers(conn, engineAgentId)
             return { triggers: await Promise.all(triggers.map(trigger => projectTrigger(agentId, contentLocked ? { ...trigger, body: LOCKED_NOTICE } : trigger))) }
         }
 
         case 'upsert_trigger': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, workspaceId)
+            const { conn, engineAgentId, contentLocked } = await resolveAgentTarget(agentId, actor, 'manage')
             if (contentLocked && args.body !== undefined) throw new Error(LOCKED_WRITE_ERROR)
             const slug = asString(args.slug)
             const checked = await checkedModelPin(conn, engineAgentId, args)
@@ -677,7 +680,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
 
         case 'test_trigger': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor)
             const slug = requireString(args.slug, 'slug')
             const trigger = await engineGetTrigger(conn, engineAgentId, slug)
 
@@ -710,14 +713,14 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
 
         case 'rotate_trigger_token': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(agentId, actor, 'manage')
             const trigger = await engineRotateTriggerToken(conn, engineAgentId, requireString(args.slug, 'slug'))
             return { ...(await projectTrigger(agentId, trigger)), note: 'The previous URL no longer fires. Update every service configured with it.' }
         }
 
         case 'delete_trigger': {
             requireConfirmation(args, 'the webhook trigger and its URL')
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor, 'manage')
             const slug = requireString(args.slug, 'slug')
             await engineDeleteTrigger(conn, engineAgentId, slug)
             return { slug, deleted: true }
@@ -725,10 +728,10 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
 
         case 'send_message': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { conn, engineAgentId } = await resolveAgentTarget(agentId, workspaceId)
+            const [{ conn, engineAgentId }, callableAgentIds] = await Promise.all([resolveAgentTarget(agentId, actor), callableEngineAgentIds(actor)])
             const waitSeconds = clamp(asNumber(args.waitSeconds), DEFAULT_WAIT_SECONDS, MAX_WAIT_SECONDS)
 
-            const res = await engineChat(conn, engineAgentId, { message: requireString(args.message, 'message'), sessionId: asString(args.sessionId), source: 'api' })
+            const res = await engineChat(conn, engineAgentId, { message: requireString(args.message, 'message'), sessionId: asString(args.sessionId), source: 'api', callableAgentIds })
             if (!res.ok) throw new Error(`The coworker could not be reached: ${res.status} ${await res.text().catch(() => '')}`.trim())
 
             const runId = res.headers.get('x-run-id')
@@ -751,13 +754,13 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'list_runs': {
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             const runs = await engineListRuns(conn, engineAgentId, { limit: clamp(asNumber(args.limit), 20, 200) })
             return { runs: runs.map(projectRun) }
         }
 
         case 'get_run': {
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             const runId = requireString(args.runId, 'runId')
             const run = await engineGetRun(conn, engineAgentId, runId)
             const toolCalls = args.includeToolCalls === true ? await engineGetRunTools(conn, engineAgentId, runId) : null
@@ -784,12 +787,12 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'list_tables': {
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             return { tables: await engineListDbTables(conn, agentDataBase(engineAgentId)) }
         }
 
         case 'db_query': {
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor)
             return await engineQueryDb(conn, agentDataBase(engineAgentId), {
                 sql: requireString(args.sql, 'sql'),
                 params: asSqlParams(args.params),
@@ -798,7 +801,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
         }
 
         case 'db_execute': {
-            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), workspaceId)
+            const { conn, engineAgentId } = await resolveAgentTarget(requireString(args.agentId, 'agentId'), actor, 'manage')
             const statements = asSqlStatements(args.statements)
             const sql = asString(args.sql)
             if (!statements && !sql) throw new Error('Provide either sql (one statement) or statements (several, applied atomically).')
@@ -852,23 +855,23 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
 
         case 'list_agent_connectors': {
             const agentId = requireString(args.agentId, 'agentId')
-            const { services } = await listInstalledServices(agentId, workspaceId)
+            const { services } = await listInstalledServices(agentId, actor)
             return { connectors: services.map(service => ({ ...connectorView(service), toolNames: service.toolNames })) }
         }
 
         case 'attach_connector': {
             const agentId = requireString(args.agentId, 'agentId')
             const slug = requireString(args.slug, 'slug')
-            const [, manifest] = await Promise.all([resolveAgentTarget(agentId, workspaceId), loadManifest(slug)])
+            const [, manifest] = await Promise.all([resolveAgentTarget(agentId, actor, 'manage'), loadManifest(slug)])
             if (!manifest || manifest.slug !== slug) throw new Error(`Unknown app "${slug}". Use search_connectors to find the right slug.`)
 
-            const instance = args.newInstance === true && manifest.multiInstance ? await allocateServiceInstance(agentId, manifest, workspaceId) : undefined
+            const instance = args.newInstance === true && manifest.multiInstance ? await allocateServiceInstance(agentId, manifest, actor) : undefined
             const key = instance?.key ?? manifest.slug
-            const declared = await declareService(agentId, manifest, workspaceId, instance)
+            const declared = await declareService(agentId, manifest, actor, instance)
 
             // The registry is the truth: a credential-free service still lands on needs_auth
             // when its single method is an OAuth sign-in.
-            const { services } = await listInstalledServices(agentId, workspaceId)
+            const { services } = await listInstalledServices(agentId, actor)
             const installed = services.find(service => service.key === key)
             const status = installed?.status ?? 'needs_config'
             const name = installed?.name ?? manifest.name
@@ -893,7 +896,7 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
             const agentId = requireString(args.agentId, 'agentId')
             const key = asString(args.key) ?? asString(args.slug)
             if (!key) throw new Error('Pass key (from list_agent_connectors) or slug.')
-            await uninstallService(agentId, key, workspaceId)
+            await uninstallService(agentId, key, actor)
             return { key, detached: true }
         }
 
@@ -903,6 +906,6 @@ export async function dispatchAccountTool(workspaceId: number, name: string, arg
             // runs anything. The ungated one has to come first so an unknown name does not pay a
             // gate it was never aiming at. The last default is the one that answers for a name no
             // file knows.
-            return await dispatchShareTool(workspaceId, name, args)
+            return await dispatchShareTool(actor, name, args)
     }
 }

@@ -22,8 +22,8 @@ vi.mock('@/components/auth/OAuthSignInButton', () => ({ OAuthSignInButton: () =>
 vi.mock('@/components/auth/useSignupFunnel', () => ({
     useSignupFunnel: () => ({ setStep: vi.fn(), markConverted: vi.fn(), dismiss: vi.fn() }),
 }))
-vi.mock('@/cloud/phone', () => ({ PHONE_ENABLED: false }))
-vi.mock('@/cloud/phone.client', () => ({ PhoneSignIn: () => null }))
+vi.mock('@rerun/cloud/phone', () => ({ PHONE_ENABLED: false }))
+vi.mock('@rerun/cloud/phone.client', () => ({ PhoneSignIn: () => null }))
 vi.mock('@/lib/auth/oauth-providers', () => ({ ENABLED_OAUTH_PROVIDERS: [], isOAuthProvider: () => false }))
 vi.mock('@/stores/onboarding.store', () => ({ useOnboardingStore: (select: (s: { markResume: () => void }) => unknown) => select({ markResume: () => {} }) }))
 vi.mock('@/supabase/client', () => ({ createClient: () => ({ auth: {} }) }))

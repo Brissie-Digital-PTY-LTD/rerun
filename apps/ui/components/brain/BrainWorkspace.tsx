@@ -22,7 +22,7 @@ import { Skeleton, SkeletonList } from '@/components/ui/skeleton'
 import { UploadTray } from '@/components/ui/upload-tray'
 import { pendingBrainSave } from '@/hooks/useBrainAutosave'
 import { usePanelUploads } from '@/hooks/usePanelUploads'
-import type { DataFocus } from '@/lib/data/source'
+import { tablesOrThrow, type DataFocus } from '@/lib/data/source'
 import { humanizeTableName } from '@/lib/data/table-name'
 import type { BrainPageDetail } from '@/lib/engine/client'
 import type { EngineDbTable } from '@/lib/engine/types'
@@ -104,7 +104,7 @@ export function BrainWorkspace({ request, publishedEnabled, onRequestConsumed, o
 
     const reloadTables = useCallback(async () => {
         try {
-            const list = await listWorkspaceTablesAction()
+            const list = tablesOrThrow(await listWorkspaceTablesAction())
             setTables(list)
             setTablesError(null)
             return list

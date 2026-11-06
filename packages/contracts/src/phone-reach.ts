@@ -1,8 +1,9 @@
 import type { PhoneChannel } from './app-auth.js'
 
 // Who a message goes out as: Bird Verify's shared identity for codes, or Rerun's own WhatsApp
-// Business number for everything else. They are not refused in the same countries.
-export type PhoneSender = 'verify' | 'rerun'
+// Business number for everything else. They are not refused in the same countries, and Meta holds
+// back Rerun's number in more of them when the template it carries is a marketing one.
+export type PhoneSender = 'verify' | 'rerun' | 'rerun_marketing'
 
 const ALL_CHANNELS: readonly PhoneChannel[] = ['whatsapp', 'sms']
 
@@ -13,9 +14,19 @@ const UNREACHABLE: Partial<Record<string, readonly PhoneChannel[]>> = { CN: ['wh
 // list as of October 1, 2026). Rerun's own number does deliver there.
 const VERIFY_WHATSAPP_REFUSED: ReadonlySet<string> = new Set(['AE', 'BD', 'EG', 'ID', 'IN', 'IQ', 'KW', 'KZ', 'LK', 'MA', 'MY', 'NG', 'NP', 'OM', 'PK', 'SA', 'UA', 'ZA'])
 
+// Meta keeps Rerun's own number out of these countries for every template, utility included
+// (error 130497, 34 failures out of 34 to Brazil by November 2026).
+const RERUN_WHATSAPP_REFUSED: ReadonlySet<string> = new Set(['BR'])
+
+// Meta has paused marketing templates to US numbers (error 131049): 0 of 46 got through by
+// November 2026, while utility ones still arrive. Canada and Puerto Rico share +1 and do receive.
+const MARKETING_WHATSAPP_REFUSED: ReadonlySet<string> = new Set(['US'])
+
 function refusedChannels(country: string, sender: PhoneSender): PhoneChannel[] {
     const refused = [...(UNREACHABLE[country] ?? [])]
     if (sender === 'verify' && VERIFY_WHATSAPP_REFUSED.has(country)) refused.push('whatsapp')
+    if (sender !== 'verify' && RERUN_WHATSAPP_REFUSED.has(country)) refused.push('whatsapp')
+    if (sender === 'rerun_marketing' && MARKETING_WHATSAPP_REFUSED.has(country)) refused.push('whatsapp')
     return refused
 }
 
