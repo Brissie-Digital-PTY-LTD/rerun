@@ -179,9 +179,9 @@ async function installFromDocument(
                     await engineImportSkill(conn, agent.engine_agent_id, skillBodyFromDescription(skill), [], { name: skill.name, description: skill.description })
                 }
                 for (const schedule of doc.schedules) {
+                    if (!schedule.cron) continue
                     await engineCreateSchedule(conn, agent.engine_agent_id, {
                         name: schedule.name,
-                        description: schedule.name,
                         body: `Run the "${schedule.name}" task for this coworker.`,
                         cron: schedule.cron,
                         // A template's schedule arrives switched off, like an imported one whose
