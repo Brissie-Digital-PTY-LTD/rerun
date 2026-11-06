@@ -1,6 +1,7 @@
 'use server'
 
 import { isPublicStatus, type TemplateStatus } from '@rerun/contracts'
+import { isSubscriptionEntitled } from '@rerun/cloud/billing'
 import { z } from 'zod'
 import { assertAdminUser, getAdminEmail } from '@/lib/auth/admin'
 import { assertSpaceAccess } from '@/app/api/_auth/access'
@@ -123,7 +124,10 @@ export async function installTemplateAction(input: { slug: string; spaceId: stri
         } else if ((await getAdminEmail()) === null) {
             const { data: workspace } = await selectMaybeSingle(supabase, 'workspaces', ['subscription_status'] as const, { id: workspace_id })
             const status = workspace?.subscription_status
-            if (status !== 'active' && status !== 'trialing') throw new Error('This workspace has no active plan.')
+            // The plan gate asks the build's entitlement rule, not the raw column: the OSS build
+            // has no plans and answers "entitled" for every workspace, while Rerun Cloud answers
+            // from the subscription.
+            if (!isSubscriptionEntitled(status)) throw new Error('This workspace has no active plan.')
 
             // The plan gate stays first: buying a template unlocks the template, not the compute
             // it needs to run.
