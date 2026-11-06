@@ -173,21 +173,24 @@ async function installFromDocument(
 
             // The agent itself is real from here on. A skill or schedule the engine refuses is
             // reported rather than undoing the coworker: a partial install is still usable.
+            const engineId = agent.engine_agent_id
             try {
                 if (doc.connectorSlugs.length > 0) await installServiceSlugs(agent.id, doc.connectorSlugs, target.actor)
-                for (const skill of doc.skills) {
-                    await engineImportSkill(conn, agent.engine_agent_id, skillBodyFromDescription(skill), [], { name: skill.name, description: skill.description })
-                }
-                for (const schedule of doc.schedules) {
-                    if (!schedule.cron) continue
-                    await engineCreateSchedule(conn, agent.engine_agent_id, {
-                        name: schedule.name,
-                        body: `Run the "${schedule.name}" task for this coworker.`,
-                        cron: schedule.cron,
-                        // A template's schedule arrives switched off, like an imported one whose
-                        // owner moved it: the first run is the user's decision.
-                        enabled: false,
-                    })
+                if (engineId) {
+                    for (const skill of doc.skills) {
+                        await engineImportSkill(conn, engineId, skillBodyFromDescription(skill), [], { name: skill.name, description: skill.description })
+                    }
+                    for (const schedule of doc.schedules) {
+                        if (!schedule.cron) continue
+                        await engineCreateSchedule(conn, engineId, {
+                            name: schedule.name,
+                            body: `Run the "${schedule.name}" task for this coworker.`,
+                            cron: schedule.cron,
+                            // A template's schedule arrives switched off, like an imported one whose
+                            // owner moved it: the first run is the user's decision.
+                            enabled: false,
+                        })
+                    }
                 }
             } catch (err) {
                 warnings.push(`"${doc.name}": ${errorMessage(err)}`)
