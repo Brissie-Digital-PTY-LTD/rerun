@@ -36,7 +36,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
-  /* Tokens repris du design Pricing de la landing (apps/landing) pour BillingDialog */
+  /* Tokens repris du design Pricing de la landing (cloud/apps/landing) pour BillingDialog */
   --color-charcoal-700: #343434;
   --color-charcoal-900: #202020;
   --color-brand: var(--brand);
@@ -52,7 +52,7 @@
   --animate-link-dot: link-dot 2s linear infinite;
 }
 
-/* Models marquee (ModelsDialog right column). Ported from apps/landing. */
+/* Models marquee (ModelsDialog right column). Ported from cloud/apps/landing. */
 @keyframes scroll {
   to {
     transform: translate(calc(-50% - 0.5rem));

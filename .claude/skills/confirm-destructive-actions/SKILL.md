@@ -43,7 +43,7 @@ const [confirming, setConfirming] = useState(false)
 
 **Icon-only button** (trash can with no label): always a dialog. See `PanelDeleteButton` (`apps/ui/components/ui/panel-editor.tsx`), which already wraps it.
 
-**No dialog** when the screen *is* the confirmation: a dedicated page that explains the action and offers a way out next to the button (`apps/landing/app/community/experts/unsubscribe/ExpertOptOut.tsx`). Do not stack a dialog on top of it.
+**No dialog** when the screen *is* the confirmation: a dedicated page that explains the action and offers a way out next to the button (`cloud/apps/landing/app/community/experts/unsubscribe/ExpertOptOut.tsx`). Do not stack a dialog on top of it.
 
 ## Anti-patterns
 

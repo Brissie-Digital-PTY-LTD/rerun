@@ -1,5 +1,5 @@
 /* Thème partagé @rerun/ui : les design tokens shadcn core, source unique pour
-   apps/ui ET apps/landing. Importé une fois via @rerun/ui/styles.css.
+   apps/ui ET cloud/apps/landing. Importé une fois via @rerun/ui/styles.css.
    Chaque app garde à part ses tokens spécifiques (fonts, sidebar/chart côté ui,
    tokens côté landing). Ne pas redéfinir ici ce qui diverge entre apps. */
 

@@ -52,7 +52,7 @@ app. Tests and the typecheck are not enough. Follow the `verify-in-app` skill wi
 Every Supabase **read** goes through the typed helpers (`selectSingle`, `selectMaybeSingle`, `selectFirst`, `selectMany`, `selectAll`, `selectCount`, `canRead`, and the `*WithJoins` variants). Never write a raw `.from(table).select(...)` for a read.
 
 - `apps/ui` imports them from `@/supabase/supabase-helpers`
-- `apps/landing` imports them from `@rerun/db`
+- `cloud/apps/landing` imports them from `@rerun/db`
 
 This applies everywhere: server components, server actions, route handlers, and client components. No exception for an existence check (`select('id')` as a guard) or for `select('*')` (extract a `XXX_COLUMNS = [...] as const` list instead).
 
@@ -71,7 +71,7 @@ supabase.from('experts').upsert<Database['public']['Tables']['experts']['Insert'
 Always this verbose form, never `TablesInsert<'x'>`. `upsert` takes `Insert`. `delete` has no payload, so no generic. A file-local alias (`type PoolUpdate = ...`) is fine when the same table is written 3+ times in one file.
 
 - `apps/ui` imports `Database` from `@/app/api/database.types`
-- `apps/landing` imports it from `@rerun/db`
+- `cloud/apps/landing` imports it from `@rerun/db`
 
 Every client is built with `<Database>`: `createClient<Database>`, `createServerClient<Database>`, `createBrowserClient<Database>`. An untyped client silently degrades every payload and every table name to `any`. Any function taking a client is typed `SupabaseClient<Database>`, never bare `SupabaseClient`.
 
