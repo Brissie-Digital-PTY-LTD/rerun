@@ -84,8 +84,9 @@ const DAY = 24 * 60 * 60_000
 export function toCandidate(row: Record<string, unknown>): TemplateCandidate | null {
     const archives = archivesFromRow.parse(row.agent_archives)
     const agents = agentsFromRow.parse(row.agents)
-    // No captured agent folder means the call to action is a dead end.
-    if (archiveAgentNames(archives, agents).length === 0) return null
+    // A template without a captured folder is installed from its own document; only one with
+    // neither a folder nor declared agents has nothing to offer.
+    if (archiveAgentNames(archives, agents).length === 0 && agents.length === 0) return null
 
     const tagline = typeof row.tagline === 'string' ? row.tagline.trim() : ''
     if (!tagline) return null

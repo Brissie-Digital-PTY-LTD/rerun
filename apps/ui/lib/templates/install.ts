@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { TemplateAgent } from '@rerun/contracts'
 import type { Actor } from '@/app/api/_auth/access'
 import type { Database } from '@/app/api/database.types'
-import { deriveUniqueHandles, importAgent } from '@/app/api/_services/agent.service'
+import { createAgent, deriveUniqueHandles, importAgent } from '@/app/api/_services/agent.service'
+import { installServiceSlugs } from '@/app/api/_services/agent-setup.service'
+import { getSpaceConnection } from '@/app/api/_services/space.service'
+import { createSchedule as engineCreateSchedule, importSkill as engineImportSkill } from '@/lib/engine/client'
 import { selectMany, selectSingle } from '@/supabase/supabase-helpers'
 import { downloadPrivateFile } from '@/lib/storage/private'
 import { STALE_IMPORT_HINT } from '@/lib/agents/capture-archive'
@@ -9,6 +13,29 @@ import { agentsFromRow } from './document'
 import { AGENT_ARCHIVE_BUCKET, archiveAgentNames, archivesFromRow } from './archives'
 import { AGENT_SPAN, containerContainsTile } from '@/lib/board/iso'
 import type { GridPosition } from '@/lib/board/types'
+
+// The public catalogue withholds the captured archives, so a template can arrive without one.
+// Rather than leave its cards dead, the coworker is built from the template's own document: its
+// name, role, skills, schedules and apps. The soul is written from that same text, which is what
+// lets a card keep its promise without the original prompt.
+function soulFromAgent(agent: TemplateAgent): string {
+    const parts = [`# ${agent.name}`]
+    const intro = [agent.role, agent.description].filter(Boolean).join('\n\n')
+    if (intro) parts.push(intro)
+    if (agent.skills.length > 0) {
+        parts.push('## Skills', 'Use the skill that matches the moment:', ...agent.skills.map(skill => `- **${skill.name}** — ${skill.description}`))
+    }
+    if (agent.schedules.length > 0) {
+        parts.push('## Scheduled work', ...agent.schedules.map(schedule => `- ${schedule.name} (${schedule.cron})`))
+    }
+    parts.push('## Ground rules', '- Ask before anything that spends money, sends something outside the workspace, or deletes data.', '- Say what you checked and what still needs a human decision.')
+    return parts.join('\n\n')
+}
+
+function skillBodyFromDescription(skill: { name: string; description: string }): string {
+    return `---\n---\n\n# ${skill.name}\n\n${skill.description}\n\n## Steps\n1. Gather what the task needs from the workspace and the apps this coworker can reach.\n2. Do the work the description asks for in small, verifiable steps.\n3. Report what changed, what you verified, and what still needs a human decision.\n`
+}
+
 
 // Narrower than the shared `isMissingRoute`: only the import route being absent means the whole
 // batch is doomed, a 404 on anything else is about this one archive.
@@ -54,7 +81,8 @@ export async function installTemplate(supabase: SupabaseClient<Database>, slug: 
 
     const agents = agentsFromRow.parse(template.agents)
     const archives = archivesFromRow.parse(template.agent_archives)
-    if (archives.length === 0) throw new Error(`"${template.title}" has no captured coworker to import yet.`)
+    if (archives.length === 0) return installFromDocument(supabase, template, target, agents)
+
 
     // Named after the editorial entry when there is one, so an admin's rename of a captured agent
     // is what the importer sees.
@@ -100,6 +128,76 @@ export async function installTemplate(supabase: SupabaseClient<Database>, slug: 
             // visible on the grid, so the rest of the batch carries on and reports what failed.
             if (isMissingImportRoute(err)) throw new Error(STALE_IMPORT_HINT)
             failed.push({ name: names[index], error: errorMessage(err) })
+        }
+    }
+
+    if (imported === 0) throw new Error(failed[0]?.error ?? `"${template.title}" imported no coworker.`)
+
+    return { imported, inactive, agentIds, failed, warnings, alreadyInstalled: false }
+}
+
+// The archive-free path: the same outcome as an import, assembled from the template document.
+// Each coworker is a real agent on the workspace engine (soul, skills, scheduled tasks, apps),
+// so everything downstream — the chat, the skills panel, the connectors checklist — works the
+// same. The original prompt and skill text are not reproduced: those never leave Rerun Cloud,
+// and the warning says so on every install.
+async function installFromDocument(
+    supabase: SupabaseClient<Database>,
+    template: { title: string },
+    target: { workspaceId: number; spaceId: string; actor: Actor; positions?: GridPosition[]; again?: boolean },
+    agents: TemplateAgent[],
+): Promise<TemplateInstallOutcome> {
+    const names = agents.map(agent => agent.name)
+    const handles = await deriveUniqueHandles(supabase, target.workspaceId, names)
+    const anchors = await anchorsInsideSpace(supabase, target.spaceId, target.positions)
+    const conn = await getSpaceConnection(target.spaceId)
+
+    const failed: TemplateInstallOutcome['failed'] = []
+    const warnings: string[] = [`"${template.title}" carries no captured archive here: each coworker was built from the template's public description, so its original prompt and skill text are not reproduced.`]
+    const agentIds: string[] = []
+    let imported = 0
+    let inactive = 0
+
+    for (const [index, doc] of agents.entries()) {
+        try {
+            const agent = await createAgent({
+                name: doc.name,
+                description: doc.description || doc.role || undefined,
+                soulMd: soulFromAgent(doc),
+                workspaceId: target.workspaceId,
+                spaceId: target.spaceId,
+                actor: target.actor,
+                position: anchors[index],
+                handle: handles[index],
+            })
+
+            // The agent itself is real from here on. A skill or schedule the engine refuses is
+            // reported rather than undoing the coworker: a partial install is still usable.
+            try {
+                if (doc.connectorSlugs.length > 0) await installServiceSlugs(agent.id, doc.connectorSlugs, target.actor)
+                for (const skill of doc.skills) {
+                    await engineImportSkill(conn, agent.engine_agent_id, skillBodyFromDescription(skill), [], { name: skill.name, description: skill.description })
+                }
+                for (const schedule of doc.schedules) {
+                    await engineCreateSchedule(conn, agent.engine_agent_id, {
+                        name: schedule.name,
+                        description: schedule.name,
+                        body: `Run the "${schedule.name}" task for this coworker.`,
+                        cron: schedule.cron,
+                        // A template's schedule arrives switched off, like an imported one whose
+                        // owner moved it: the first run is the user's decision.
+                        enabled: false,
+                    })
+                }
+            } catch (err) {
+                warnings.push(`"${doc.name}": ${errorMessage(err)}`)
+            }
+
+            imported += 1
+            if (agent.disabled_at) inactive += 1
+            agentIds.push(agent.id)
+        } catch (err) {
+            failed.push({ name: doc.name, error: errorMessage(err) })
         }
     }
 

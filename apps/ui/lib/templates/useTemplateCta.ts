@@ -48,7 +48,8 @@ export function useTemplateCta(template: LibraryTemplate, onDone: () => void): T
     const [pending, startTransition] = useTransition()
     const installed = useBoardStore(s => s.agents.find(agent => agent.templateId === template.id) ?? null)
 
-    const count = template.archiveAgentNames.length
+    const agentNames = template.archiveAgentNames.length > 0 ? template.archiveAgentNames : template.agents.map(agent => agent.name)
+    const count = agentNames.length
     const paid = isPaid(template.pricing)
     const price = formatAmount(template.pricing.amountCents, template.pricing.currency)
     const priceArm = usePriceArm()

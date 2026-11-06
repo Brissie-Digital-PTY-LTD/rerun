@@ -45,7 +45,10 @@ export function useTemplateImportFlow({ onDone }: { onDone: () => void }) {
         }
 
         track('template_link_opened', { slug: template.slug, has_space: hasSpace })
-        beginTemplatePlacement({ slug: template.slug, title: template.title, agentNames: template.archiveAgentNames, again })
+        // A template installed from its document carries no archive names: its coworkers are the
+        // ones its agent list declares.
+        const agentNames = template.archiveAgentNames.length > 0 ? template.archiveAgentNames : template.agents.map(agent => agent.name)
+        beginTemplatePlacement({ slug: template.slug, title: template.title, agentNames, again })
         onDone()
     }
 
