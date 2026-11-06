@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   engine-image:
+    # Runs in the open source repository only, not in a private clone of it.
+    if: github.repository == 'rerun-build/rerun'
     runs-on: ubuntu-latest
     steps:
       # The two-platform build fills the runner's disk ("No space left on device" on v0.1.0):

@@ -38,7 +38,7 @@ const CLAIM_COLUMNS = ['id', 'workspace_id', 'created_at'] as const
 //
 // Nothing here throws. The webhook event carries the workspace's whole entitlement, not just this
 // check, so a hiccup on Stripe's side must not 500 into a retry loop and leave a paying customer
-// locked out. The card simply stays unrecorded, and scripts/audit-trial-card-reuse.ts records it
+// locked out. The card simply stays unrecorded, and cloud/packages/cloud/scripts/audit-trial-card-reuse.ts records it
 // cold afterwards.
 export async function enforceTrialCardClaim(subscription: Stripe.Subscription, session?: Stripe.Checkout.Session): Promise<Stripe.Subscription | null> {
     try {

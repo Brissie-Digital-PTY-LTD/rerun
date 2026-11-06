@@ -55,7 +55,8 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+# The public catalogue, then Rerun Cloud's own rows when the private cloud/ is in the checkout.
+sql_paths = ["./seed.sql", "../cloud/supabase/seed.sql"]
 
 [realtime]
 enabled = true

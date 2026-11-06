@@ -1,4 +1,4 @@
-// The header of an issue, described rather than drawn: apps/ui/scripts/generate-newsletter-art.mts
+// The header of an issue, described rather than drawn: cloud/packages/cloud/scripts/generate-newsletter-art.mts
 // turns one of these into the 3D-glass band served at /email/newsletter/<slug>.jpg. The vocabulary
 // is the `rerun-image-glass` one, shared with the re-engagement scenes, so an issue header and a
 // lifecycle banner read as the same family: only the hero pictogram, its satellites and the tilt

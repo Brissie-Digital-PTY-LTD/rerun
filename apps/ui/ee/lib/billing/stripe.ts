@@ -10,7 +10,7 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || UNSET_KEY)
 
 type PlanPriceKey = 'base' | AddonKey
 
-// Price ids read from env (see scripts/setup-billing-prices.ts, which creates the
+// Price ids read from env (see cloud/packages/cloud/scripts/setup-billing-prices.ts, which creates the
 // products/prices and prints these values). The prices carry metadata in Stripe; the
 // env mapping keeps the lookup cheap and avoids a round-trip on every checkout.
 const PRICE_ENV_NAMES: Record<BillingInterval, Record<PlanPriceKey, string>> = {

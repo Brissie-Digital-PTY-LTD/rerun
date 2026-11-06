@@ -11,6 +11,8 @@ concurrency:
 
 jobs:
   check:
+    # Runs in the open source repository only, not in a private clone of it.
+    if: github.repository == 'rerun-build/rerun'
     name: Typecheck, lint, tests
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +30,8 @@ jobs:
       - run: pnpm --filter rerun-engine test
 
   migrations:
+    # Runs in the open source repository only, not in a private clone of it.
+    if: github.repository == 'rerun-build/rerun'
     name: Migrations and seed on a fresh database
     runs-on: ubuntu-latest
     steps:
@@ -39,6 +43,8 @@ jobs:
       - run: supabase db reset --local
 
   images:
+    # Runs in the open source repository only, not in a private clone of it.
+    if: github.repository == 'rerun-build/rerun'
     name: Docker images build
     runs-on: ubuntu-latest
     steps:

@@ -38,7 +38,7 @@ Rerun has paying customers: a change that shows anywhere (a screen, a dialog, a 
 API route the UI calls, the mobile app) is not done until it has been seen working in the running
 app. Tests and the typecheck are not enough. Follow the `verify-in-app` skill without being asked:
 
-- run it on the local stack only (`pnpm db:start`, `pnpm env:local`), never on production
+- run it on the local stack only (`pnpm db:start`, `pnpm cloud env:local`), never on production
 - `pnpm verify:ui` signs in, captures every width in both themes and reports console errors,
   failed requests and load timings; a scenario in `.context/verify/` clicks the path that changed
 - look at every capture, fix what the change broke, run it again
