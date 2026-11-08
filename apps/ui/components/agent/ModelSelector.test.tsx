@@ -74,7 +74,11 @@ const storedOverride = (agentId: string) => {
     return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
 }
 
-describe('ModelSelector override', () => {
+// Each test imports ModelSelector afresh after vi.resetModules(), its whole module graph with it: on a
+// loaded machine that alone can pass vitest's default 5 s.
+const REIMPORT_TIMEOUT = { timeout: 20_000 }
+
+describe('ModelSelector override', REIMPORT_TIMEOUT, () => {
     beforeEach(() => {
         vi.resetModules()
         localStorage.clear()
@@ -116,7 +120,7 @@ describe('ModelSelector override', () => {
     })
 })
 
-describe('ModelSelector coworker default', () => {
+describe('ModelSelector coworker default', REIMPORT_TIMEOUT, () => {
     beforeEach(() => {
         vi.resetModules()
         localStorage.clear()

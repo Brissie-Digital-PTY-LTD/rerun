@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { defineConfig } from "@trigger.dev/sdk/v3";
@@ -9,8 +10,14 @@ const APP_DIR = fileURLToPath(new URL(".", import.meta.url));
 const EXTERNAL_PACKAGES = ["sharp", "apify-client", "ssh2"];
 const CLOUD_DIR = fileURLToPath(new URL("../../cloud/", import.meta.url));
 
+// Rerun Cloud's Trigger.dev project lives in cloud/; a self-hosted install names its own.
+const CLOUD_PROJECT_FILE = `${CLOUD_DIR}packages/cloud/trigger-project.json`;
+const PROJECT_REF =
+  process.env.TRIGGER_PROJECT_REF ??
+  (existsSync(CLOUD_PROJECT_FILE) ? (JSON.parse(readFileSync(CLOUD_PROJECT_FILE, "utf8")) as { project: string }).project : "");
+
 export default defineConfig({
-  project: process.env.TRIGGER_PROJECT_REF ?? "",
+  project: PROJECT_REF,
   // node-22 ships a native global WebSocket; the default "node" runtime is 21.7.3, which
   // doesn't, and supabase-js's RealtimeClient errors without it.
   runtime: "node-22",

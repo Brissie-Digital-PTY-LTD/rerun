@@ -9,7 +9,7 @@
 //   pnpm verify:ui --fresh /                                 a brand new account, to walk the signup
 //   pnpm verify:ui --onboarded /                             an account past the onboarding
 //
-// Local stack only. The hub has to run on the Docker Supabase (`pnpm db:start`, then `pnpm env:local`):
+// Local stack only. The hub has to run on the Docker Supabase (`pnpm db:start`, then `pnpm cloud env:local`):
 // a hub on production provisions a real user and a real workspace on every page load, and the
 // production profile carries the live Stripe keys. The script checks both before the first request.
 //
@@ -106,9 +106,9 @@ function assertMigrated() {
 function assertLocalProfile(stack) {
     const dotenv = existsSync(join(UI_DIR, '.env')) ? readFileSync(join(UI_DIR, '.env'), 'utf8') : ''
     const profile = dotenv.match(/^# >>> rerun env profile: (\S+)/m)?.[1]
-    if (profile !== 'local') fail(`apps/ui/.env is on the "${profile ?? 'unknown'}" profile. Run \`pnpm env:local\` first, never test against production.`)
+    if (profile !== 'local') fail(`apps/ui/.env is on the "${profile ?? 'unknown'}" profile. Run \`pnpm cloud env:local\` first, never test against production.`)
     const configured = dotenv.match(/^NEXT_PUBLIC_SUPABASE_URL=(.*)$/m)?.[1]?.trim()
-    if (configured !== stack.url) fail(`apps/ui/.env points at ${configured}, the running stack is ${stack.url}. Run \`pnpm env:local\` again.`)
+    if (configured !== stack.url) fail(`apps/ui/.env points at ${configured}, the running stack is ${stack.url}. Run \`pnpm cloud env:local\` again.`)
 }
 
 function listeningPid(port) {

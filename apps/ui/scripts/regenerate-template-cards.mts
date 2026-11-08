@@ -55,7 +55,7 @@ if (readError || !rows) throw new Error(readError?.message ?? 'Failed to read th
 const withBoard = rows.filter(row => (row.agent_count ?? 0) > 0)
 const targets = missingOnly ? withBoard.filter(row => !row.card_image_dark_url || !row.card_image_light_url) : withBoard
 
-// Which project and which app, spelled out: `pnpm env:staging` / `env:prod` swap them under the
+// Which project and which app, spelled out: `pnpm cloud env:staging` / `env:prod` swap them under the
 // script's feet, and writing a catalogue into the wrong one is not something to discover after.
 console.log(`Supabase : ${process.env.NEXT_PUBLIC_SUPABASE_URL}`)
 console.log(`App      : ${appUrl || '(unset)'}`)

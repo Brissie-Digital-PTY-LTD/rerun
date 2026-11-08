@@ -38,7 +38,7 @@ Rerun has paying customers: a change that shows anywhere (a screen, a dialog, a 
 API route the UI calls, the mobile app) is not done until it has been seen working in the running
 app. Tests and the typecheck are not enough. Follow the `verify-in-app` skill without being asked:
 
-- run it on the local stack only (`pnpm db:start`, `pnpm env:local`), never on production
+- run it on the local stack only (`pnpm db:start`, `pnpm cloud env:local`), never on production
 - `pnpm verify:ui` signs in, captures every width in both themes and reports console errors,
   failed requests and load timings; a scenario in `.context/verify/` clicks the path that changed
 - look at every capture, fix what the change broke, run it again
@@ -52,7 +52,7 @@ app. Tests and the typecheck are not enough. Follow the `verify-in-app` skill wi
 Every Supabase **read** goes through the typed helpers (`selectSingle`, `selectMaybeSingle`, `selectFirst`, `selectMany`, `selectAll`, `selectCount`, `canRead`, and the `*WithJoins` variants). Never write a raw `.from(table).select(...)` for a read.
 
 - `apps/ui` imports them from `@/supabase/supabase-helpers`
-- `apps/landing` imports them from `@rerun/db`
+- `cloud/apps/landing` imports them from `@rerun/db`
 
 This applies everywhere: server components, server actions, route handlers, and client components. No exception for an existence check (`select('id')` as a guard) or for `select('*')` (extract a `XXX_COLUMNS = [...] as const` list instead).
 
@@ -71,7 +71,7 @@ supabase.from('experts').upsert<Database['public']['Tables']['experts']['Insert'
 Always this verbose form, never `TablesInsert<'x'>`. `upsert` takes `Insert`. `delete` has no payload, so no generic. A file-local alias (`type PoolUpdate = ...`) is fine when the same table is written 3+ times in one file.
 
 - `apps/ui` imports `Database` from `@/app/api/database.types`
-- `apps/landing` imports it from `@rerun/db`
+- `cloud/apps/landing` imports it from `@rerun/db`
 
 Every client is built with `<Database>`: `createClient<Database>`, `createServerClient<Database>`, `createBrowserClient<Database>`. An untyped client silently degrades every payload and every table name to `any`. Any function taking a client is typed `SupabaseClient<Database>`, never bare `SupabaseClient`.
 
@@ -110,3 +110,11 @@ of `apps/ui/vitest.config.ts` for the tests. A checkout without `cloud/` builds 
 
 The repository is public: commit messages, pull request titles and descriptions are written in
 English, whatever the language of the conversation.
+
+# Security fixes
+
+Every branch pushed to `origin` is public at once, even without a pull request. A vulnerability fix
+never goes there: it starts with `pnpm security:start "<title>"` in a workspace of its own, which opens
+a draft GitHub security advisory and its private fork and locks the workspace's push to that fork.
+Follow the `security-fix` skill. In that workspace, never use the GitHub MCP write tools: they bypass
+git and its lock.

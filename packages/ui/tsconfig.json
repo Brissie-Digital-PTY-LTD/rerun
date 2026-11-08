@@ -12,7 +12,10 @@
         "isolatedModules": true,
         "verbatimModuleSyntax": true,
         "resolveJsonModule": true,
-        "forceConsistentCasingInFileNames": true
+        "forceConsistentCasingInFileNames": true,
+        "paths": {
+            "@rerun/cloud/*": ["../../cloud/packages/cloud/src/*", "../../apps/ui/cloud-oss/*"]
+        }
     },
     "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

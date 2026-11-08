@@ -86,7 +86,6 @@
         "react-day-picker": "^10.0.2",
         "react-markdown": "^10.1.0",
         "remark-gfm": "^4.0.0",
-        "tiptap-markdown": "^0.9.0",
-        "lucide-react": "^1.64.0"
+        "tiptap-markdown": "^0.9.0"
     }
 }
