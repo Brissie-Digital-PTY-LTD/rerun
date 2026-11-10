@@ -1,6 +1,6 @@
 import { SESSION_HINT_COOKIE, SESSION_HINT_MAX_AGE, SESSION_HINT_VALUE } from '@rerun/contracts'
 import { NextRequest } from 'next/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 type CookieToSet = { name: string; value: string; options: Record<string, unknown> }
 
@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
     setAll: null as ((cookies: CookieToSet[]) => void) | null,
     getUser: vi.fn(),
     signInAnonymously: vi.fn(),
+    signInWithPassword: vi.fn(),
+    listUsers: vi.fn(),
+    createUser: vi.fn(),
+    updateUser: vi.fn(),
     selectMaybeSingle: vi.fn(),
 }))
 
@@ -23,11 +27,16 @@ const getClaims = vi.fn(async () => {
 vi.mock('@supabase/ssr', () => ({
     createServerClient: (_url: string, _key: string, options: { cookies: { setAll: (cookies: CookieToSet[]) => void } }) => {
         mocks.setAll = options.cookies.setAll
-        return { auth: { getUser: mocks.getUser, getClaims, signInAnonymously: mocks.signInAnonymously } }
+        return { auth: { getUser: mocks.getUser, getClaims, signInAnonymously: mocks.signInAnonymously, signInWithPassword: mocks.signInWithPassword } }
     },
 }))
 
-vi.mock('./serviceRole', () => ({ createServiceRoleClient: () => ({ from: () => ({ update: () => ({ eq: async () => ({}) }) }) }) }))
+vi.mock('./serviceRole', () => ({
+    createServiceRoleClient: () => ({
+        from: () => ({ update: () => ({ eq: async () => ({}) }) }),
+        auth: { admin: { listUsers: mocks.listUsers, createUser: mocks.createUser, updateUserById: mocks.updateUser } },
+    }),
+}))
 
 vi.mock('./supabase-helpers', () => ({ selectMaybeSingle: mocks.selectMaybeSingle }))
 
@@ -44,8 +53,15 @@ function signedInUserRefreshing(cookies: CookieToSet[]) {
 
 describe('updateSession', () => {
     beforeEach(() => {
+        // The container this suite may run in carries the deployment flag; each test opts into it
+        // instead of inheriting it, so this file passes with or without it set.
+        vi.stubEnv('LOCAL_NO_AUTH', '')
         mocks.getUser.mockReset()
         mocks.signInAnonymously.mockReset()
+        mocks.signInWithPassword.mockReset()
+        mocks.listUsers.mockReset()
+        mocks.createUser.mockReset()
+        mocks.updateUser.mockReset()
         getClaims.mockClear()
         mocks.selectMaybeSingle.mockReset().mockResolvedValue({ data: { id: 'user-1', workspace_id: 'workspace-1', signed_up_at: '2026-01-01T00:00:00Z' }, error: null })
     })
@@ -241,6 +257,63 @@ describe('updateSession', () => {
             mocks.getUser.mockResolvedValue({ data: { user: { id: 'anon-1', is_anonymous: true } } })
 
             const response = await updateSession(new NextRequest('https://app.rerun.build/auth'))
+
+            expect(response.headers.get('location')).toBeNull()
+        })
+    })
+
+    describe('local no-auth', () => {
+        beforeEach(() => {
+            vi.stubEnv('LOCAL_NO_AUTH', '1')
+            mocks.getUser.mockResolvedValue({ data: { user: { id: 'anon-1', is_anonymous: true } } })
+            mocks.listUsers.mockResolvedValue({ data: { users: [] } })
+            mocks.signInWithPassword.mockImplementation(async () => {
+                mocks.setAll?.([{ name: AUTH_COOKIE, value: 'local-session', options: SET_OPTIONS }])
+                return { data: { user: { id: 'local-1', is_anonymous: false } }, error: null }
+            })
+        })
+
+        afterEach(() => vi.unstubAllEnvs())
+
+        it('signs an anonymous visitor in as the shared account and lands again with the session cookie', async () => {
+            const response = await updateSession(new NextRequest('http://localhost:3000/board', { headers: DOCUMENT }))
+
+            expect(mocks.signInWithPassword).toHaveBeenCalledTimes(1)
+            expect(response.headers.get('location')).toBe('http://localhost:3000/board')
+            expect(response.cookies.get(AUTH_COOKIE)?.value).toBe('local-session')
+        })
+
+        it('sends a visitor on /auth to the home page instead of showing the login form', async () => {
+            const response = await updateSession(new NextRequest('http://localhost:3000/auth', { headers: DOCUMENT }))
+
+            expect(mocks.signInWithPassword).toHaveBeenCalledTimes(1)
+            expect(response.headers.get('location')).toBe('http://localhost:3000/')
+        })
+
+        it('leaves an already signed-in account alone', async () => {
+            mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1', is_anonymous: false } } })
+
+            const response = await updateSession(new NextRequest('http://localhost:3000/board', { headers: { ...DOCUMENT, cookie: 'rerun-provisioned=user-1.1' } }))
+
+            expect(mocks.signInWithPassword).not.toHaveBeenCalled()
+            expect(response.headers.get('location')).toBeNull()
+        })
+
+        it('does nothing when the flag is off', async () => {
+            vi.stubEnv('LOCAL_NO_AUTH', '')
+
+            const response = await updateSession(new NextRequest('http://localhost:3000/board', { headers: DOCUMENT }))
+
+            expect(mocks.signInWithPassword).not.toHaveBeenCalled()
+            expect(response.headers.get('location')).toBeNull()
+        })
+
+        it('falls through to the normal flow when the local sign-in fails, so it never loops', async () => {
+            mocks.signInWithPassword.mockResolvedValue({ data: { user: null }, error: { message: 'nope' } })
+            mocks.createUser.mockResolvedValue({ error: { message: 'nope' } })
+            vi.spyOn(console, 'error').mockImplementation(() => {})
+
+            const response = await updateSession(new NextRequest('http://localhost:3000/board', { headers: DOCUMENT }))
 
             expect(response.headers.get('location')).toBeNull()
         })

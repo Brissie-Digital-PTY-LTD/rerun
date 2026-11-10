@@ -1,6 +1,7 @@
 import type { Database } from '@/app/api/database.types'
 import { provisionUser } from '@/app/api/_services/user-provisioning.service'
 import { PENDING_INVITE_COOKIE } from '@/lib/auth/pending-invite'
+import { ensureLocalAutoSignIn, isLocalNoAuthEnabled } from '@/supabase/local-auto-signin'
 import { drawPriceArm } from '@rerun/cloud/billing'
 import { routes } from '@/lib/routes'
 import { EXPERIMENT_COOKIE } from '@rerun/analytics/experiments'
@@ -144,14 +145,31 @@ export async function updateSession(request: NextRequest) {
         user = data.user
     }
 
-    identity ??= user ? { id: user.id, isAnonymous: !!user.is_anonymous } : null
+    // Local development (LOCAL_NO_AUTH=1): an anonymous or absent session is swapped for the shared
+    // local account before anything reads it, so neither the welcome wall nor the phone wall rises.
+    // A redirect lands again so this request runs as the account instead of the visitor it replaced
+    // mid-flight; the callback is left alone, where an OAuth connection ends. On a page load
+    // `identity` is still unset here (it is derived from `user` below), so the visitor is read from
+    // `user` directly — checking `identity` alone would re-sign-in on every page load.
+    const effectiveIdentity = identity ?? (user ? { id: user.id, isAnonymous: !!user.is_anonymous } : null)
+    if (isLocalNoAuthEnabled() && isPageLoad(request) && (!effectiveIdentity || effectiveIdentity.isAnonymous) && request.nextUrl.pathname !== routes.authCallback) {
+        const localUser = await ensureLocalAutoSignIn(supabase)
+        if (localUser) {
+            const target = request.nextUrl.pathname.startsWith(routes.auth) ? routes.home : request.nextUrl.pathname
+            return redirectKeepingSession(request, target, supabaseResponse)
+        }
+    }
+
+    identity ??= effectiveIdentity
 
     let provisioned: { signedUp: boolean } | null = null
     if (identity && provisioningNeeded(request.cookies.get(PROVISIONED_COOKIE)?.value, identity)) {
         user ??= (await supabase.auth.getUser()).data.user
         if (user) {
             provisioned = await provisionUser(supabase, user, {
-                phoneStep: !arrivesByInvite(request),
+                // In local mode the shared account owes no phone number, like an invitee. The server
+                // also stamps the signup on its birth request above.
+                phoneStep: !arrivesByInvite(request) && !isLocalNoAuthEnabled(),
                 priceArm: drawPriceArm({
                     experimentCookie: request.cookies.get(EXPERIMENT_COOKIE)?.value,
                     consentCookie: request.cookies.get(CONSENT_COOKIE)?.value,

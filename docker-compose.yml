@@ -21,6 +21,7 @@ services:
         NEXT_PUBLIC_OAUTH_PROVIDERS: ${NEXT_PUBLIC_OAUTH_PROVIDERS:-}
         NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
         NEXT_PUBLIC_HCAPTCHA_SITE_KEY: ${NEXT_PUBLIC_HCAPTCHA_SITE_KEY:-}
+        NEXT_PUBLIC_OPENCODE_ENABLED: ${NEXT_PUBLIC_OPENCODE_ENABLED:-}
     env_file: .env
     environment:
       # The engine below goes to the first workspace that needs one.
