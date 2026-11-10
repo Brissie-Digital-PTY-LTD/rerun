@@ -6,6 +6,7 @@ import { AccountDialog } from '@/components/dialogs/AccountDialog'
 import { AiProvidersDialog } from '@/components/dialogs/AiProvidersDialog'
 import { ApiKeysDialog } from '@/components/dialogs/ApiKeysDialog'
 import { ServersDialog } from '@/components/dialogs/ServersDialog'
+import { UpdatesDialog } from '@/components/dialogs/UpdatesDialog'
 import { ADMIN_URL } from '@rerun/cloud/admin'
 import { RERUN_CLOUD } from '@rerun/cloud/edition'
 import { SERVERS_ENABLED } from '@rerun/cloud/servers'
@@ -39,7 +40,7 @@ import { useForemanStore } from '@/stores/foreman.store'
 import { useNotificationsStore } from '@/stores/notifications.store'
 import { useWorkspaceSettingsStore } from '@/stores/workspace-settings.store'
 import { useIsWorkspaceAdmin, useSession } from '@/supabase/session/SessionProvider'
-import { BadgeCheck, BellIcon, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from '@/lib/icons'
+import { BadgeCheck, BellIcon, BrainIcon, CheckIcon, CreditCardIcon, FlaskConical, GaugeIcon, GridIcon, HeadsetIcon, IdCardIcon, KeyIcon, LayersIcon, LifeBuoyIcon, Loader2Icon, LockKeyholeIcon, LogOutIcon, PlusIcon, RefreshCwIcon, ServerIcon, SettingsIcon, ShieldCheckIcon, UserRoundIcon, UsersIcon } from '@/lib/icons'
 import { openCrisp } from '@/lib/crisp'
 import { cn } from '@/lib/utils'
 import { abortWorkspaceSwitch, beginWorkspaceSwitch, enterActiveWorkspace } from '@/lib/workspace/workspace-switch'
@@ -256,6 +257,10 @@ export function WorkspaceSwitcher() {
                     </DropdownMenuItem>
                 </AdminOnly>
             )}
+            <DropdownMenuItem onSelect={() => openWorkspacePanel('updates')} className="gap-2 text-muted-foreground">
+                <RefreshCwIcon className="size-4" />
+                Updates
+            </DropdownMenuItem>
             <WhatsNewMenuItem />
             <WeeklyRewindMenuItem />
             {!workspace.is_sandbox && appsInMenu.length > 0 && <AppsMenuSection apps={appsInMenu} onOpen={slug => openApp(slug)} />}
@@ -444,6 +449,7 @@ export function WorkspaceSwitcher() {
             {SERVERS_ENABLED && <ServersDialog open={serversOpen} onOpenChange={setServersOpen} />}
             <AiProvidersDialog open={panel === 'ai_providers'} onOpenChange={open => setPanel(open ? 'ai_providers' : null)} />
             <KnowledgeBaseDialog open={panel === 'knowledge_base'} onOpenChange={open => setPanel(open ? 'knowledge_base' : null)} />
+            <UpdatesDialog open={panel === 'updates'} onOpenChange={open => setPanel(open ? 'updates' : null)} />
             <PaidAppDialogs apps={paidApps} />
             <WorkspacePowerDialog action={powerAction} onOpenChange={open => setPowerAction(open ? powerAction : null)} />
             {isExpert && <ExpertProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />}

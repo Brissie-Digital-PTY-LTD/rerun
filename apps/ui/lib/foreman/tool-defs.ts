@@ -138,6 +138,7 @@ const SETTINGS_PANEL_HINTS: Record<SettingsPanel, string> = {
     billing: 'the plan, the add-ons, the card and the invoices',
     notifications: 'what gets notified, coworker by coworker, and the account emails',
     shortcuts: 'the keyboard shortcuts of the board',
+    updates: 'how to update this self-hosted Rerun fork from upstream releases',
     delete_account: 'where the user deletes their own Rerun account, only when they ask how to',
 }
 
